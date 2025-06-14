@@ -1,0 +1,4 @@
+requests>=2.20.0
+websocket-client>=1.0.0
+# Pillow is optional, only if image manipulation/creation is needed directly in client examples
+# Pillow>=9.0.0
