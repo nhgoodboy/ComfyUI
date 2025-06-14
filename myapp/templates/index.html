@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComfyUI 图生图工具</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            padding: 40px;
+        }
+
+        .upload-section {
+            background: #f8f9ff;
+            border-radius: 15px;
+            padding: 30px;
+            border: 2px dashed #ddd;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #4facfe;
+            background: #f0f4ff;
+        }
+
+        .upload-section.dragover {
+            border-color: #4facfe;
+            background: #e8f2ff;
+            transform: scale(1.02);
+        }
+
+        .upload-area {
+            text-align: center;
+            padding: 40px 20px;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            color: #4facfe;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            font-size: 1.2rem;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            font-size: 0.9rem;
+            color: #999;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e1e1;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #4facfe;
+            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 172, 254, 0.3);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn .loading {
+            display: none;
+        }
+
+        .btn.loading .loading {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .preview-section {
+            background: #f8f9ff;
+            border-radius: 15px;
+            padding: 30px;
+        }
+
+        .preview-container {
+            text-align: center;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e1e1e1;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .result-section {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .result-container {
+            text-align: center;
+        }
+
+        .result-image {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .download-btn {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            padding: 10px 20px;
+            font-size: 0.9rem;
+            display: inline-block;
+            text-decoration: none;
+            color: white;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(17, 153, 142, 0.3);
+        }
+
+        .status-container {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .status-success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .status-info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .upload-area {
+                padding: 20px;
+            }
+
+            .upload-icon {
+                font-size: 3rem;
+            }
+        }
+
+        .selected-file {
+            background: #e8f5e8;
+            border: 2px solid #28a745;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+        }
+
+        .selected-file.show {
+            display: block;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-icon {
+            font-size: 1.5rem;
+            color: #28a745;
+        }
+
+        .file-details {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .file-size {
+            font-size: 0.9rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 ComfyUI 图生图工具</h1>
+            <p>上传图片，使用AI技术生成全新的艺术作品</p>
+        </div>
+
+        <div class="main-content">
+            <div class="upload-section">
+                <form id="imageForm" enctype="multipart/form-data">
+                    <div class="upload-area" onclick="document.getElementById('imageFile').click()">
+                        <div class="upload-icon">📁</div>
+                        <div class="upload-text">点击选择图片或拖拽到此处</div>
+                        <div class="upload-hint">支持 JPG, PNG, GIF 格式</div>
+                    </div>
+                    <input type="file" id="imageFile" name="image" class="file-input" accept="image/*" required>
+                    
+                    <div class="selected-file" id="selectedFile">
+                        <div class="file-info">
+                            <div class="file-icon">🖼️</div>
+                            <div class="file-details">
+                                <div class="file-name" id="fileName"></div>
+                                <div class="file-size" id="fileSize"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="positivePrompt">正面提示词（可选）</label>
+                        <textarea id="positivePrompt" name="positive_prompt" placeholder="描述您希望生成的图像特征，例如：Handmade Clay Style, lovely, 3d"></textarea>
+                    </div>
+
+                    <button type="submit" class="btn" id="generateBtn">
+                        <span class="btn-text">开始生成</span>
+                        <span class="loading">⏳</span>
+                    </button>
+                </form>
+
+                <div class="status-container" id="statusContainer">
+                    <div id="statusMessage"></div>
+                </div>
+
+                <div class="progress-container" id="progressContainer">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">准备中...</div>
+                </div>
+            </div>
+
+            <div class="preview-section">
+                <div class="preview-container">
+                    <h3>📷 预览区域</h3>
+                    <div id="previewArea">
+                        <p style="color: #999; margin: 40px 0;">上传图片后将在此显示预览</p>
+                    </div>
+                </div>
+
+                <div class="result-section" id="resultSection">
+                    <div class="result-container">
+                        <h3>✨ 生成结果</h3>
+                        <div id="resultArea"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket连接
+        const socket = io();
+        let currentTaskId = null;
+
+        // DOM元素
+        const imageForm = document.getElementById('imageForm');
+        const imageFile = document.getElementById('imageFile');
+        const uploadArea = document.querySelector('.upload-area');
+        const selectedFile = document.getElementById('selectedFile');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const generateBtn = document.getElementById('generateBtn');
+        const statusContainer = document.getElementById('statusContainer');
+        const statusMessage = document.getElementById('statusMessage');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const previewArea = document.getElementById('previewArea');
+        const resultSection = document.getElementById('resultSection');
+        const resultArea = document.getElementById('resultArea');
+
+        // 文件拖拽处理
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.parentElement.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.parentElement.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.parentElement.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                imageFile.files = files;
+                handleFileSelect(files[0]);
+            }
+        });
+
+        // 文件选择处理
+        imageFile.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            // 显示文件信息
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            selectedFile.classList.add('show');
+
+            // 显示预览
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewArea.innerHTML = `<img src="${e.target.result}" alt="预览图片" class="preview-image">`;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 表单提交
+        imageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!imageFile.files[0]) {
+                showStatus('请选择图片文件', 'error');
+                return;
+            }
+
+            const formData = new FormData(imageForm);
+            
+            // 设置按钮加载状态
+            generateBtn.disabled = true;
+            generateBtn.classList.add('loading');
+            generateBtn.querySelector('.btn-text').textContent = '正在处理...';
+            
+            // 显示进度条
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '10%';
+            progressText.textContent = '正在上传图片...';
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    currentTaskId = result.task_id;
+                    showStatus(result.message, 'success');
+                    progressText.textContent = '任务已提交，等待处理...';
+                    progressFill.style.width = '20%';
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                showStatus(`错误: ${error.message}`, 'error');
+                resetUI();
+            }
+        });
+
+        // WebSocket事件处理
+        socket.on('connect', () => {
+            console.log('已连接到服务器');
+        });
+
+        socket.on('progress', (data) => {
+            const percentage = data.percentage || 0;
+            progressFill.style.width = Math.max(20, percentage) + '%';
+            progressText.textContent = `生成进度: ${data.value}/${data.max} (${percentage}%)`;
+        });
+
+        socket.on('completed', (data) => {
+            if (data.success) {
+                showStatus('图像生成完成！', 'success');
+                
+                // 显示结果
+                resultArea.innerHTML = `
+                    <img src="${data.image}" alt="生成的图片" class="result-image">
+                    <br>
+                    <a href="/download/${data.filename}" class="download-btn" download>
+                        📥 下载图片
+                    </a>
+                `;
+                resultSection.style.display = 'block';
+                
+                progressFill.style.width = '100%';
+                progressText.textContent = '生成完成！';
+            } else {
+                showStatus(`生成失败: ${data.error}`, 'error');
+            }
+            
+            resetUI();
+        });
+
+        socket.on('error', (data) => {
+            showStatus(`错误: ${data.message}`, 'error');
+            resetUI();
+        });
+
+        socket.on('info', (data) => {
+            console.log('信息:', data.message);
+        });
+
+        // 显示状态消息
+        function showStatus(message, type) {
+            statusMessage.textContent = message;
+            statusContainer.className = `status-container status-${type}`;
+            statusContainer.style.display = 'block';
+            
+            // 3秒后自动隐藏成功消息
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusContainer.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // 重置UI状态
+        function resetUI() {
+            generateBtn.disabled = false;
+            generateBtn.classList.remove('loading');
+            generateBtn.querySelector('.btn-text').textContent = '开始生成';
+            
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+                progressFill.style.width = '0%';
+            }, 2000);
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('ComfyUI 图生图工具已加载');
+        });
+    </script>
+</body>
+</html> 
