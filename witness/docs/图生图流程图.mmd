@@ -1,0 +1,48 @@
+sequenceDiagram
+    participant APP as 移动端APP
+    participant Backend as APP后端系统
+    participant API as 风格变换API
+    participant TaskMgr as 任务管理器
+    participant ComfyUI as ComfyUI服务
+    participant Storage as 图片存储
+    
+    APP->>Backend: 用户上传图片
+    Backend->>Storage: 保存原始图片
+    Backend->>API: POST /api/v1/transform<br/>{user_id, image_url, style_type}
+    
+    API->>TaskMgr: 创建任务
+    TaskMgr-->>API: 返回task_id
+    API-->>Backend: 返回{task_id, status: "pending"}
+    Backend-->>APP: 返回任务ID
+    
+    Note over API,ComfyUI: 后台异步处理开始
+    
+    API->>ComfyUI: 下载输入图片
+    ComfyUI-->>API: 图片数据
+    
+    API->>ComfyUI: 上传图片到ComfyUI
+    ComfyUI-->>API: 上传成功
+    
+    API->>API: 加载并自定义工作流
+    API->>ComfyUI: 提交工作流
+    ComfyUI-->>API: 返回prompt_id
+    
+    API->>TaskMgr: 更新任务状态为"processing"
+    
+    loop 处理进度监控
+        ComfyUI->>API: WebSocket进度更新
+        API->>TaskMgr: 更新进度
+    end
+    
+    ComfyUI->>API: 处理完成，返回结果
+    API->>TaskMgr: 更新任务状态为"completed"
+    API->>TaskMgr: 保存输出图片URL
+    
+    Note over APP,Backend: 客户端轮询或WebSocket获取结果
+    
+    APP->>Backend: 查询任务状态
+    Backend->>API: GET /api/v1/task/{task_id}
+    API->>TaskMgr: 获取任务信息
+    TaskMgr-->>API: 返回任务详情
+    API-->>Backend: 返回{status: "completed", output_image_url}
+    Backend-->>APP: 返回处理结果     

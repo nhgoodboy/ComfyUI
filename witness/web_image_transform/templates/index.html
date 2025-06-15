@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像风格变换测试平台</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-magic"></i> 图像风格变换测试平台</h1>
+                <div class="status-indicator">
+                    <span id="api-status" class="status-dot offline"></span>
+                    <span id="api-status-text">检查中...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主要内容区域 -->
+        <main class="main-content">
+            <!-- 上传区域 -->
+            <section class="upload-section">
+                <div class="upload-card">
+                    <div class="upload-area" id="upload-area">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <h3>拖拽图片到此处或点击上传</h3>
+                            <p>支持 JPG、PNG、WebP 格式，最大 10MB</p>
+                            <input type="file" id="file-input" accept="image/*" hidden>
+                            <button class="upload-btn" onclick="document.getElementById('file-input').click()">
+                                <i class="fas fa-plus"></i> 选择图片
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 配置区域 -->
+            <section class="config-section" id="config-section" style="display: none;">
+                <div class="config-card">
+                    <h3><i class="fas fa-cog"></i> 变换配置</h3>
+                    
+                    <div class="form-group">
+                        <label for="style-select">风格类型</label>
+                        <select id="style-select" class="form-control">
+                            <option value="clay">粘土风格 (Clay Style)</option>
+                            <option value="anime">动漫风格 (Anime Style)</option>
+                            <option value="realistic">写实风格 (Realistic Style)</option>
+                            <option value="cartoon">卡通风格 (Cartoon Style)</option>
+                            <option value="oil_painting">油画风格 (Oil Painting Style)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="custom-prompt">自定义提示词 (可选)</label>
+                        <textarea id="custom-prompt" class="form-control" 
+                                placeholder="输入自定义风格描述，留空使用预设提示词"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="strength-slider">变换强度: <span id="strength-value">0.6</span></label>
+                        <input type="range" id="strength-slider" class="slider" 
+                               min="0.1" max="1.0" step="0.1" value="0.6">
+                    </div>
+
+                    <button id="transform-btn" class="transform-btn">
+                        <i class="fas fa-magic"></i> 开始变换
+                    </button>
+                </div>
+            </section>
+
+            <!-- 进度区域 -->
+            <section class="progress-section" id="progress-section" style="display: none;">
+                <div class="progress-card">
+                    <h3><i class="fas fa-spinner fa-spin"></i> 处理中...</h3>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="progress-info">
+                        <span id="progress-text">准备中...</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                    <div class="task-info">
+                        <small>任务ID: <span id="task-id">-</span></small>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 结果区域 -->
+            <section class="result-section" id="result-section" style="display: none;">
+                <div class="result-card">
+                    <h3><i class="fas fa-check-circle"></i> 变换完成</h3>
+                    <div class="image-comparison">
+                        <div class="image-container">
+                            <h4>原图</h4>
+                            <img id="original-image" src="" alt="原图">
+                        </div>
+                        <div class="image-container">
+                            <h4>变换结果</h4>
+                            <img id="result-image" src="" alt="变换结果">
+                            <div class="image-actions">
+                                <button class="download-btn" id="download-btn">
+                                    <i class="fas fa-download"></i> 下载
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-info">
+                        <div class="info-item">
+                            <span class="label">处理时间:</span>
+                            <span id="processing-time">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">风格类型:</span>
+                            <span id="used-style">-</span>
+                        </div>
+                    </div>
+                    <button class="new-transform-btn" onclick="resetInterface()">
+                        <i class="fas fa-plus"></i> 新的变换
+                    </button>
+                </div>
+            </section>
+
+            <!-- 历史记录区域 -->
+            <section class="history-section">
+                <div class="history-card">
+                    <h3><i class="fas fa-history"></i> 处理历史</h3>
+                    <div class="history-list" id="history-list">
+                        <div class="history-empty">
+                            <i class="fas fa-inbox"></i>
+                            <p>暂无处理记录</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 底部信息 -->
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="system-info">
+                    <span>系统状态: <span id="system-status">正常</span></span>
+                    <span>API延迟: <span id="api-latency">-</span>ms</span>
+                </div>
+                <div class="footer-links">
+                    <a href="#" onclick="showLogs()">查看日志</a>
+                    <a href="#" onclick="showStats()">系统统计</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 日志模态框 -->
+    <div id="log-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-alt"></i> 系统日志</h3>
+                <button class="close-btn" onclick="closeLogs()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="log-container" id="log-container">
+                    <div class="log-loading">
+                        <i class="fas fa-spinner fa-spin"></i> 加载日志中...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 统计模态框 -->
+    <div id="stats-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-chart-bar"></i> 系统统计</h3>
+                <button class="close-btn" onclick="closeStats()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="stats-container" id="stats-container">
+                    <div class="stats-loading">
+                        <i class="fas fa-spinner fa-spin"></i> 加载统计中...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 错误提示 -->
+    <div id="error-toast" class="toast error-toast" style="display: none;">
+        <i class="fas fa-exclamation-circle"></i>
+        <span id="error-message">错误信息</span>
+        <button onclick="hideError()">&times;</button>
+    </div>
+
+    <!-- 成功提示 -->
+    <div id="success-toast" class="toast success-toast" style="display: none;">
+        <i class="fas fa-check-circle"></i>
+        <span id="success-message">成功信息</span>
+        <button onclick="hideSuccess()">&times;</button>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html> 
