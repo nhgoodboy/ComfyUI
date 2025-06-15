@@ -192,18 +192,19 @@ async def process_transform_task(task_id: str):
         task["message"] = "开始处理..."
         
         # 定义进度回调函数
-        async def progress_callback(tid, progress, status):
-            if tid in active_tasks:
-                active_tasks[tid]["progress"] = progress
-                active_tasks[tid]["message"] = f"处理中... {progress:.1f}%"
+        async def progress_callback(web_task_id, progress, status):
+            if web_task_id in active_tasks:
+                active_tasks[web_task_id]["progress"] = progress
+                active_tasks[web_task_id]["message"] = f"处理中... {progress:.1f}%"
         
         # 执行图像变换
         result = await transform_image_async(
-            task["file_path"],
-            task["style_type"],
-            task["custom_prompt"],
-            task["strength"],
-            progress_callback
+            image_path=task["file_path"],
+            style_type=task["style_type"],
+            custom_prompt=task["custom_prompt"],
+            strength=task["strength"],
+            web_task_id=task_id,
+            progress_callback=progress_callback
         )
         
         # 更新任务完成状态
@@ -222,6 +223,7 @@ async def process_transform_task(task_id: str):
         # 更新任务错误状态
         if task_id in active_tasks:
             active_tasks[task_id]["status"] = "failed"
+            active_tasks[task_id]["progress"] = 0.0
             active_tasks[task_id]["message"] = f"处理失败: {str(e)}"
             active_tasks[task_id]["error_message"] = str(e)
             active_tasks[task_id]["end_time"] = time.time()

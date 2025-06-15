@@ -5,7 +5,9 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 import aiohttp
 import aiofiles
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
+import uuid
+import time
 
 from comfyui_client.client import ComfyUIClient
 from comfyui_client.websocket import ComfyUIWebSocketClient
@@ -22,9 +24,13 @@ class ComfyUIService:
         parsed_url = urlparse(settings.COMFYUI_BASE_URL)
         self.server_address = parsed_url.hostname
         self.port = parsed_url.port
+        # 统一 client_id（配置优先，否则随机生成）
+        self.client_id = settings.COMFYUI_CLIENT_ID or uuid.uuid4().hex
+
         self.client = ComfyUIClient(
             server_address=self.server_address,
-            port=self.port
+            port=self.port,
+            client_id=self.client_id
         )
         self.ws_client = None
         self._workflow_cache = {}
@@ -41,8 +47,7 @@ class ComfyUIService:
             logger.info("ComfyUI HTTP连接成功")
             
             # 初始化并启动WebSocket客户端
-            ws_url = f"ws://{self.server_address}:{self.port}/ws"
-            self.ws_client = ComfyUIWebSocketClient(ws_url)
+            self.ws_client = ComfyUIWebSocketClient(host=self.server_address, port=self.port, client_id=self.client_id)
             self.ws_client.run_forever() # 在后台线程中运行
             
             # 等待WebSocket连接成功
@@ -54,9 +59,23 @@ class ComfyUIService:
             if not self.ws_client.is_connected:
                 raise Exception("WebSocket连接超时")
 
-            # 设置进度回调
-            self.ws_client.set_progress_callback(self._on_progress)
-            self.ws_client.set_completion_callback(self._on_completion)
+            # 记录当前事件循环, 供线程中的回调使用
+            self._loop = asyncio.get_running_loop()
+
+            # 通过线程安全方式把协程投递到主事件循环
+            def _safe_call(coro_func):
+                def _wrapper(prompt_id: str, payload: dict):
+                    try:
+                        fut = asyncio.run_coroutine_threadsafe(
+                            coro_func(prompt_id, payload), self._loop
+                        )
+                        # 可选择忽略返回值
+                    except Exception as e:
+                        logger.error(f"调度回调失败: {e}")
+                return _wrapper
+
+            self.ws_client.set_progress_callback(_safe_call(self._on_progress))
+            self.ws_client.set_completion_callback(_safe_call(self._on_completion))
             
             self.is_initialized = True
             logger.info("ComfyUI服务初始化完成 (HTTP和WebSocket)")
@@ -72,6 +91,18 @@ class ComfyUIService:
             await self.ws_client.disconnect()
         await self.client.close()
     
+    def _get_sampler_node_ids(self, workflow: Dict[str, Any]) -> list[str]:
+        """从工作流中提取所有采样器节点的ID"""
+        sampler_nodes = []
+        # 定义常见的采样器节点类型
+        sampler_types = ["KSampler", "SamplerCustom", "KSamplerAdvanced"]
+        
+        for node_id, node in workflow.items():
+            if node.get("class_type") in sampler_types:
+                sampler_nodes.append(node_id)
+        
+        return sampler_nodes
+
     async def download_image(self, image_url: str) -> bytes:
         """下载图像"""
         try:
@@ -158,21 +189,28 @@ class ComfyUIService:
     async def submit_workflow(self, task_id: str, workflow: Dict[str, Any]) -> str:
         """提交工作流到ComfyUI"""
         try:
+            # 提取采样器节点ID
+            sampler_node_ids = self._get_sampler_node_ids(workflow)
+
             # 提交工作流
-            result = await self.client.prompts.queue_prompt(prompt=workflow)
+            result = await self.client.prompts.queue_prompt(prompt=workflow, client_id=self.client_id)
             prompt_id = result.get("prompt_id")
             
             if not prompt_id:
                 raise Exception("未获取到prompt_id")
             
-            # 更新任务状态
+            # 更新任务状态，并存入采样器ID
             await task_manager.update_task_status(
                 task_id=task_id,
                 status=TaskStatus.PROCESSING,
-                comfyui_prompt_id=prompt_id
+                comfyui_prompt_id=prompt_id,
+                sampler_node_ids=sampler_node_ids
             )
             
-            logger.info(f"任务 {task_id} 提交成功，prompt_id: {prompt_id}")
+            logger.info(f"任务 {task_id} 提交成功，prompt_id: {prompt_id}, client_id: {self.client_id}")
+            
+            # 启动兜底轮询
+            asyncio.create_task(self._poll_history(task_id, prompt_id))
             return prompt_id
             
         except Exception as e:
@@ -223,14 +261,28 @@ class ComfyUIService:
         try:
             # 查找对应的任务
             task = await self._find_task_by_prompt_id(prompt_id)
-            if task:
-                progress = progress_data.get("value", 0) * 100
+            if not task:
+                return
+
+            # 检查是否是我们关心的采样器节点的进度
+            node_id = progress_data.get("node")
+            if node_id and task.sampler_node_ids and node_id not in task.sampler_node_ids:
+                return # 忽略非采样器节点的进度
+
+            value = progress_data.get("value")
+            max_v = progress_data.get("max")
+
+            # 仅当 value 和 max 都存在且有效时才处理
+            if isinstance(value, (int, float)) and isinstance(max_v, (int, float)) and max_v > 0:
+                progress = min(max(value / max_v * 100, 0), 100)  # 计算并裁剪到 0-100
+
                 await task_manager.update_task_status(
                     task_id=task.task_id,
                     status=TaskStatus.PROCESSING,
                     progress=progress
                 )
-                logger.debug(f"任务 {task.task_id} 进度: {progress}%")
+                logger.debug(f"任务 {task.task_id} 进度: {progress:.1f}%")
+
         except Exception as e:
             logger.error(f"处理进度回调失败: {e}")
     
@@ -243,45 +295,66 @@ class ComfyUIService:
                 logger.warning(f"未找到prompt_id {prompt_id} 对应的任务")
                 return
             
-            # 获取输出图像
-            output_images = result_data.get("outputs", {})
+            # 兼容 ComfyUI 不同版本：有的键名为 "outputs"，有的为 "output"
+            output_images = result_data.get("outputs") or result_data.get("output") or {}
+            
+            logger.debug(f"执行完成回调 raw output_images: {output_images}")
+            
             if output_images:
-                # 假设输出节点ID为"9"（需要根据实际工作流调整）
                 image_info = None
-                for node_id, node_output in output_images.items():
-                    if "images" in node_output:
-                        image_info = node_output["images"][0]
-                        break
-                
+
+                # 情形1：output_images 本身带有 "images" 字段（较新 ComfyUI 版本）
+                if isinstance(output_images, dict) and "images" in output_images:
+                    img_list = output_images.get("images", [])
+                    if img_list:
+                        image_info = img_list[0]
+
+                # 情形2：旧版格式，最外层按 node_id 分组
+                if image_info is None and isinstance(output_images, dict):
+                    for _node_id, node_output in output_images.items():
+                        if isinstance(node_output, dict) and "images" in node_output:
+                            img_list = node_output["images"]
+                            if img_list:
+                                image_info = img_list[0]
+                                break
+
                 if image_info:
                     # 构建图像URL
                     filename = image_info["filename"]
                     subfolder = image_info.get("subfolder", "")
-                    image_url = f"{settings.COMFYUI_BASE_URL}/view"
+                    img_type = image_info.get("type", "")
+
+                    # 如果是 temp 类型且未提供子目录, ComfyUI 实际存放在 temp 目录
+                    if not subfolder and img_type == "temp":
+                        subfolder = "temp"
+
+                    query_parts = [f"filename={filename}"]
+                    # ComfyUI /view 支持 subfolder 和 type 可选参数
                     if subfolder:
-                        image_url += f"?filename={filename}&subfolder={subfolder}"
-                    else:
-                        image_url += f"?filename={filename}"
+                        query_parts.append(f"subfolder={subfolder}")
+                    if img_type:
+                        query_parts.append(f"type={img_type}")
+
+                    query_string = "&".join(query_parts)
+                    # 使用 urljoin 确保 URL 格式正确，避免双斜杠
+                    base_view_url = urljoin(settings.COMFYUI_BASE_URL, "view")
+                    image_url = f"{base_view_url}?{query_string}"
                     
-                    await task_manager.update_task_status(
-                        task_id=task.task_id,
-                        status=TaskStatus.COMPLETED,
-                        output_image_url=image_url,
-                        progress=100.0
-                    )
-                    logger.info(f"任务 {task.task_id} 完成，输出: {image_url}")
+                    # 等待 /view 端点可访问，避免前端403
+                    if await self._wait_until_view_ready(image_url):
+                        await task_manager.update_task_status(
+                            task_id=task.task_id,
+                            status=TaskStatus.COMPLETED,
+                            output_image_url=image_url,
+                            progress=100.0
+                        )
+                        logger.info(f"任务 {task.task_id} 完成，输出: {image_url}")
+                    else:
+                        logger.debug(f"输出 {image_url} 在等待超时内不可访问，延迟完成")
+                        return
                 else:
-                    await task_manager.update_task_status(
-                        task_id=task.task_id,
-                        status=TaskStatus.FAILED,
-                        error_message="未找到输出图像"
-                    )
-            else:
-                await task_manager.update_task_status(
-                    task_id=task.task_id,
-                    status=TaskStatus.FAILED,
-                    error_message="工作流执行失败"
-                )
+                    # executed 消息不包含 output 字段，可能是其他插件事件，忽略
+                    return
                 
         except Exception as e:
             logger.error(f"处理完成回调失败: {e}")
@@ -293,6 +366,54 @@ class ComfyUIService:
             if task.comfyui_prompt_id == prompt_id:
                 return task
         return None
+
+    async def _poll_history(self, task_id: str, prompt_id: str):
+        """在未收到 WebSocket 事件时轮询 ComfyUI /history 作为兜底"""
+        start_time = time.time()
+        poll_interval = 3  # 秒
+        try:
+            while True:
+                # 若任务已结束则退出
+                task = await task_manager.get_task(task_id)
+                if not task or task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+                    return
+
+                # 超时检查
+                if time.time() - start_time > settings.COMFYUI_TIMEOUT:
+                    await task_manager.update_task_status(
+                        task_id=task_id,
+                        status=TaskStatus.FAILED,
+                        error_message="任务超时"
+                    )
+                    return
+
+                try:
+                    history = await self.client.prompts.get_history(prompt_id)
+                    # 检查 prompt_id 是否是 history 字典中的一个键
+                    if history and prompt_id in history:
+                        # 将特定 prompt 的数据传递给完成回调
+                        await self._on_completion(prompt_id, history[prompt_id])
+                        return
+                except Exception as e:
+                    logger.debug(f"轮询 history 失败: {e}")
+
+                await asyncio.sleep(poll_interval)
+        except Exception as e:
+            logger.error(f"轮询任务 {task_id} 失败: {e}")
+
+    async def _wait_until_view_ready(self, url: str, timeout: int = 10, interval: float = 0.5) -> bool:
+        """轮询查看 /view 图片是否可访问"""
+        start = time.time()
+        async with aiohttp.ClientSession() as session:
+            while time.time() - start < timeout:
+                try:
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            return True
+                except Exception:
+                    pass
+                await asyncio.sleep(interval)
+        return False
 
 # 全局服务实例
 comfyui_service = ComfyUIService() 

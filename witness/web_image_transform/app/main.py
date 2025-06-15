@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
@@ -122,11 +122,11 @@ async def download_file(filename: str):
             )
         
         # 文件不存在
-        return {"error": "文件不存在"}
+        return JSONResponse(status_code=404, content={"error": "文件不存在"})
         
     except Exception as e:
         logger.error(f"下载文件失败: {e}")
-        return {"error": f"下载失败: {str(e)}"}
+        return JSONResponse(status_code=500, content={"error": f"下载失败: {str(e)}"})
 
 # 应用启动事件
 @app.on_event("startup")
@@ -170,7 +170,7 @@ async def shutdown_event():
 async def not_found_handler(request: Request, exc):
     """404错误处理"""
     if request.url.path.startswith("/api/"):
-        return {"error": "API端点不存在", "path": request.url.path}
+        return JSONResponse(status_code=404, content={"error": "API端点不存在", "path": request.url.path})
     else:
         return templates.TemplateResponse("index.html", {
             "request": request,
@@ -184,7 +184,7 @@ async def internal_error_handler(request: Request, exc):
     logger.error(f"内部服务器错误: {exc}")
     
     if request.url.path.startswith("/api/"):
-        return {"error": "内部服务器错误", "message": str(exc)}
+        return JSONResponse(status_code=500, content={"error": "内部服务器错误", "message": str(exc)})
     else:
         return templates.TemplateResponse("index.html", {
             "request": request,

@@ -14,7 +14,7 @@ class ComfyUIClient:
     """
     用于与 ComfyUI API 交互的主客户端。
     """
-    def __init__(self, server_address: str = "127.0.0.1", port: int = 8188, user_id: str = None):
+    def __init__(self, server_address: str = "127.0.0.1", port: int = 8188, user_id: str | None = None, client_id: str | None = None):
         self.server_address = server_address
         self.port = port
         self.user_id = user_id
@@ -26,8 +26,8 @@ class ComfyUIClient:
         if self.user_id:
             self.headers['comfy-user'] = self.user_id
 
-        # 为 WebSocket / Prompt 使用的默认 client_id
-        self.client_id = uuid.uuid4().hex
+        # 为 WebSocket / Prompt 使用的 client_id，可从外部传入以保持与 WebSocket 一致
+        self.client_id = client_id or uuid.uuid4().hex
 
         # 创建 aiohttp 会话
         self._session: aiohttp.ClientSession | None = None

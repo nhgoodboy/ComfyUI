@@ -17,6 +17,7 @@ class TaskInfo:
     status: TaskStatus
     created_at: datetime
     comfyui_prompt_id: Optional[str] = None
+    sampler_node_ids: Optional[list[str]] = None
     output_image_url: Optional[str] = None
     error_message: Optional[str] = None
     completed_at: Optional[datetime] = None
@@ -53,6 +54,7 @@ class TaskManager:
     
     async def update_task_status(self, task_id: str, status: TaskStatus, 
                                comfyui_prompt_id: Optional[str] = None,
+                               sampler_node_ids: Optional[list[str]] = None,
                                output_image_url: Optional[str] = None,
                                error_message: Optional[str] = None,
                                progress: Optional[float] = None):
@@ -67,6 +69,8 @@ class TaskManager:
             
             if comfyui_prompt_id:
                 task.comfyui_prompt_id = comfyui_prompt_id
+            if sampler_node_ids is not None:
+                task.sampler_node_ids = sampler_node_ids
             if output_image_url:
                 task.output_image_url = output_image_url
             if error_message:

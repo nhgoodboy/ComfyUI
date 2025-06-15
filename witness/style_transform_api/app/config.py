@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     )
     COMFYUI_TIMEOUT: int = Field(default=300, description="ComfyUI请求超时时间（秒）")
     
+    # ComfyUI 客户端ID (可选). 如果未设置则在服务启动时自动生成 UUID。
+    COMFYUI_CLIENT_ID: str | None = Field(default=None, description="ComfyUI 客户端唯一标识，用于 WebSocket 订阅")
+    
     # 任务配置
     MAX_CONCURRENT_TASKS: int = Field(default=10, description="最大并发任务数")
     TASK_CLEANUP_HOURS: int = Field(default=24, description="任务清理时间（小时）")

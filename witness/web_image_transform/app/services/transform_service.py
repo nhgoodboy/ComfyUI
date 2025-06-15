@@ -106,7 +106,8 @@ class TransformService:
             logger.error(f"查询任务状态失败: {e}")
             raise
     
-    async def wait_for_completion(self, task_id: str, 
+    async def wait_for_completion(self, api_task_id: str, 
+                                web_task_id: str,
                                 timeout: int = 300,
                                 progress_callback=None) -> Dict[str, Any]:
         """等待任务完成"""
@@ -114,34 +115,55 @@ class TransformService:
         
         try:
             while time.time() - start_time < timeout:
-                result = await self.get_task_status(task_id)
+                try:
+                    result = await self.get_task_status(api_task_id)
+                except Exception as poll_err:
+                    logger.warning(f"轮询任务 {api_task_id} 状态出错, 重试: {poll_err}")
+                    await asyncio.sleep(2)
+                    continue
+                
                 status = result.get("status")
                 progress = result.get("progress", 0)
                 
                 # 调用进度回调
                 if progress_callback:
-                    await progress_callback(task_id, progress, status)
+                    await progress_callback(web_task_id, progress, status)
                 
                 if status == "completed":
                     duration = time.time() - start_time
                     output_url = result.get("output_image_url")
-                    log_transform_complete(task_id, duration, output_url or "unknown", settings.DEFAULT_USER_ID)
+                    log_transform_complete(api_task_id, duration, output_url or "unknown", settings.DEFAULT_USER_ID)
                     return result
                 elif status == "failed":
                     error_msg = result.get("error_message", "未知错误")
-                    log_transform_error(task_id, error_msg, settings.DEFAULT_USER_ID)
-                    raise Exception(f"任务失败: {error_msg}")
+                    log_transform_error(api_task_id, error_msg, settings.DEFAULT_USER_ID)
+                    return {
+                        "status": "failed",
+                        "error_message": error_msg,
+                        "task_id": api_task_id,
+                        "progress": 0
+                    }
                 
                 await asyncio.sleep(2)  # 2秒轮询一次
             
             # 超时
-            log_transform_error(task_id, "任务超时", settings.DEFAULT_USER_ID)
-            raise TimeoutError(f"任务 {task_id} 超时")
+            log_transform_error(api_task_id, "任务超时", settings.DEFAULT_USER_ID)
+            return {
+                "status": "failed",
+                "error_message": "任务超时",
+                "task_id": api_task_id,
+                "progress": 0
+            }
             
         except Exception as e:
-            if not isinstance(e, (TimeoutError, Exception)):
-                log_transform_error(task_id, str(e), settings.DEFAULT_USER_ID)
-            raise
+            # 记录错误并返回失败结果，避免向 FastAPI 上传递裸 dict
+            log_transform_error(api_task_id, str(e), settings.DEFAULT_USER_ID)
+            return {
+                "status": "failed",
+                "error_message": str(e),
+                "task_id": api_task_id,
+                "progress": 0
+            }
     
     async def download_result_image(self, image_url: str, task_id: str) -> str:
         """下载结果图像到本地"""
@@ -216,6 +238,7 @@ transform_service = TransformService()
 
 # 便捷函数
 async def transform_image_async(image_path: str, style_type: str,
+                              web_task_id: str,
                               custom_prompt: Optional[str] = None,
                               strength: float = 0.6,
                               progress_callback=None) -> Dict[str, Any]:
@@ -230,20 +253,20 @@ async def transform_image_async(image_path: str, style_type: str,
             result = await service.transform_image(
                 image_url, style_type, custom_prompt, strength
             )
-            task_id = result.get("task_id")
+            api_task_id = result.get("task_id")
             
-            if not task_id:
+            if not api_task_id:
                 raise Exception("未获取到任务ID")
             
             # 3. 等待完成
             final_result = await service.wait_for_completion(
-                task_id, progress_callback=progress_callback
+                api_task_id, web_task_id=web_task_id, progress_callback=progress_callback
             )
             
             # 4. 下载结果图像
             output_url = final_result.get("output_image_url")
             if output_url:
-                local_path = await service.download_result_image(output_url, task_id)
+                local_path = await service.download_result_image(output_url, api_task_id)
                 final_result["local_output_path"] = local_path
             
             return final_result
