@@ -391,11 +391,19 @@ setInterval(checkApi, 5000);
         const res = await fetch("/api/logs?limit=200");
         if (!res.ok) throw new Error("无法获取日志");
         const data = await res.json();
-        const logs = data.logs || data || [];
-        const html = Array.isArray(logs)
-          ? logs.map((l) => `<div class="log-line">${l}</div>`).join("")
-          : `<pre>${JSON.stringify(logs, null, 2)}</pre>`;
-        logContainer.innerHTML = html;
+        const logs = data.logs || [];
+        
+        const html = logs.map(logEntry => {
+            // 检查每个日志条目是否是对象
+            if (typeof logEntry === 'object' && logEntry !== null) {
+                // 如果是对象，格式化为JSON字符串并包裹在<pre>中
+                return `<div class="log-line"><pre>${JSON.stringify(logEntry, null, 2)}</pre></div>`;
+            }
+            // 如果是字符串或其他原始类型，直接显示
+            return `<div class="log-line">${logEntry}</div>`;
+        }).join("");
+
+        logContainer.innerHTML = html || '<div class="log-empty">暂无日志</div>';
       } catch (err) {
         console.error(err);
         logContainer.innerHTML = `<div class="log-error">获取日志失败: ${err.message}</div>`;
