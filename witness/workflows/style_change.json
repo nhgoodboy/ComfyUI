@@ -1,356 +1,361 @@
 {
-    "1": {
-      "inputs": {
-        "image": "children-7934514_1280.jpg"
-      },
-      "class_type": "LoadImage",
-      "_meta": {
-        "title": "加载图像"
-      }
+  "1": {
+    "inputs": {
+      "image": "sleep-4200036_1280.jpg"
     },
-    "6": {
-      "inputs": {
-        "control_net_name": "FLUX.1-dev-ControlNet-Union-Pro-2.0.safetensors"
-      },
-      "class_type": "ControlNetLoader",
-      "_meta": {
-        "title": "加载ControlNet模型"
-      }
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "6": {
+    "inputs": {
+      "control_net_name": "FLUX.1-dev-ControlNet-Union-Pro-2.0.safetensors"
     },
-    "24": {
-      "inputs": {
-        "clip_l": "Clay Style, lovely, 3d, cute, ",
-        "t5xxl": [
-          "77",
-          0
-        ],
-        "guidance": 10,
-        "clip": [
-          "98",
-          0
-        ]
-      },
-      "class_type": "CLIPTextEncodeFlux",
-      "_meta": {
-        "title": "CLIP文本编码Flux"
-      }
+    "class_type": "ControlNetLoader",
+    "_meta": {
+      "title": "加载ControlNet模型"
+    }
+  },
+  "24": {
+    "inputs": {
+      "clip_l": "Clay Style, lovely, 3d, cute, ",
+      "t5xxl": [
+        "77",
+        0
+      ],
+      "guidance": 10,
+      "clip": [
+        "98",
+        0
+      ]
     },
-    "26": {
-      "inputs": {
-        "conditioning": [
-          "24",
-          0
-        ]
-      },
-      "class_type": "ConditioningZeroOut",
-      "_meta": {
-        "title": "条件零化"
-      }
+    "class_type": "CLIPTextEncodeFlux",
+    "_meta": {
+      "title": "CLIP文本编码Flux"
+    }
+  },
+  "26": {
+    "inputs": {
+      "conditioning": [
+        "24",
+        0
+      ]
     },
-    "31": {
-      "inputs": {
-        "max_shift": 1.15,
-        "base_shift": 0.5,
-        "width": [
-          "47",
-          0
-        ],
-        "height": [
-          "47",
-          1
-        ],
-        "model": [
-          "90",
-          0
-        ]
-      },
-      "class_type": "ModelSamplingFlux",
-      "_meta": {
-        "title": "采样算法（Flux）"
-      }
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "31": {
+    "inputs": {
+      "max_shift": 1.15,
+      "base_shift": 0.5,
+      "width": [
+        "47",
+        0
+      ],
+      "height": [
+        "47",
+        1
+      ],
+      "model": [
+        "90",
+        0
+      ]
     },
-    "33": {
-      "inputs": {
-        "samples": [
-          "73",
-          0
-        ],
-        "vae": [
-          "34",
-          0
-        ]
-      },
-      "class_type": "VAEDecode",
-      "_meta": {
-        "title": "VAE解码"
-      }
+    "class_type": "ModelSamplingFlux",
+    "_meta": {
+      "title": "采样算法（Flux）"
+    }
+  },
+  "33": {
+    "inputs": {
+      "samples": [
+        "73",
+        0
+      ],
+      "vae": [
+        "34",
+        0
+      ]
     },
-    "34": {
-      "inputs": {
-        "vae_name": "ae.sft"
-      },
-      "class_type": "VAELoader",
-      "_meta": {
-        "title": "加载VAE"
-      }
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "34": {
+    "inputs": {
+      "vae_name": "ae.sft"
     },
-    "35": {
-      "inputs": {
-        "filename_prefix": "ComfyUI",
-        "images": [
-          "33",
-          0
-        ]
-      },
-      "class_type": "SaveImage",
-      "_meta": {
-        "title": "保存图像"
-      }
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "35": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "33",
+        0
+      ]
     },
-    "39": {
-      "inputs": {
-        "type": "canny/lineart/anime_lineart/mlsd",
-        "control_net": [
-          "6",
-          0
-        ]
-      },
-      "class_type": "SetUnionControlNetType",
-      "_meta": {
-        "title": "设置UnionControlNet类型"
-      }
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "39": {
+    "inputs": {
+      "type": "canny/lineart/anime_lineart/mlsd",
+      "control_net": [
+        "6",
+        0
+      ]
     },
-    "40": {
-      "inputs": {
-        "strength": 0.6000000000000001,
-        "start_percent": 0,
-        "end_percent": 0.6000000000000001,
-        "positive": [
-          "24",
-          0
-        ],
-        "negative": [
-          "26",
-          0
-        ],
-        "control_net": [
-          "39",
-          0
-        ],
-        "image": [
-          "74",
-          0
-        ],
-        "vae": [
-          "34",
-          0
-        ]
-      },
-      "class_type": "ControlNetApplyAdvanced",
-      "_meta": {
-        "title": "应用ControlNet（旧版高级）"
-      }
+    "class_type": "SetUnionControlNetType",
+    "_meta": {
+      "title": "设置UnionControlNet类型"
+    }
+  },
+  "40": {
+    "inputs": {
+      "strength": 0.6000000000000001,
+      "start_percent": 0,
+      "end_percent": 0.6000000000000001,
+      "positive": [
+        "24",
+        0
+      ],
+      "negative": [
+        "26",
+        0
+      ],
+      "control_net": [
+        "39",
+        0
+      ],
+      "image": [
+        "74",
+        0
+      ],
+      "vae": [
+        "34",
+        0
+      ]
     },
-    "44": {
-      "inputs": {
-        "images": [
-          "74",
-          0
-        ]
-      },
-      "class_type": "PreviewImage",
-      "_meta": {
-        "title": "预览图像"
-      }
+    "class_type": "ControlNetApplyAdvanced",
+    "_meta": {
+      "title": "应用ControlNet（旧版高级）"
+    }
+  },
+  "44": {
+    "inputs": {
+      "images": [
+        "74",
+        0
+      ]
     },
-    "46": {
-      "inputs": {
-        "upscale_method": "bicubic",
-        "megapixels": 1.0000000000000002,
-        "image": [
-          "1",
-          0
-        ]
-      },
-      "class_type": "ImageScaleToTotalPixels",
-      "_meta": {
-        "title": "缩放图像（像素）"
-      }
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像"
+    }
+  },
+  "46": {
+    "inputs": {
+      "upscale_method": "bicubic",
+      "megapixels": 1.0000000000000002,
+      "image": [
+        "1",
+        0
+      ]
     },
-    "47": {
-      "inputs": {},
-      "class_type": "easy imageSize",
-      "_meta": {
-        "title": "图像尺寸"
-      }
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "缩放图像（像素）"
+    }
+  },
+  "47": {
+    "inputs": {
+      "image": [
+        "46",
+        0
+      ]
     },
-    "72": {
-      "inputs": {
-        "vae": [
-          "34",
-          0
-        ]
-      },
-      "class_type": "VAEEncode",
-      "_meta": {
-        "title": "VAE编码"
-      }
+    "class_type": "easy imageSize",
+    "_meta": {
+      "title": "图像尺寸"
+    }
+  },
+  "72": {
+    "inputs": {
+      "pixels": [
+        "46",
+        0
+      ],
+      "vae": [
+        "34",
+        0
+      ]
     },
-    "73": {
-      "inputs": {
-        "seed": 357448142926828,
-        "steps": 25,
-        "cfg": 3,
-        "sampler_name": "euler",
-        "scheduler": "normal",
-        "denoise": 0.7500000000000001,
-        "model": [
-          "31",
-          0
-        ],
-        "positive": [
-          "40",
-          0
-        ],
-        "negative": [
-          "40",
-          1
-        ],
-        "latent_image": [
-          "72",
-          0
-        ]
-      },
-      "class_type": "KSampler",
-      "_meta": {
-        "title": "K采样器"
-      }
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "73": {
+    "inputs": {
+      "seed": 532989339558677,
+      "steps": 25,
+      "cfg": 3,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.7500000000000001,
+      "model": [
+        "31",
+        0
+      ],
+      "positive": [
+        "40",
+        0
+      ],
+      "negative": [
+        "40",
+        1
+      ],
+      "latent_image": [
+        "72",
+        0
+      ]
     },
-    "74": {
-      "inputs": {
-        "coarse": "disable",
-        "resolution": [
-          "47",
-          0
-        ]
-      },
-      "class_type": "LineArtPreprocessor",
-      "_meta": {
-        "title": "Realistic Lineart"
-      }
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "74": {
+    "inputs": {
+      "coarse": "disable",
+      "resolution": [
+        "47",
+        0
+      ],
+      "image": [
+        "46",
+        0
+      ]
     },
-    "76": {
-      "inputs": {
-        "task": "more detailed caption",
-        "text_input": "",
-        "max_new_tokens": 1024,
-        "num_beams": 3,
-        "do_sample": false,
-        "fill_mask": false,
-        "florence2_model": [
-          "89",
-          0
-        ]
-      },
-      "class_type": "LayerUtility: Florence2Image2Prompt",
-      "_meta": {
-        "title": "图层工具：Florence2 图像转提示（高级）"
-      }
+    "class_type": "LineArtPreprocessor",
+    "_meta": {
+      "title": "Realistic Lineart"
+    }
+  },
+  "76": {
+    "inputs": {
+      "task": "more detailed caption",
+      "text_input": "",
+      "max_new_tokens": 1024,
+      "num_beams": 3,
+      "do_sample": false,
+      "fill_mask": false,
+      "florence2_model": [
+        "89",
+        0
+      ],
+      "image": [
+        "46",
+        0
+      ]
     },
-    "77": {
-      "inputs": {
-        "delimiter": " ",
-        "string1": [
-          "79",
-          0
-        ],
-        "string2": [
-          "76",
-          0
-        ]
-      },
-      "class_type": "JoinStrings",
-      "_meta": {
-        "title": "Join Strings"
-      }
+    "class_type": "LayerUtility: Florence2Image2Prompt",
+    "_meta": {
+      "title": "图层工具：Florence2 图像转提示（高级）"
+    }
+  },
+  "77": {
+    "inputs": {
+      "delimiter": " ",
+      "string1": [
+        "79",
+        0
+      ],
+      "string2": [
+        "76",
+        0
+      ]
     },
-    "79": {
-      "inputs": {
-        "positive": "Clay Style, lovely, 3d, cute, "
-      },
-      "class_type": "easy positive",
-      "_meta": {
-        "title": "正面提示词"
-      }
+    "class_type": "JoinStrings",
+    "_meta": {
+      "title": "Join Strings"
+    }
+  },
+  "79": {
+    "inputs": {
+      "positive": "Clay Style, lovely, 3d, cute, "
     },
-    "89": {
-      "inputs": {
-        "version": "base"
-      },
-      "class_type": "LayerMask: LoadFlorence2Model",
-      "_meta": {
-        "title": "图层遮罩：加载Florence2模型（高级）"
-      }
+    "class_type": "easy positive",
+    "_meta": {
+      "title": "正面提示词"
+    }
+  },
+  "89": {
+    "inputs": {
+      "version": "base"
     },
-    "90": {
-      "inputs": {
-        "lora_name": "flux-lora-000005 (1).safetensors",
-        "strength_model": 1.5,
-        "model": [
-          "97",
-          0
-        ]
-      },
-      "class_type": "LoraLoaderModelOnly",
-      "_meta": {
-        "title": "LoRA加载器（仅模型）"
-      }
+    "class_type": "LayerMask: LoadFlorence2Model",
+    "_meta": {
+      "title": "图层遮罩：加载Florence2模型（高级）"
+    }
+  },
+  "90": {
+    "inputs": {
+      "lora_name": "flux-lora-000005 (1).safetensors",
+      "strength_model": 1.5,
+      "model": [
+        "97",
+        0
+      ]
     },
-    "92": {
-      "inputs": {
-        "anything": [
-          "46",
-          0
-        ]
-      },
-      "class_type": "Anything Everywhere",
-      "_meta": {
-        "title": "Anything Everywhere"
-      }
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "97": {
+    "inputs": {
+      "unet_name": "flux1-dev.safetensors",
+      "weight_dtype": "default"
     },
-    "97": {
-      "inputs": {
-        "unet_name": "flux1-dev.safetensors",
-        "weight_dtype": "default"
-      },
-      "class_type": "UNETLoader",
-      "_meta": {
-        "title": "UNet加载器"
-      }
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "98": {
+    "inputs": {
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
+      "type": "flux",
+      "device": "default"
     },
-    "98": {
-      "inputs": {
-        "clip_name1": "clip_l.safetensors",
-        "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
-        "type": "flux",
-        "device": "default"
-      },
-      "class_type": "DualCLIPLoader",
-      "_meta": {
-        "title": "双CLIP加载器"
-      }
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "双CLIP加载器"
+    }
+  },
+  "103": {
+    "inputs": {
+      "text": "The image shows three young girls lying on a red and gold patterned blanket. The girl on the left is wearing a blue and orange floral dress with a white headscarf. She is lying on her back with her eyes closed and her head resting on her hands. The other two girls are lying next to her, wearing red dresses with floral patterns. They are all smiling and appear to be sleeping. The background is dark and out of focus, making the girls the focal point of the image.",
+      "anything": [
+        "76",
+        0
+      ]
     },
-    "103": {
-      "inputs": {
-        "text": "The image shows two young boys sitting on a stone wall. They are both wearing casual clothes and blue flip-flops. The boy on the left is wearing a green t-shirt with a floral pattern and white shorts, while the boy in the middle is wearing blue shorts and a brown shirt. Both boys are looking directly at the camera with serious expressions on their faces. In the background, there is a wooden bench with colorful stuffed animals and a rug hanging on the wall. The overall mood of the image is one of curiosity and wonder.",
-        "anything": [
-          "76",
-          0
-        ]
-      },
-      "class_type": "easy showAnything",
-      "_meta": {
-        "title": "展示任何"
-      }
+    "class_type": "easy showAnything",
+    "_meta": {
+      "title": "展示任何"
     }
   }
+}

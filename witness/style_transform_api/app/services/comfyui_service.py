@@ -103,7 +103,7 @@ class ComfyUIService:
         if workflow_name in self._workflow_cache:
             return self._workflow_cache[workflow_name]
         
-        workflow_path = Path(__file__).parent.parent / "workflows" / f"{workflow_name}.json"
+        workflow_path = Path(settings.WORKFLOW_DIR) / f"{workflow_name}.json"
         
         try:
             async with aiofiles.open(workflow_path, 'r', encoding='utf-8') as f:

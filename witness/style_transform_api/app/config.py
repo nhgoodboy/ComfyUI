@@ -35,6 +35,12 @@ class Settings(BaseSettings):
         description="允许的图像类型"
     )
     
+    # 工作流模板目录
+    WORKFLOW_DIR: str = Field(
+        default=str(Path(__file__).resolve().parent.parent.parent / "workflows"),
+        description="工作流模板目录"
+    )
+    
     # 日志配置
     LOG_LEVEL: str = Field(default="INFO", description="日志级别")
     LOG_FORMAT: str = Field(
