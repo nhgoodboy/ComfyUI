@@ -1,1 +1,3 @@
-# Make the directory a package 
+from .client import ComfyUIClient
+
+__all__ = ["ComfyUIClient"] 

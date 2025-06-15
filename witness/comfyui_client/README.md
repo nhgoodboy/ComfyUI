@@ -3,6 +3,7 @@
 一个用于与 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) API 交互的 Python 客户端，基于 API 文档生成。
 
 该库提供了一个结构化、模块化且易于使用的接口，用于以编程方式控制 ComfyUI，包括排队提示、管理文件以及通过 WebSocket 接收实时更新。
+本客户端是对 ComfyUI 底层 API 的一层封装，详细的底层 API 技术规格可以参考文档：**[ComfyUI API 开发文档](../../docs/comfyui_api.md)**。
 
 ## 特性
 
@@ -14,8 +15,8 @@
 
 ## 安装
 
-1.  克隆此仓库或下载 `comfyui_client` 目录。
-2.  安装所需的依赖项：
+1.  克隆此仓库。
+2.  从项目根目录 (`witness/`) 安装所需的依赖项：
 
 ```bash
 pip install -r requirements.txt

@@ -1,6 +1,6 @@
 # 网页版图像风格变换测试平台
 
-一个基于FastAPI和现代Web技术构建的图像风格变换测试平台，提供简洁的用户界面和完善的API接口。
+一个基于FastAPI和现代Web技术构建的图像风格变换测试平台，是 **Witness** 项目的用户界面层。它提供简洁的用户界面和完善的API接口。
 
 ## 功能特性
 
@@ -64,11 +64,11 @@ witness/web_image_transform/
 
 ### 环境要求
 - Python 3.8+
-- 图像风格变换API服务（需要先启动）
+- 图像风格变换API服务（`style_transform_api`，需要先启动）
 
 ### 安装依赖
 ```bash
-cd witness/web_image_transform
+# 从项目根目录 (witness/) 运行
 pip install -r requirements.txt
 ```
 
