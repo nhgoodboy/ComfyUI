@@ -109,13 +109,14 @@ graph TB
 ### 1. 环境要求
 
 - Python 3.11+
-- ComfyUI服务运行在 `http://localhost:8188`
-- Docker（可选）
+- ComfyUI 服务 (可选，用于执行实际的图像变换)
+- Docker (可选)
 
 ### 2. 安装依赖
 
+请在项目根目录 (`witness/`) 下安装所有依赖:
 ```bash
-pip install -r requirements.txt
+pip install -r ../requirements.txt
 ```
 
 ### 3. 配置环境变量
@@ -132,14 +133,19 @@ PORT=8000
 
 ### 4. 启动服务
 
+**重要提示**: 请从项目的根目录 (`witness/`) 启动此服务。
+
 ```bash
-python -m app.main
+# 在 witness/ 根目录下运行
+uvicorn style_transform_api.app.main:app --host 0.0.0.0 --port 8000
 ```
 
-或使用Docker：
+该服务具备容错能力，即使无法连接到ComfyUI也能启动，并会在日志中提示连接状态。
+
+或使用Docker (请确保在根目录执行):
 
 ```bash
-docker-compose up -d
+docker-compose up -d style-transform-api
 ```
 
 ### 5. 访问API文档

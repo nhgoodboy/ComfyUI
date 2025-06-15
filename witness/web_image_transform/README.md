@@ -69,7 +69,7 @@ witness/web_image_transform/
 ### 安装依赖
 ```bash
 # 从项目根目录 (witness/) 运行
-pip install -r requirements.txt
+pip install -r ../requirements.txt
 ```
 
 ### 配置设置
@@ -99,11 +99,8 @@ LOG_FILE=logs/web_transform.log
 
 ### 启动服务
 ```bash
-# 开发模式
-python -m app.main
-
-# 或使用uvicorn
-uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+# 在 witness/ 根目录下运行
+uvicorn web_image_transform.app.main:app --host 0.0.0.0 --port 8080 --reload
 ```
 
 ### 访问应用

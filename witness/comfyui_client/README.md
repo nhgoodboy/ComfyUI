@@ -57,14 +57,14 @@ client = ComfyUIClient(server_address='127.0.0.1', port=8188)
 
 ### WebSocket 处理
 
-要接收实时更新，您可以通过子类化 `WebSocketClient` 并重写 `on_message` 方法来创建自定义 WebSocket 客户端。
+要接收实时更新，您可以通过子类化 `ComfyUIWebSocketClient` 并重写 `on_message` 方法来创建自定义 WebSocket 客户端。
 
 ```python
-from comfyui_client.websocket import WebSocketClient
+from comfyui_client.websocket import ComfyUIWebSocketClient
 import uuid
 
 # 一个只打印消息的简单处理器
-class MyWebSocketClient(WebSocketClient):
+class MyWebSocketClient(ComfyUIWebSocketClient):
     def on_message(self, ws, message):
         print("收到 WebSocket 消息:")
         print(message)
@@ -73,7 +73,6 @@ client_id = str(uuid.uuid4())
 # 您可以像这样使用自定义类：
 # ws_client = MyWebSocketClient(f"ws://{client.server_address}:{client.port}/ws?clientId={client_id}")
 ws_client = client.get_websocket(client_id)
-
 
 ws_client.run_forever()
 
