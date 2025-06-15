@@ -1,12 +1,12 @@
 import requests
 import json
 
-from ..utils.logger import get_logger
+from .utils.logger import get_logger
 from .endpoints.prompt import PromptAPI
 from .endpoints.file import FileAPI
 from .endpoints.system import SystemAPI
 from .endpoints.user import UserAPI
-from .websocket import WebSocketClient
+from .websocket import ComfyUIWebSocketClient
 
 class ComfyUIClient:
     """
@@ -60,7 +60,14 @@ class ComfyUIClient:
         """
         初始化并返回一个 WebSocket 客户端。
         """
-        return WebSocketClient(f"ws://{self.server_address}:{self.port}/ws?clientId={client_id}")
+        return ComfyUIWebSocketClient(f"ws://{self.server_address}:{self.port}/ws?clientId={client_id}")
+
+    async def close(self):
+        """
+        关闭客户端。目前没有需要显式关闭的资源。
+        """
+        self.logger.info("ComfyUIClient 已关闭")
+        pass
 
 # 端点模块的占位符类，以便于初始化
 # 这些将在它们各自的文件中被实际的实现所替换。

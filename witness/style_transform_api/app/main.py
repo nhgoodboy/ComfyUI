@@ -1,6 +1,11 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+import sys
+import os
+import asyncio
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -25,31 +30,25 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     logger.info("启动图像风格变换API服务...")
     
+    # 初始化ComfyUI服务, 不阻塞启动
+    await comfyui_service.initialize()
+    
+    # 启动清理任务
+    cleanup_task = asyncio.create_task(start_cleanup_task())
+    logger.info("任务清理服务启动")
+    
     try:
-        # 初始化ComfyUI服务
-        await comfyui_service.initialize()
-        logger.info("ComfyUI服务初始化完成")
-        
-        # 启动清理任务
-        cleanup_task = asyncio.create_task(start_cleanup_task())
-        logger.info("任务清理服务启动")
-        
         yield
-        
-    except Exception as e:
-        logger.error(f"服务启动失败: {e}")
-        raise
     finally:
         # 关闭时执行
         logger.info("关闭服务...")
         
         # 取消清理任务
-        if 'cleanup_task' in locals():
-            cleanup_task.cancel()
-            try:
-                await cleanup_task
-            except asyncio.CancelledError:
-                pass
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
         
         # 关闭ComfyUI服务
         await comfyui_service.close()

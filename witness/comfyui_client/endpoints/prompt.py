@@ -1,4 +1,7 @@
-from ..client import ComfyUIClient
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..client import ComfyUIClient
 
 class BaseAPI:
     def __init__(self, client: 'ComfyUIClient'):

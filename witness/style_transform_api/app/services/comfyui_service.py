@@ -7,11 +7,11 @@ import aiohttp
 import aiofiles
 from urllib.parse import urlparse
 
-from ...comfyui_client.client import ComfyUIClient
-from ...comfyui_client.websocket import ComfyUIWebSocketClient
-from ..config import settings
-from ..utils.task_manager import task_manager, TaskInfo
-from ..schemas.response import TaskStatus
+from comfyui_client.client import ComfyUIClient
+from comfyui_client.websocket import ComfyUIWebSocketClient
+from style_transform_api.app.config import settings
+from style_transform_api.app.utils.task_manager import task_manager, TaskInfo
+from style_transform_api.app.schemas.response import TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -19,35 +19,52 @@ class ComfyUIService:
     """ComfyUI服务封装"""
     
     def __init__(self):
+        parsed_url = urlparse(settings.COMFYUI_BASE_URL)
+        self.server_address = parsed_url.hostname
+        self.port = parsed_url.port
         self.client = ComfyUIClient(
-            base_url=settings.COMFYUI_BASE_URL,
-            timeout=settings.COMFYUI_TIMEOUT
+            server_address=self.server_address,
+            port=self.port
         )
         self.ws_client = None
         self._workflow_cache = {}
+        self.is_initialized = False
         
     async def initialize(self):
-        """初始化服务"""
+        """
+        初始化服务, 尝试连接到ComfyUI。
+        如果失败, 只记录错误, 不中断服务启动。
+        """
         try:
-            # 测试连接
+            # 测试HTTP连接
             await self.client.system.get_system_stats()
-            logger.info("ComfyUI连接成功")
+            logger.info("ComfyUI HTTP连接成功")
             
-            # 初始化WebSocket客户端
-            self.ws_client = ComfyUIWebSocketClient(
-                base_url=settings.COMFYUI_BASE_URL
-            )
-            await self.ws_client.connect()
+            # 初始化并启动WebSocket客户端
+            ws_url = f"ws://{self.server_address}:{self.port}/ws"
+            self.ws_client = ComfyUIWebSocketClient(ws_url)
+            self.ws_client.run_forever() # 在后台线程中运行
             
+            # 等待WebSocket连接成功
+            for _ in range(10): # 等待最多10秒
+                if self.ws_client.is_connected:
+                    break
+                await asyncio.sleep(1)
+
+            if not self.ws_client.is_connected:
+                raise Exception("WebSocket连接超时")
+
             # 设置进度回调
             self.ws_client.set_progress_callback(self._on_progress)
             self.ws_client.set_completion_callback(self._on_completion)
             
-            logger.info("ComfyUI WebSocket连接成功")
+            self.is_initialized = True
+            logger.info("ComfyUI服务初始化完成 (HTTP和WebSocket)")
             
         except Exception as e:
-            logger.error(f"ComfyUI初始化失败: {e}")
-            raise
+            self.is_initialized = False
+            logger.error(f"ComfyUI初始化失败: {e}. 服务将以非连接模式运行。")
+            # 不再向上抛出异常
     
     async def close(self):
         """关闭连接"""
