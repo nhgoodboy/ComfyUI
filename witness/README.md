@@ -1,79 +1,175 @@
-# ComfyUI Witness 系统
+# Witness Project - ComfyUI Integration
 
-该系统提供了一种模块化且可扩展的方式来与 ComfyUI API 进行交互。
-它旨在涵盖 ComfyUI API 主文档中记录的所有可用 API 端点。
+This project provides a FastAPI-based application server and a task processing worker to interact with a ComfyUI instance for image processing tasks.
 
-## 项目结构
+## Project Structure
 
 ```
 witness/
-├── config/               # 配置文件
+├── core/                   # Core components like ComfyUI client
 │   ├── __init__.py
-│   └── settings.py       # API URL、API 密钥（可选）、WebSocket URL、超时
-├── core/                 # 核心逻辑、编排（目前最少）
-│   └── __init__.py
-├── api_clients/          # 不同 ComfyUI API 组的客户端
+│   └── comfy_client.py     # Client for interacting with ComfyUI
+├── task_processor/         # Background task processing
 │   ├── __init__.py
-│   ├── prompt_client.py    # 处理用于工作流执行的 /prompt 端点
-│   ├── history_client.py   # 处理 /history 端点
-│   ├── queue_client.py     # 处理 /queue、/interrupt、/free 端点
-│   ├── file_client.py      # 处理 /upload/image、/upload/mask、/view、/view_metadata
-│   ├── system_client.py    # 处理 /system_stats、/object_info、/embeddings 等
-│   ├── websocket_client.py # 处理 /ws WebSocket 通信
-│   └── user_client.py      # 处理 /users、/userdata、/settings、/i18n
-├── utils/                # 工具函数
+│   ├── task_processor.py   # Main task processor logic
+│   ├── tasks.py            # Task definitions
+│   └── workers/
+│       ├── __init__.py
+│       └── image_worker.py   # Image processing worker
+├── utils/
 │   ├── __init__.py
-│   └── http_client.py    # 'requests' 的包装器，用于 API 调用
-├── main.py               # 所有客户端示例用法的主入口点
-├── requirements.txt      # 项目依赖项
-└── README.md
+│   ├── redis_client.py     # Redis client utility
+│   └── workflow_utils.py   # ComfyUI workflow loading and modification utilities
+├── workflows/
+│   └── style_change.json   # Example ComfyUI workflow
+├── __init__.py
+├── main.py                 # FastAPI application entry point
+├── README.md               # This file
+└── requirements.txt        # Python dependencies
 ```
 
-## 设置和运行
+## Prerequisites
 
-1.  **先决条件：**
-    *   Python 3.7+
-    *   正在运行的 ComfyUI 实例（可通过 HTTP/WebSocket 访问）。
+1.  **Python 3.8+**
+2.  A running **ComfyUI instance**. Ensure it's accessible from where this application will run.
+    *   By default, the application expects ComfyUI at `http://127.0.0.1:8188`.
+    *   You can configure this via the `COMFYUI_SERVER_ADDRESS` environment variable for the worker.
+3.  **ComfyUI Workflows**: You need to have your ComfyUI workflow JSON files in the `witness/workflows/` directory. An example placeholder `style_change.json` is mentioned, but you'll need to create/provide your actual workflows.
+    *   The `image_worker.py` currently expects node titles like "Load Image" and "Save Image" in the workflow for dynamic updates. Adjust `workflow_utils.py` if your node titles differ.
 
-2.  **安装：**
+## Setup
+
+1.  **Clone the repository (if applicable) or ensure you are in the `witness` project root.**
+
+2.  **Create a Python virtual environment (recommended):**
     ```bash
-    git clone <repository_url> # 或下载文件
-    cd witness
+    python3 -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    ```
+
+3.  **Install dependencies:**
+    ```bash
     pip install -r requirements.txt
     ```
 
-3.  **配置：**
-    *   编辑 `witness/config/settings.py` 以设置您的 ComfyUI API URL (`COMFYUI_API_URL`) 和 WebSocket URL (`COMFYUI_WS_URL`)。
-    *   如果您的 ComfyUI 实例需要 API 密钥（例如，使用 `--api-key-required` 启动），请在 `settings.py` 中设置 `COMFYUI_API_KEY`。否则，可以将其保留为 `None`。
+## Running the Application
 
-4.  **运行示例：**
-    `main.py` 脚本演示了如何使用各种 API 客户端。
-    ```bash
-    python main.py
+### 1. Start the FastAPI Application Server
+
+Navigate to the `witness` project root directory and run Uvicorn:
+
+```bash
+# Ensure you are in the witness/ directory
+uvicorn main:app --reload --port 8000
+```
+
+*   `--reload`: Enables auto-reload on code changes (for development).
+*   `--port 8000`: Runs the server on port 8000.
+
+The API will be accessible at `http://127.0.0.1:8000`.
+API documentation (Swagger UI) will be at `http://127.0.0.1:8000/docs`.
+
+### 2. Start the Task Processor Worker
+
+In a **new terminal window/tab**, navigate to the `witness` project root directory. The `image_worker.py` is designed to be run as a script that connects to Redis and processes tasks.
+
+First, ensure Redis is running (as specified in `main.py` and `task_processor.py`, it defaults to `localhost:6379`).
+
+Then, from the `witness` root directory, run the image worker:
+
+```bash
+# Ensure you are in the witness/ directory
+
+# If ComfyUI is not at http://127.0.0.1:8188, or Redis is not at localhost:6379,
+# you might need to set environment variables (if the worker is adapted to use them)
+# or modify the hardcoded values in image_worker.py and comfy_client.py.
+# Example for ComfyUI (worker needs to be adapted to read this):
+# export COMFYUI_SERVER_ADDRESS="http://your_comfy_ui_ip:port"
+
+python task_processor/workers/image_worker.py
+```
+
+This worker will listen for tasks on the Redis queue (default: `image_processing_tasks`) and process them using ComfyUI.
+
+This worker will pick up tasks enqueued by the FastAPI server (currently via a mock queue) and process them using ComfyUI.
+
+## Testing the End-to-End Flow
+
+Follow these steps to test the complete image processing pipeline:
+
+1.  **Prerequisites:**
+    *   Ensure **ComfyUI** is running and accessible (default: `http://127.0.0.1:8188`).
+    *   Ensure **Redis** server is running (default: `localhost:6379`).
+    *   You have a workflow file, e.g., `style_change.json`, in the `witness/workflows/` directory. This workflow must contain:
+        *   A node titled "Load Image" (or update `workflow_utils.py` and `image_worker.py` if your title is different) that will receive the input image.
+        *   A node titled "Save Image" (or update `workflow_utils.py` and `image_worker.py`) that will save the output. The filename prefix will be automatically set by the worker.
+
+2.  **Start the Services:**
+    *   **FastAPI Server**: In a terminal, navigate to the `witness/` directory and run:
+        ```bash
+        uvicorn main:app --reload --port 8000
+        ```
+    *   **Task Worker**: In a *new* terminal, navigate to the `witness/` directory and run:
+        ```bash
+        python task_processor/workers/image_worker.py
+        ```
+
+3.  **Prepare your Test Image:**
+    *   Get an image file (e.g., `my_test_image.png`).
+    *   Base64 encode this image. You can use an online tool or a command-line utility:
+        ```bash
+        # On macOS
+        base64 -i my_test_image.png -o my_test_image.b64
+        # On Linux
+        base64 my_test_image.png > my_test_image.b64
+        ```
+        Then copy the content of `my_test_image.b64`.
+
+4.  **Send the Processing Request:**
+    *   Use `curl` or a tool like Postman to send a POST request to the `/process_image/` endpoint.
+    *   The API documentation is available at `http://127.0.0.1:8000/docs`.
+
+    **Example using `curl`:**
+
+    Create a JSON file named `payload.json`:
+    ```json
+    {
+      "user_id": "test_user_001",
+      "image_data_b64": "PASTE_YOUR_BASE64_ENCODED_IMAGE_DATA_HERE",
+      "workflow_name": "style_change.json"
+    }
     ```
-    此脚本将：
-    *   连接到 ComfyUI WebSocket。
-    *   获取系统统计信息和队列信息。
-    *   对示例图像生成工作流进行排队（您可能需要根据可用的模型和自定义节点调整 `main.py` 中的工作流）。
-    *   获取已排队提示的历史记录。
-    *   演示其他客户端功能。
-    *   观察 WebSocket 消息以获取来自 ComfyUI 的实时更新。
+    Replace `"PASTE_YOUR_BASE64_ENCODED_IMAGE_DATA_HERE"` with the actual base64 string from step 3.
 
-## API 客户端模块
+    Then, execute the `curl` command:
+    ```bash
+    curl -X POST "http://127.0.0.1:8000/process_image/" \
+    -H "Content-Type: application/json" \
+    -d @payload.json
+    ```
+    You should receive a JSON response with a `task_id` and a message.
 
-*   **`HttpClient` (`utils/http_client.py`):** 一个实用程序类，它包装 `requests` 库以向 ComfyUI API 发出 HTTP GET、POST 和 multipart POST 请求。它处理基本 URL 连接、超时设置以及相关端点的 API 密钥注入。
-*   **`PromptClient` (`api_clients/prompt_client.py`):** 管理与 `/prompt` 端点的交互，以对工作流进行排队以供执行。
-*   **`HistoryClient` (`api_clients/history_client.py`):** 提供获取执行历史记录（所有提示或特定提示 ID）和清除历史记录的方法。
-*   **`QueueClient` (`api_clients/queue_client.py`):** 处理队列管理操作，例如获取队列状态、清除队列、删除特定项目、中断任务和释放资源。
-*   **`FileClient` (`api_clients/file_client.py`):** 便于从 ComfyUI 的输出/输入目录上传文件（图像、掩码）以及查看文件及其元数据。
-*   **`SystemClient` (`api_clients/system_client.py`):** 与提供系统统计信息、节点/对象信息、可用嵌入/Loras、扩展和模型列表的端点进行交互。
-*   **`UserClient` (`api_clients/user_client.py`):** （实验性）处理与用户管理、用户特定数据、设置和国际化 (i18n) 数据相关的端点。
-*   **`WebSocketClient` (`api_clients/websocket_client.py`):** 建立并管理与 ComfyUI 的 `/ws` 端点的 WebSocket 连接，以接收有关提示执行、队列状态和其他事件的实时更新。它在单独的线程中运行。
+5.  **Monitor Logs:**
+    *   **FastAPI Server Log**: Check the terminal where `uvicorn` is running. You should see logs indicating the request was received and a task was submitted (e.g., `Image processing task ... submitted`).
+    *   **Task Worker Log**: Check the terminal where `image_worker.py` is running. You should see logs indicating:
+        *   The worker picked up a task from Redis.
+        *   Image uploaded to ComfyUI.
+        *   Workflow queued in ComfyUI.
+        *   WebSocket messages from ComfyUI about the processing status.
+        *   Task completion or error messages.
 
-## 可扩展性
+6.  **Verify Output in ComfyUI:**
+    *   Once the worker log indicates the task is complete and the image is saved, check your ComfyUI's `output` directory.
+    *   You should find the processed image. The filename will typically be prefixed by something like `ComfyUI_` (from the default "Save Image" node) or `test_user_001_ComfyUI_` if the worker successfully modified the filename prefix in the workflow.
 
-*   **添加新的 API 端点：** 要支持新的 ComfyUI API 端点，您可以扩展 `api_clients/` 中的现有客户端类，或者如果新端点代表一组不同的功能，则可以创建新的客户端文件。
-*   **自定义工作流：** `main.py` 脚本演示了如何对基本工作流进行排队。您可以用任何有效的 ComfyUI 工作流 JSON 替换 `sample_workflow` 字典。
-*   **配置：** 可以根据需要扩展 `config/settings.py` 文件以包含更多配置选项。
+This process verifies that all components (API server, Redis, Task Worker, ComfyUI Client, and ComfyUI itself) are working together correctly.
 
-该系统为通过 Python 以编程方式与 ComfyUI API 交互提供了一个基础库。
+## Important Notes & TODOs
+
+*   **Mock Queue**: The current implementation uses a simple Python list (`_mock_task_queue`) as a task queue. For a production system, replace this with a robust message queue like RabbitMQ, Redis Streams, or Kafka.
+*   **Error Handling**: Basic error handling is in place, but can be further improved.
+*   **Configuration**: Server addresses, workflow paths, etc., should ideally be managed via a configuration file or environment variables more systematically.
+*   **ComfyUI Workflow Structure**: The `update_workflow_image_and_user` function in `utils/workflow_utils.py` assumes specific node titles ("Load Image", "Save Image") for modification. This might need to be generalized or made configurable based on node IDs or types if your workflows vary significantly.
+*   **Security**: No authentication/authorization is implemented on the API endpoints. Add appropriate security measures for production.
+*   **Image Handling**: The worker currently saves a temporary local copy of the uploaded image before passing its path to ComfyUI. The `ComfyUIClient`'s `upload_image` method is used, which should handle placing the image in ComfyUI's input directory.
+*   **Output Handling**: The worker currently prints a mock path for the output. Real implementation should fetch/link to the actual output from ComfyUI.
