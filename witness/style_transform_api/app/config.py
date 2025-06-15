@@ -2,6 +2,7 @@ import os
 from typing import Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field
+from pathlib import Path
 
 class Settings(BaseSettings):
     """应用配置"""
@@ -53,7 +54,8 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_HOUR: int = Field(default=1000, description="每小时请求限制")
     
     class Config:
-        env_file = ".env"
+        from pathlib import Path
+        env_file = Path(__file__).resolve().parent.parent / ".env"  # 绝对路径
         env_file_encoding = "utf-8"
         case_sensitive = True
 

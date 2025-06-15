@@ -90,7 +90,7 @@ class ComfyUIService:
         try:
             # 使用ComfyUI客户端上传图像
             result = await self.client.files.upload_image(
-                image_data=image_data,
+                image_bytes=image_data,
                 filename=filename
             )
             return result.get("name", filename)
@@ -159,7 +159,7 @@ class ComfyUIService:
         """提交工作流到ComfyUI"""
         try:
             # 提交工作流
-            result = await self.client.prompts.queue_prompt(workflow)
+            result = await self.client.prompts.queue_prompt(prompt=workflow)
             prompt_id = result.get("prompt_id")
             
             if not prompt_id:
