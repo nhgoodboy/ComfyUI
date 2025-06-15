@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  style-transform-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      - COMFYUI_BASE_URL=http://comfyui:8188
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./app/workflows:/app/app/workflows:ro
+    depends_on:
+      - comfyui
+    restart: unless-stopped
+    networks:
+      - comfyui-network
+
+  # ComfyUI服务（示例配置）
+  comfyui:
+    image: comfyui/comfyui:latest  # 假设的ComfyUI镜像
+    ports:
+      - "8188:8188"
+    volumes:
+      - comfyui_models:/app/models
+      - comfyui_output:/app/output
+      - comfyui_input:/app/input
+    environment:
+      - COMFYUI_PORT=8188
+    restart: unless-stopped
+    networks:
+      - comfyui-network
+
+volumes:
+  comfyui_models:
+  comfyui_output:
+  comfyui_input:
+
+networks:
+  comfyui-network:
+    driver: bridge 
