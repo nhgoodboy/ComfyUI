@@ -42,11 +42,12 @@ if not settings.DEBUG:
     )
 
 # 设置静态文件和模板
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+BASE_DIR = Path(__file__).resolve().parent
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 app.mount("/outputs", StaticFiles(directory=settings.OUTPUT_DIR), name="outputs")
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=BASE_DIR.parent / "templates")
 
 # 请求日志中间件
 @app.middleware("http")
