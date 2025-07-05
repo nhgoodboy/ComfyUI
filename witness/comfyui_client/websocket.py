@@ -1,9 +1,8 @@
 import websocket
 import json
 from threading import Thread
+from typing import Optional, Callable
 from .utils.logger import get_logger
-
-websocket.enableTrace(True)
 
 class ComfyUIWebSocketClient:
     """
@@ -11,7 +10,9 @@ class ComfyUIWebSocketClient:
 
     如果未直接给出完整 `url`，可以传入 host/port/client_id 自动拼接。
     """
-    def __init__(self, url: str | None = None, *, host: str | None = None, port: int | None = None, client_id: str | None = None):
+    def __init__(self, url: Optional[str] = None, *, host: Optional[str] = None, 
+                 port: Optional[int] = None, client_id: Optional[str] = None, 
+                 debug: bool = False):
         # 若提供了 host/port 则组装 URL
         if url is None and host and port:
             # 若提供 client_id 则追加查询参数以订阅专属事件
@@ -23,6 +24,12 @@ class ComfyUIWebSocketClient:
             raise ValueError("必须提供 url 或 host+port 组合")
 
         self.url = url
+        self.debug = debug
+        
+        # 根据调试模式设置 websocket 追踪
+        if debug:
+            websocket.enableTrace(True)
+        
         self.ws = websocket.WebSocketApp(
             url,
             on_message=self.on_message,
@@ -32,8 +39,8 @@ class ComfyUIWebSocketClient:
         )
         self.logger = get_logger("ComfyUIWebSocketClient")
         self.is_connected = False
-        self.progress_callback = None
-        self.completion_callback = None
+        self.progress_callback: Optional[Callable] = None
+        self.completion_callback: Optional[Callable] = None
 
     def on_message(self, ws, message):
         """

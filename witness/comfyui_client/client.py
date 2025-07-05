@@ -2,8 +2,14 @@ import aiohttp
 import asyncio
 import json
 import uuid
+from typing import Optional, Union, Any
 
 from .utils.logger import get_logger
+from .config import ComfyUIClientConfig
+from .exceptions import (
+    ComfyUIConnectionError, ComfyUIAPIError, ComfyUIValidationError,
+    ComfyUITimeoutError, ComfyUIFileError
+)
 from .endpoints.prompt import PromptAPI
 from .endpoints.file import FileAPI
 from .endpoints.system import SystemAPI
@@ -17,15 +23,23 @@ class ComfyUIClient:
     """
     用于与 ComfyUI API 交互的主客户端。
     """
-    def __init__(self, server_address: str = "127.0.0.1", port: int = 8188, user_id: str | None = None, client_id: str | None = None):
+    def __init__(self, 
+                 server_address: str = "127.0.0.1", 
+                 port: int = 8188, 
+                 user_id: Optional[str] = None, 
+                 client_id: Optional[str] = None,
+                 config: Optional[ComfyUIClientConfig] = None):
         self.server_address = server_address
         self.port = port
         self.user_id = user_id
         self.base_url = f"http://{self.server_address}:{self.port}"
+        self.config = config or ComfyUIClientConfig.create_default()
         self.logger = get_logger()
 
         # 请求头部信息
-        self.headers = {}
+        self.headers = {
+            'User-Agent': self.config.user_agent
+        }
         if self.user_id:
             self.headers['comfy-user'] = self.user_id
 
@@ -33,7 +47,8 @@ class ComfyUIClient:
         self.client_id = client_id or uuid.uuid4().hex
 
         # 创建 aiohttp 会话
-        self._session: aiohttp.ClientSession | None = None
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._connector: Optional[aiohttp.TCPConnector] = None
 
         # 初始化 API 端点模块（统一使用复数属性以符合调用方）
         self.prompts = PromptAPI(self)
@@ -51,17 +66,37 @@ class ComfyUIClient:
     async def _ensure_session(self):
         """确保 aiohttp 会话已创建"""
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(headers=self.headers)
+            if self._connector is None:
+                self._connector = self.config.to_aiohttp_connector()
+            self._session = aiohttp.ClientSession(
+                headers=self.headers,
+                connector=self._connector,
+                timeout=self.config.to_aiohttp_timeout()
+            )
 
     async def _request(self, method: str, endpoint: str, json_data=None, files=None, params=None):
         """
         统一异步 HTTP 请求处理方法。
         supports json_data / files / params.
         """
-        await self._ensure_session()
-        url = f"{self.base_url}{endpoint}"
-        self.logger.debug(f"发送 {method} 请求到 {url}")
+        return await self._request_with_retry(method, endpoint, json_data, files, params)
 
+    async def _request_with_data(self, method: str, endpoint: str, data: bytes, params=None):
+        """
+        发送原始数据的HTTP请求。
+        """
+        return await self._request_with_retry(method, endpoint, None, None, params, raw_data=data)
+
+    async def _request_with_retry(self, method: str, endpoint: str, json_data=None, files=None, params=None, raw_data=None):
+        """
+        带重试机制的HTTP请求处理。
+        """
+        await self._ensure_session()
+        if self._session is None:
+            raise ComfyUIConnectionError("无法创建HTTP会话")
+        
+        url = f"{self.base_url}{endpoint}"
+        
         # 处理文件上传
         data = json_data
         form = None
@@ -75,28 +110,92 @@ class ComfyUIClient:
                 for k, v in json_data.items():
                     form.add_field(k, str(v))
             data = None  # form will be used instead
+        elif raw_data:
+            data = raw_data
+        
+        last_exception = None
+        for attempt in range(self.config.max_retries + 1):
+            try:
+                if self.config.log_requests:
+                    self.logger.debug(f"发送 {method} 请求到 {url} (尝试 {attempt + 1}/{self.config.max_retries + 1})")
+                
+                async with self._session.request(method, url, json=data if not form and not raw_data else None, 
+                                               data=form if form else (data if raw_data else None), 
+                                               params=params) as resp:
+                    if self.config.log_responses:
+                        self.logger.debug(f"收到响应: {resp.status}")
+                    
+                    resp.raise_for_status()
+                    content_type = resp.headers.get("Content-Type", "")
+                    if "application/json" in content_type:
+                        return await resp.json()
+                    return await resp.read()
+                    
+            except asyncio.TimeoutError as e:
+                last_exception = ComfyUITimeoutError(
+                    f"请求超时: {method} {url}", 
+                    timeout_seconds=self.config.request_timeout,
+                    operation=f"{method} {endpoint}"
+                )
+                if attempt < self.config.max_retries:
+                    delay = self.config.retry_delay * (self.config.retry_backoff ** attempt)
+                    self.logger.warning(f"请求超时，{delay}秒后重试")
+                    await asyncio.sleep(delay)
+                    continue
+                    
+            except aiohttp.ClientResponseError as e:
+                last_exception = ComfyUIAPIError(
+                    f"API请求失败: {e.message}",
+                    endpoint=endpoint,
+                    method=method,
+                    status_code=e.status
+                )
+                if attempt < self.config.max_retries and e.status >= 500:
+                    delay = self.config.retry_delay * (self.config.retry_backoff ** attempt)
+                    self.logger.warning(f"服务器错误，{delay}秒后重试")
+                    await asyncio.sleep(delay)
+                    continue
+                break
+                
+            except aiohttp.ClientConnectorError as e:
+                last_exception = ComfyUIConnectionError(
+                    f"连接失败: {str(e)}",
+                    server_url=self.base_url
+                )
+                if attempt < self.config.max_retries:
+                    delay = self.config.retry_delay * (self.config.retry_backoff ** attempt)
+                    self.logger.warning(f"连接失败，{delay}秒后重试")
+                    await asyncio.sleep(delay)
+                    continue
+                break
+                
+            except Exception as e:
+                last_exception = ComfyUIAPIError(
+                    f"请求处理失败: {str(e)}",
+                    endpoint=endpoint,
+                    method=method
+                )
+                break
+        
+        if last_exception:
+            self.logger.error(f"所有重试都失败了: {last_exception}")
+            raise last_exception
 
-        try:
-            async with self._session.request(method, url, json=data, data=form, params=params) as resp:
-                resp.raise_for_status()
-                content_type = resp.headers.get("Content-Type", "")
-                if "application/json" in content_type:
-                    return await resp.json()
-                return await resp.read()
-        except aiohttp.ClientResponseError as e:
-            self.logger.error(f"API 请求失败: {e}")
-            raise
-
-    def get_websocket(self, client_id: str | None = None):
+    def get_websocket(self, client_id: Optional[str] = None):
         """初始化并返回一个 WebSocket 客户端。若未提供 client_id 则使用默认"""
         if client_id is None:
             client_id = self.client_id
-        return ComfyUIWebSocketClient(f"ws://{self.server_address}:{self.port}/ws?clientId={client_id}")
+        return ComfyUIWebSocketClient(
+            f"ws://{self.server_address}:{self.port}/ws?clientId={client_id}",
+            debug=self.config.websocket_debug
+        )
 
     async def close(self):
-        """关闭 aiohttp 会话"""
+        """关闭 aiohttp 会话和连接器"""
         if self._session and not self._session.closed:
             await self._session.close()
+        if self._connector and not self._connector.closed:
+            await self._connector.close()
         self.logger.info("ComfyUIClient 已关闭")
 
 # 端点模块的占位符类，以便于初始化

@@ -1,5 +1,6 @@
 from .prompt import BaseAPI
 from typing import Optional
+from ..utils.validation import validate_required_string, validate_bytes_data, validate_file_path
 
 class UserDataAPI(BaseAPI):
     """
@@ -44,7 +45,8 @@ class UserDataAPI(BaseAPI):
         :param file: 文件路径
         :return: 文件内容
         """
-        return await self._client._request("GET", f"/userdata/{file}")
+        validated_file = validate_required_string(file, "file")
+        return await self._client._request("GET", f"/userdata/{validated_file}")
     
     async def upload_userdata_file(self, file: str, data: bytes, 
                                   overwrite: bool = True, full_info: bool = False):
@@ -57,15 +59,19 @@ class UserDataAPI(BaseAPI):
         :param full_info: 是否返回详细文件信息
         :return: 上传结果
         """
+        # 输入验证
+        validated_file = validate_required_string(file, "file")
+        validated_data = validate_bytes_data(data, "data", max_size=self._client.config.max_file_size)
+        
         params = {}
         if not overwrite:
             params["overwrite"] = "false"
         if full_info:
             params["full_info"] = "true"
         
-        # 直接发送原始数据
-        return await self._client._request("POST", f"/userdata/{file}", 
-                                         json_data=None, params=params)
+        # 发送原始字节数据作为请求体
+        return await self._client._request_with_data("POST", f"/userdata/{validated_file}", 
+                                                   data=validated_data, params=params)
     
     async def delete_userdata_file(self, file: str):
         """
@@ -74,7 +80,8 @@ class UserDataAPI(BaseAPI):
         :param file: 要删除的文件路径
         :return: 删除结果
         """
-        return await self._client._request("DELETE", f"/userdata/{file}")
+        validated_file = validate_required_string(file, "file")
+        return await self._client._request("DELETE", f"/userdata/{validated_file}")
     
     async def move_userdata_file(self, file: str, dest: str, 
                                 overwrite: bool = True, full_info: bool = False):
@@ -87,11 +94,15 @@ class UserDataAPI(BaseAPI):
         :param full_info: 是否返回详细文件信息
         :return: 移动结果
         """
+        # 输入验证
+        validated_file = validate_required_string(file, "file")
+        validated_dest = validate_required_string(dest, "dest")
+        
         params = {}
         if not overwrite:
             params["overwrite"] = "false"
         if full_info:
             params["full_info"] = "true"
         
-        return await self._client._request("POST", f"/userdata/{file}/move/{dest}", 
+        return await self._client._request("POST", f"/userdata/{validated_file}/move/{validated_dest}", 
                                          params=params) 
