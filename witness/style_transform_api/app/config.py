@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, List
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from pathlib import Path
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     COMFYUI_TIMEOUT: int = Field(default=300, description="ComfyUI请求超时时间（秒）")
     
     # ComfyUI 客户端ID (可选). 如果未设置则在服务启动时自动生成 UUID。
-    COMFYUI_CLIENT_ID: str | None = Field(default=None, description="ComfyUI 客户端唯一标识，用于 WebSocket 订阅")
+    COMFYUI_CLIENT_ID: Optional[str] = Field(default=None, description="ComfyUI 客户端唯一标识，用于 WebSocket 订阅")
     
     # 任务配置
     MAX_CONCURRENT_TASKS: int = Field(default=10, description="最大并发任务数")
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     
     # 文件配置
     MAX_IMAGE_SIZE: int = Field(default=10 * 1024 * 1024, description="最大图像大小（字节）")
-    ALLOWED_IMAGE_TYPES: list = Field(
+    ALLOWED_IMAGE_TYPES: List[str] = Field(
         default=["image/jpeg", "image/png", "image/webp"],
         description="允许的图像类型"
     )
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     
     # 安全配置
     API_KEY: Optional[str] = Field(default=None, description="API密钥")
-    CORS_ORIGINS: list = Field(
+    CORS_ORIGINS: List[str] = Field(
         default=["*"],
         description="CORS允许的源"
     )

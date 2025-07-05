@@ -1,7 +1,7 @@
 import asyncio
 import time
 import uuid
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime
 from dataclasses import dataclass, field
 from ..schemas.response import TaskStatus
@@ -17,7 +17,7 @@ class TaskInfo:
     status: TaskStatus
     created_at: datetime
     comfyui_prompt_id: Optional[str] = None
-    sampler_node_ids: Optional[list[str]] = None
+    sampler_node_ids: Optional[List[str]] = None
     output_image_url: Optional[str] = None
     error_message: Optional[str] = None
     completed_at: Optional[datetime] = None
@@ -54,7 +54,7 @@ class TaskManager:
     
     async def update_task_status(self, task_id: str, status: TaskStatus, 
                                comfyui_prompt_id: Optional[str] = None,
-                               sampler_node_ids: Optional[list[str]] = None,
+                               sampler_node_ids: Optional[List[str]] = None,
                                output_image_url: Optional[str] = None,
                                error_message: Optional[str] = None,
                                progress: Optional[float] = None):
@@ -88,7 +88,7 @@ class TaskManager:
         async with self._lock:
             return self._tasks.get(task_id)
     
-    async def get_user_tasks(self, user_id: str, limit: int = 50) -> list[TaskInfo]:
+    async def get_user_tasks(self, user_id: str, limit: int = 50) -> List[TaskInfo]:
         """获取用户的任务列表"""
         async with self._lock:
             if user_id not in self._user_tasks:

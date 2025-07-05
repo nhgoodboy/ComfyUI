@@ -3,8 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 import sys
 import os
-import asyncio
-import logging
+import time
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +15,10 @@ from .api.transform import router as transform_router
 from .services.comfyui_service import comfyui_service
 from .utils.task_manager import start_cleanup_task
 from .schemas.response import ErrorResponse
+from .middleware.validation import ValidationMiddleware
+from .middleware.auth import APIKeyMiddleware
+from .middleware.rate_limit import RateLimitMiddleware
+from .exceptions import StyleTransformAPIException
 
 # 配置日志
 logging.basicConfig(
@@ -64,7 +67,17 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None
 )
 
-# 添加CORS中间件
+# 添加中间件（注意顺序很重要）
+# 1. 限流中间件（最先执行）
+app.add_middleware(RateLimitMiddleware)
+
+# 2. 认证中间件
+app.add_middleware(APIKeyMiddleware)
+
+# 3. 输入验证中间件
+app.add_middleware(ValidationMiddleware)
+
+# 4. CORS中间件（最后执行）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -90,22 +103,68 @@ async def health_check():
     """健康检查"""
     try:
         # 检查ComfyUI连接
-        stats = await comfyui_service.client.system.get_system_stats()
+        comfyui_connected = await comfyui_service.health_check()
         
-        return {
-            "status": "healthy",
-            "comfyui_connected": True,
-            "comfyui_stats": stats
+        health_data = {
+            "status": "healthy" if comfyui_connected else "degraded",
+            "comfyui_connected": comfyui_connected,
+            "api_version": settings.APP_VERSION,
+            "timestamp": time.time()
         }
+        
+        if comfyui_connected:
+            try:
+                stats = await comfyui_service.client.system.get_system_stats()
+                health_data["comfyui_stats"] = stats
+            except Exception as e:
+                logger.warning(f"获取ComfyUI统计信息失败: {e}")
+        
+        # 获取限流统计（如果中间件已加载）
+        try:
+            # 通过app的中间件栈获取限流中间件实例
+            for middleware in app.user_middleware:
+                if hasattr(middleware, 'cls') and middleware.cls.__name__ == 'RateLimitMiddleware':
+                    # 获取中间件实例（需要通过内部方式，这里简化处理）
+                    health_data["rate_limit_stats"] = {
+                        "rate_limits_configured": True,
+                        "ip_per_minute": 60,
+                        "user_per_minute": 10
+                    }
+                    break
+        except Exception as e:
+            logger.warning(f"获取限流统计失败: {e}")
+        
+        return health_data
+        
     except Exception as e:
+        logger.error(f"健康检查失败: {e}", exc_info=True)
         return JSONResponse(
             status_code=503,
             content={
                 "status": "unhealthy",
                 "comfyui_connected": False,
-                "error": str(e)
+                "error": str(e),
+                "timestamp": time.time()
             }
         )
+
+@app.exception_handler(StyleTransformAPIException)
+async def api_exception_handler(request: Request, exc: StyleTransformAPIException):
+    """API自定义异常处理"""
+    logger.warning(f"API异常: {exc.error_code} - {exc.error_message}", exc_info=True)
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            error_code=exc.error_code,
+            error_message=exc.error_message,
+            details={
+                "path": str(request.url.path),
+                "method": request.method,
+                **exc.details
+            }
+        ).dict()
+    )
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -117,7 +176,11 @@ async def global_exception_handler(request: Request, exc: Exception):
         content=ErrorResponse(
             error_code="INTERNAL_SERVER_ERROR",
             error_message="服务器内部错误",
-            details={"path": str(request.url.path)}
+            details={
+                "path": str(request.url.path),
+                "method": request.method,
+                "exception_type": type(exc).__name__
+            }
         ).dict()
     )
 

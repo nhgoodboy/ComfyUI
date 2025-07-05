@@ -1,13 +1,14 @@
 import asyncio
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pathlib import Path
 import aiohttp
 import aiofiles
 from urllib.parse import urlparse, urljoin
 import uuid
 import time
+import weakref
 
 from comfyui_client.client import ComfyUIClient
 from comfyui_client.websocket import ComfyUIWebSocketClient
@@ -27,6 +28,25 @@ class ComfyUIService:
         # 统一 client_id（配置优先，否则随机生成）
         self.client_id = settings.COMFYUI_CLIENT_ID or uuid.uuid4().hex
 
+        # 连接池配置
+        self.connector = aiohttp.TCPConnector(
+            limit=100,  # 总连接数限制
+            limit_per_host=30,  # 每个主机的连接数限制
+            ttl_dns_cache=300,  # DNS缓存时间
+            use_dns_cache=True,
+            keepalive_timeout=30,  # 保持连接的时间
+            enable_cleanup_closed=True,
+            force_close=False  # 避免强制关闭连接
+        )
+        
+        # 超时配置
+        self.timeout = aiohttp.ClientTimeout(
+            total=120,  # 总超时时间，考虑到图像处理可能需要更长时间
+            connect=10,  # 连接超时时间
+            sock_read=60,  # 读取超时时间
+            sock_connect=10  # socket连接超时时间
+        )
+
         self.client = ComfyUIClient(
             server_address=self.server_address,
             port=self.port,
@@ -36,12 +56,34 @@ class ComfyUIService:
         self._workflow_cache = {}
         self.is_initialized = False
         
+        # 连接状态管理
+        self.connection_pool = None
+        self.session = None
+        self.health_status = False
+        self.last_health_check = 0
+        self.health_check_interval = 30  # 30秒检查一次
+        
+        # 重试配置
+        self.max_retries = 3
+        self.retry_delay = 1.0
+        self.backoff_factor = 2.0
+        
     async def initialize(self):
         """
         初始化服务, 尝试连接到ComfyUI。
         如果失败, 只记录错误, 不中断服务启动。
         """
         try:
+            # 创建连接池
+            self.connection_pool = aiohttp.ClientSession(
+                connector=self.connector,
+                timeout=self.timeout,
+                headers={
+                    'User-Agent': 'StyleTransformAPI/1.0',
+                    'Connection': 'keep-alive'
+                }
+            )
+            
             # 测试HTTP连接
             await self.client.system.get_system_stats()
             logger.info("ComfyUI HTTP连接成功")
@@ -77,21 +119,60 @@ class ComfyUIService:
             self.ws_client.set_progress_callback(_safe_call(self._on_progress))
             self.ws_client.set_completion_callback(_safe_call(self._on_completion))
             
+            self.health_status = True
+            self.last_health_check = time.time()
             self.is_initialized = True
             logger.info("ComfyUI服务初始化完成 (HTTP和WebSocket)")
             
         except Exception as e:
             self.is_initialized = False
+            self.health_status = False
             logger.error(f"ComfyUI初始化失败: {e}. 服务将以非连接模式运行。")
             # 不再向上抛出异常
     
     async def close(self):
         """关闭连接"""
-        if self.ws_client:
-            await self.ws_client.disconnect()
-        await self.client.close()
+        try:
+            if self.ws_client:
+                await self.ws_client.disconnect()
+            
+            if self.connection_pool:
+                await self.connection_pool.close()
+            
+            if self.connector:
+                await self.connector.close()
+            
+            await self.client.close()
+            
+            self.is_initialized = False
+            self.health_status = False
+            logger.info("ComfyUI服务连接已关闭")
+            
+        except Exception as e:
+            logger.error(f"关闭连接时发生错误: {e}")
+        
+    async def health_check(self) -> bool:
+        """健康检查"""
+        current_time = time.time()
+        
+        # 如果距离上次检查时间过短，返回缓存的状态
+        if current_time - self.last_health_check < self.health_check_interval:
+            return self.health_status
+        
+        try:
+            # 执行健康检查
+            await self.client.system.get_system_stats()
+            self.health_status = True
+            self.last_health_check = current_time
+            return True
+            
+        except Exception as e:
+            logger.warning(f"健康检查失败: {e}")
+            self.health_status = False
+            self.last_health_check = current_time
+            return False
     
-    def _get_sampler_node_ids(self, workflow: Dict[str, Any]) -> list[str]:
+    def _get_sampler_node_ids(self, workflow: Dict[str, Any]) -> List[str]:
         """从工作流中提取所有采样器节点的ID"""
         sampler_nodes = []
         # 定义常见的采样器节点类型
@@ -104,17 +185,34 @@ class ComfyUIService:
         return sampler_nodes
 
     async def download_image(self, image_url: str) -> bytes:
-        """下载图像"""
-        try:
-            async with aiohttp.ClientSession() as session:
+        """下载图像，支持重试机制"""
+        last_exception = None
+        
+        for attempt in range(self.max_retries):
+            try:
+                # 使用连接池下载图像
+                session = self.connection_pool or aiohttp.ClientSession()
+                
                 async with session.get(image_url) as response:
                     if response.status == 200:
-                        return await response.read()
+                        content = await response.read()
+                        # 验证是否为有效的图像内容
+                        if len(content) < 100:  # 图像文件至少应该有100字节
+                            raise Exception(f"图像内容过小: {len(content)} 字节")
+                        return content
                     else:
                         raise Exception(f"下载图像失败: HTTP {response.status}")
-        except Exception as e:
-            logger.error(f"下载图像失败 {image_url}: {e}")
-            raise
+                        
+            except Exception as e:
+                last_exception = e
+                if attempt < self.max_retries - 1:
+                    delay = self.retry_delay * (self.backoff_factor ** attempt)
+                    logger.warning(f"下载图像失败 {image_url} (尝试 {attempt + 1}/{self.max_retries}): {e}, {delay}秒后重试")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"下载图像最终失败 {image_url}: {e}")
+                    
+        raise last_exception
     
     async def upload_image(self, image_data: bytes, filename: str) -> str:
         """上传图像到ComfyUI"""
