@@ -56,4 +56,41 @@ class PromptAPI(BaseAPI):
         :param prompt_ids: 要删除的提示 ID 列表。
         """
         data = {"delete": prompt_ids}
-        return await self._client._request("POST", "/queue", json_data=data) 
+        return await self._client._request("POST", "/queue", json_data=data)
+    
+    async def get_prompt_info(self):
+        """
+        获取当前提示队列的信息。
+        :return: 包含队列信息的 JSON 响应。
+        """
+        return await self._client._request("GET", "/prompt")
+    
+    async def free_memory(self, unload_models: bool = False, free_memory: bool = False):
+        """
+        释放内存和卸载模型。
+        
+        :param unload_models: 是否卸载模型。
+        :param free_memory: 是否释放内存。
+        :return: API 返回的响应。
+        """
+        data = {}
+        if unload_models:
+            data["unload_models"] = unload_models
+        if free_memory:
+            data["free_memory"] = free_memory
+        return await self._client._request("POST", "/free", json_data=data)
+    
+    async def clear_history(self, clear: bool = False, delete: Optional[list] = None):
+        """
+        清理历史记录。
+        
+        :param clear: 是否清空所有历史记录。
+        :param delete: 要删除的特定历史记录 ID 列表。
+        :return: API 返回的响应。
+        """
+        data = {}
+        if clear:
+            data["clear"] = clear
+        if delete:
+            data["delete"] = delete
+        return await self._client._request("POST", "/history", json_data=data) 

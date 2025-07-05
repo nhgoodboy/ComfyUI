@@ -8,6 +8,9 @@ from .endpoints.prompt import PromptAPI
 from .endpoints.file import FileAPI
 from .endpoints.system import SystemAPI
 from .endpoints.user import UserAPI
+from .endpoints.model import ModelAPI
+from .endpoints.userdata import UserDataAPI
+from .endpoints.internal import InternalAPI
 from .websocket import ComfyUIWebSocketClient
 
 class ComfyUIClient:
@@ -39,6 +42,9 @@ class ComfyUIClient:
         self.file = self.files
         self.system = SystemAPI(self)
         self.user = UserAPI(self)
+        self.models = ModelAPI(self)
+        self.userdata = UserDataAPI(self)
+        self.internal = InternalAPI(self)
 
         self.logger.info(f"ComfyUIClient 已为服务器 {self.base_url} 初始化")
 

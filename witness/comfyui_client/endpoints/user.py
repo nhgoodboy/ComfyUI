@@ -32,4 +32,23 @@ class UserAPI(BaseAPI):
 
         :param new_settings: 要更新的设置字典。
         """
-        return self._client._request("POST", "/settings", json_data=new_settings) 
+        return self._client._request("POST", "/settings", json_data=new_settings)
+    
+    def get_setting(self, setting_id: str):
+        """
+        获取特定设置的值。
+        
+        :param setting_id: 设置项的ID
+        :return: 设置值
+        """
+        return self._client._request("GET", f"/settings/{setting_id}")
+    
+    def update_setting(self, setting_id: str, value):
+        """
+        更新特定设置的值。
+        
+        :param setting_id: 设置项的ID
+        :param value: 新的设置值
+        :return: 更新结果
+        """
+        return self._client._request("POST", f"/settings/{setting_id}", json_data=value) 
