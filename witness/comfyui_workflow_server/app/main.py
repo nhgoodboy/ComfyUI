@@ -1,28 +1,25 @@
+"""
+ComfyUI风格转换API主应用
+
+极简化的图像风格转换服务
+"""
+
 import asyncio
 import logging
-from contextlib import asynccontextmanager
-import sys
-import os
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 import uvicorn
 
 from .config import settings
-from .api.v1.workflows import router as workflows_router
-from .api.monitoring import router as monitoring_router
-from .services.comfyui_service import comfyui_service
-from .core.workflow_registry import workflow_registry
-from .core.workflow_manager import WorkflowManager, set_workflow_manager
-from .utils.task_manager import start_cleanup_task
-from .utils.monitoring import performance_monitor, PerformanceTimer
-from .schemas.response import ErrorResponse
-from .middleware.validation import ValidationMiddleware
-from .middleware.auth import APIKeyMiddleware
-from .middleware.rate_limit import RateLimitMiddleware
-from .exceptions import WorkflowAPIException
+from .api.v1 import styles, tasks, files
+from .core.style_registry import style_registry
+from .models.api_models import HealthResponse
 
 # 配置日志
 logging.basicConfig(
@@ -35,66 +32,43 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
-    logger.info("启动ComfyUI工作流服务器...")
+    logger.info("启动ComfyUI风格转换服务器...")
     
-    # 初始化ComfyUI服务, 不阻塞启动
-    await comfyui_service.initialize()
+    # 初始化风格注册系统
+    try:
+        style_registry.reload_styles()
+        style_count = style_registry.get_style_count()
+        logger.info(f"成功加载 {style_count} 个风格")
+    except Exception as e:
+        logger.error(f"加载风格配置失败: {e}")
     
-    # 初始化工作流注册中心
-    logger.info("初始化工作流注册中心...")
-    workflow_registry.initialize()
+    # 确保必要的目录存在
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
     
-    # 初始化工作流管理器
-    logger.info("初始化工作流管理器...")
-    workflow_manager = WorkflowManager(comfyui_service)
-    set_workflow_manager(workflow_manager)
+    output_dir = Path("outputs")
+    output_dir.mkdir(exist_ok=True)
     
-    # 启动清理任务
-    cleanup_task = asyncio.create_task(start_cleanup_task())
-    logger.info("任务清理服务启动")
+    logger.info("服务器启动完成")
     
     try:
         yield
     finally:
         # 关闭时执行
         logger.info("关闭服务...")
-        
-        # 取消清理任务
-        cleanup_task.cancel()
-        try:
-            await cleanup_task
-        except asyncio.CancelledError:
-            pass
-        
-        # 停止性能监控器
-        performance_monitor.stop()
-        logger.info("性能监控器已停止")
-        
-        # 关闭ComfyUI服务
-        await comfyui_service.close()
         logger.info("服务已关闭")
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="ComfyUI工作流服务器",
-    version=settings.APP_VERSION,
-    description="基于ComfyUI的通用工作流执行服务器，支持多种AI图像处理工作流",
+    title="ComfyUI风格转换API",
+    version="2.0.0",
+    description="极简化的图像风格转换服务，基于配置驱动的架构",
     lifespan=lifespan,
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None
 )
 
-# 添加中间件（注意顺序很重要）
-# 1. 限流中间件（最先执行）
-app.add_middleware(RateLimitMiddleware)
-
-# 2. 认证中间件
-app.add_middleware(APIKeyMiddleware)
-
-# 3. 输入验证中间件
-app.add_middleware(ValidationMiddleware)
-
-# 4. CORS中间件（最后执行）
+# 添加CORS中间件
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -103,87 +77,85 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 5. 性能监控中间件
-@app.middleware("http")
-async def performance_monitoring_middleware(request: Request, call_next):
-    """性能监控中间件"""
-    # 获取用户ID（如果有）
-    user_id = getattr(request.state, 'user_id', None)
-    
-    # 记录请求开始
-    with PerformanceTimer(
-        endpoint=request.url.path,
-        method=request.method,
-        user_id=user_id
-    ) as timer:
-        try:
-            response = await call_next(request)
-            timer.set_status(response.status_code)
-            return response
-        except Exception as e:
-            timer.set_status(500, str(e))
-            raise
+# 添加静态文件服务
+if Path("uploads").exists():
+    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+if Path("outputs").exists():
+    app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
 # 注册路由
-app.include_router(workflows_router, prefix="/api/v1")
-app.include_router(monitoring_router)
+app.include_router(styles.router, prefix="/api/v1")
+app.include_router(tasks.router, prefix="/api/v1")
+app.include_router(files.router, prefix="/api/v1")
+
+# 添加请求日志中间件
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """记录请求日志"""
+    start_time = time.time()
+    
+    # 记录请求开始
+    logger.info(f"请求开始: {request.method} {request.url.path}")
+    
+    try:
+        response = await call_next(request)
+        
+        # 记录请求完成
+        duration = time.time() - start_time
+        logger.info(f"请求完成: {request.method} {request.url.path} - {response.status_code} - {duration:.3f}s")
+        
+        return response
+    except Exception as e:
+        # 记录请求错误
+        duration = time.time() - start_time
+        logger.error(f"请求失败: {request.method} {request.url.path} - {str(e)} - {duration:.3f}s")
+        raise
 
 @app.get("/")
 async def root():
     """根路径"""
     try:
-        available_workflows = workflow_registry.list_workflows()
+        styles_list = style_registry.get_all_styles()
+        available_styles = [style.id for style in styles_list]
     except Exception:
-        available_workflows = []
+        available_styles = []
     
     return {
-        "message": "ComfyUI工作流服务器",
-        "version": settings.APP_VERSION,
+        "message": "ComfyUI风格转换API",
+        "version": "2.0.0",
         "status": "running",
-        "available_workflows": available_workflows,
+        "architecture": "极简化配置驱动架构",
+        "available_styles": available_styles,
         "api_endpoints": {
-            "workflows": "/api/v1/workflows",
-            "monitoring": "/monitoring",
+            "styles": "/api/v1/styles",
+            "tasks": "/api/v1/tasks",
+            "files": "/api/v1/files",
             "health": "/health",
             "docs": "/docs"
         }
     }
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
     """健康检查"""
     try:
-        # 检查ComfyUI连接
-        comfyui_connected = await comfyui_service.health_check()
+        # 检查风格注册系统
+        style_count = style_registry.get_style_count()
         
         health_data = {
-            "status": "healthy" if comfyui_connected else "degraded",
-            "comfyui_connected": comfyui_connected,
-            "api_version": settings.APP_VERSION,
-            "timestamp": time.time()
+            "status": "ok",
+            "message": "风格转换服务运行正常",
+            "timestamp": time.time(),
+            "version": "2.0.0"
         }
         
-        if comfyui_connected:
-            try:
-                stats = await comfyui_service.client.system.get_system_stats()
-                health_data["comfyui_stats"] = stats
-            except Exception as e:
-                logger.warning(f"获取ComfyUI统计信息失败: {e}")
-        
-        # 获取限流统计（如果中间件已加载）
-        try:
-            # 通过app的中间件栈获取限流中间件实例
-            for middleware in app.user_middleware:
-                if hasattr(middleware, 'cls') and middleware.cls.__name__ == 'RateLimitMiddleware':
-                    # 获取中间件实例（需要通过内部方式，这里简化处理）
-                    health_data["rate_limit_stats"] = {
-                        "rate_limits_configured": True,
-                        "ip_per_minute": 60,
-                        "user_per_minute": 10
-                    }
-                    break
-        except Exception as e:
-            logger.warning(f"获取限流统计失败: {e}")
+        # 添加风格统计信息
+        if style_count > 0:
+            health_data["styles_loaded"] = style_count
+            health_data["available_styles"] = [style.id for style in style_registry.get_all_styles()]
+        else:
+            health_data["warning"] = "未加载任何风格"
         
         return health_data
         
@@ -192,47 +164,26 @@ async def health_check():
         return JSONResponse(
             status_code=503,
             content={
-                "status": "unhealthy",
-                "comfyui_connected": False,
-                "error": str(e),
-                "timestamp": time.time()
+                "status": "error",
+                "message": f"服务异常: {str(e)}",
+                "timestamp": time.time(),
+                "version": "2.0.0"
             }
         )
-
-@app.exception_handler(WorkflowAPIException)
-async def api_exception_handler(request: Request, exc: WorkflowAPIException):
-    """API自定义异常处理"""
-    logger.warning(f"API异常: {exc.error_code} - {exc.error_message}", exc_info=True)
-    
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=ErrorResponse(
-            error_code=exc.error_code,
-            error_message=exc.error_message,
-            details={
-                "path": str(request.url.path),
-                "method": request.method,
-                **exc.details
-            }
-        ).dict()
-    )
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """全局异常处理"""
-    logger.error(f"未处理的异常: {exc}", exc_info=True)
+    logger.error(f"全局异常: {request.method} {request.url.path} - {str(exc)}", exc_info=True)
     
     return JSONResponse(
         status_code=500,
-        content=ErrorResponse(
-            error_code="INTERNAL_SERVER_ERROR",
-            error_message="服务器内部错误",
-            details={
-                "path": str(request.url.path),
-                "method": request.method,
-                "exception_type": type(exc).__name__
-            }
-        ).dict()
+        content={
+            "success": False,
+            "error": "服务器内部错误",
+            "message": str(exc) if settings.DEBUG else "请联系管理员",
+            "timestamp": time.time()
+        }
     )
 
 def run_server():
@@ -242,8 +193,8 @@ def run_server():
         host=settings.HOST,
         port=settings.PORT,
         workers=settings.WORKERS,
-        reload=settings.DEBUG,
-        log_level=settings.LOG_LEVEL.lower()
+        log_level=settings.LOG_LEVEL.lower(),
+        reload=settings.DEBUG
     )
 
 if __name__ == "__main__":
