@@ -10,8 +10,8 @@ from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ..config import settings
-from ..schemas.response import ErrorResponse
+from ..config import security_config
+from ..models.api_models import ErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     
     def __init__(self, app):
         super().__init__(app)
-        self.api_key = settings.API_KEY
+        self.api_key = security_config.api_secret_key
         self.protected_paths = ["/api/v1"]  # 需要认证的路径前缀
         self.public_paths = ["/", "/health", "/docs", "/redoc", "/openapi.json"]  # 公开路径
         

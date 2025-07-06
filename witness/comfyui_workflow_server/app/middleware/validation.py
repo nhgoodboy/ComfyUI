@@ -13,8 +13,8 @@ from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ..config import settings
-from ..schemas.response import ErrorResponse
+from ..config import storage_config
+from ..models.api_models import ErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,8 @@ class ValidationMiddleware(BaseHTTPMiddleware):
     
     def __init__(self, app):
         super().__init__(app)
-        self.max_image_size = settings.MAX_IMAGE_SIZE
-        self.allowed_image_types = settings.ALLOWED_IMAGE_TYPES
+        self.max_image_size = storage_config.max_file_size
+        self.allowed_image_types = storage_config.allowed_extensions
         
     async def dispatch(self, request: Request, call_next):
         """处理请求验证"""

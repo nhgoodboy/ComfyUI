@@ -12,8 +12,8 @@ from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ..config import settings
-from ..schemas.response import ErrorResponse
+from ..config import security_config
+from ..models.api_models import ErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +30,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.ip_blocks: Dict[str, Tuple[float, int]] = {}
         
         # 从配置中获取限流参数
-        self.rate_limit_per_minute = settings.RATE_LIMIT_PER_MINUTE
-        self.rate_limit_per_hour = settings.RATE_LIMIT_PER_HOUR
-        self.user_rate_limit_per_minute = max(1, self.rate_limit_per_minute // 6)  # 用户限制为IP限制的1/6
-        self.user_rate_limit_per_hour = max(1, self.rate_limit_per_hour // 10)  # 用户限制为IP限制的1/10
+        self.rate_limit_per_minute = security_config.rate_limit_per_ip
+        self.rate_limit_per_hour = security_config.rate_limit_per_ip_hour
+        self.user_rate_limit_per_minute = security_config.rate_limit_per_user
+        self.user_rate_limit_per_hour = max(1, self.rate_limit_per_hour // 2)  # 用户小时限制为IP小时限制的一半
         
         # 阻塞配置
         self.block_duration = 300  # 阻塞时间（秒）

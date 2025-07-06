@@ -10,11 +10,7 @@ from .comfyui_service import ComfyUIService
 from ..core.style_registry import style_registry
 
 # 创建全局服务实例
-comfyui_service = ComfyUIService(
-    comfyui_url="http://localhost:8188",  # 默认ComfyUI地址
-    max_retries=3,
-    timeout=30
-)
+comfyui_service = ComfyUIService()
 
 user_task_service = UserTaskService(comfyui_service, style_registry)
 user_file_service = UserFileService(

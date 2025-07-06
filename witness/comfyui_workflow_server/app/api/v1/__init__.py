@@ -1,14 +1,10 @@
 """
 API v1 模块
 
-包含新的通用工作流API：
-- workflows: 通用工作流API
+包含新的通用API：
 - tasks: 任务管理API
-- system: 系统管理API
+- files: 文件管理API
+- styles: 风格管理API
 """
 
-from .workflows import router as workflows_router
-
-__all__ = [
-    'workflows_router'
-] 
+__all__ = [] 

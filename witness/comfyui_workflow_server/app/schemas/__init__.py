@@ -1,7 +1,5 @@
 """
-Pydantic数据模型
-
-定义API响应的数据结构。
+数据模型和验证模式
 """
 
 from .response import BaseResponse, SuccessResponse, ErrorResponse

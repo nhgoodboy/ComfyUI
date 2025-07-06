@@ -37,6 +37,7 @@ class SecurityConfig:
         
         # 速率限制配置
         self.rate_limit_per_ip = int(os.getenv("RATE_LIMIT_PER_IP", "60"))  # 每IP每分钟
+        self.rate_limit_per_ip_hour = int(os.getenv("RATE_LIMIT_PER_IP_HOUR", "600")) # 每IP每小时
         self.rate_limit_per_user = int(os.getenv("RATE_LIMIT_PER_USER", "30"))  # 每用户每分钟
         
         # 安全选项
@@ -94,6 +95,7 @@ class SecurityConfig:
             "signature_timeout": self.signature_timeout,
             "token_expiry_minutes": self.token_expiry_minutes,
             "rate_limit_per_ip": self.rate_limit_per_ip,
+            "rate_limit_per_ip_hour": self.rate_limit_per_ip_hour,
             "rate_limit_per_user": self.rate_limit_per_user,
             "https_enforced": self.enforce_https,
             "secure_cookies": self.secure_cookies
@@ -109,6 +111,7 @@ class ComfyUIConfig:
         self.timeout = int(os.getenv("COMFYUI_TIMEOUT", "300"))
         self.max_retries = int(os.getenv("COMFYUI_MAX_RETRIES", "3"))
         self.retry_delay = int(os.getenv("COMFYUI_RETRY_DELAY", "5"))
+        self.client_id = os.getenv("COMFYUI_CLIENT_ID")  # 允许为空，服务层会处理
         
         # 构建完整URL
         self.base_url = f"http://{self.host}:{self.port}"
@@ -121,7 +124,8 @@ class ComfyUIConfig:
             "base_url": self.base_url,
             "timeout": self.timeout,
             "max_retries": self.max_retries,
-            "retry_delay": self.retry_delay
+            "retry_delay": self.retry_delay,
+            "client_id": self.client_id
         }
 
 

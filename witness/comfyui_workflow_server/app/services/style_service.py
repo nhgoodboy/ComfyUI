@@ -8,7 +8,6 @@ from typing import List, Optional, Dict, Any
 import logging
 from ..core.style_registry import style_registry
 from ..models.api_models import StyleInfo
-from ..workflows.built_in.universal_style_transform import UniversalStyleTransformWorkflow
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,8 @@ class StyleService:
     """风格服务"""
     
     def __init__(self):
-        self.workflow_processor = UniversalStyleTransformWorkflow()
+        # 不再需要工作流处理器，职责分离
+        pass
     
     async def get_all_styles(self) -> List[StyleInfo]:
         """获取所有可用风格"""
@@ -65,38 +65,6 @@ class StyleService:
         except Exception as e:
             logger.error(f"获取工作流文件失败: {e}")
             return None
-    
-    async def execute_style_transform(self, style_id: str, image_url: str) -> Dict[str, Any]:
-        """执行风格转换"""
-        try:
-            # 验证风格存在
-            if not await self.validate_style(style_id):
-                raise ValueError(f"风格不存在: {style_id}")
-            
-            # 获取工作流文件路径
-            workflow_file = await self.get_workflow_file(style_id)
-            if not workflow_file:
-                raise ValueError(f"未找到工作流文件: {style_id}")
-            
-            # 准备参数
-            parameters = {"image_url": image_url}
-            
-            # 执行转换
-            result = await self.workflow_processor.execute(style_id, parameters)
-            
-            return {
-                "success": True,
-                "result": result,
-                "style_id": style_id
-            }
-            
-        except Exception as e:
-            logger.error(f"执行风格转换失败: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "style_id": style_id
-            }
     
     async def reload_styles(self):
         """重新加载风格配置"""

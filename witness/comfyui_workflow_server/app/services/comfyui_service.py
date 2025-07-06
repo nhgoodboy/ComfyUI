@@ -19,8 +19,7 @@ sys.path.insert(0, str(witness_path))
 
 from comfyui_client.client import ComfyUIClient
 from comfyui_client.websocket import ComfyUIWebSocketClient
-from ..config import settings
-from ..core.workflow_manager import TaskStatus
+from ..config import comfyui_config, storage_config
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +27,14 @@ class ComfyUIService:
     """ComfyUI服务封装"""
     
     def __init__(self):
-        parsed_url = urlparse(settings.COMFYUI_BASE_URL)
+        parsed_url = urlparse(comfyui_config.base_url)
+        if not parsed_url.hostname or not parsed_url.port:
+            raise ValueError(f"无效的ComfyUI地址: {comfyui_config.base_url}")
+            
         self.server_address = parsed_url.hostname
         self.port = parsed_url.port
         # 统一 client_id（配置优先，否则随机生成）
-        self.client_id = settings.COMFYUI_CLIENT_ID or uuid.uuid4().hex
+        self.client_id = comfyui_config.client_id or uuid.uuid4().hex
 
         # 连接池配置（延迟初始化）
         self.connector = None
@@ -222,6 +224,8 @@ class ComfyUIService:
                 else:
                     logger.error(f"下载图像最终失败 {image_url}: {e}")
                     
+        if last_exception is None:
+            raise Exception(f"下载图像最终失败 {image_url}，但没有捕获到具体异常")
         raise last_exception
     
     async def upload_image(self, image_data: bytes, filename: str) -> str:
@@ -232,6 +236,9 @@ class ComfyUIService:
                 image_bytes=image_data,
                 filename=filename
             )
+            if not isinstance(result, dict):
+                raise TypeError(f"上传图像后期望获得字典，但收到了 {type(result)}")
+                
             return result.get("name", filename)
         except Exception as e:
             logger.error(f"上传图像失败: {e}")
@@ -242,7 +249,7 @@ class ComfyUIService:
         if workflow_name in self._workflow_cache:
             return self._workflow_cache[workflow_name]
         
-        workflow_path = Path(settings.WORKFLOW_DIR) / f"{workflow_name}.json"
+        workflow_path = storage_config.workflows_dir / f"{workflow_name}.json"
         
         try:
             async with aiofiles.open(workflow_path, 'r', encoding='utf-8') as f:
@@ -257,71 +264,65 @@ class ComfyUIService:
 # 废弃方法已删除：customize_workflow - 旧架构专用方法
     
     async def queue_prompt(self, workflow: Dict[str, Any]) -> str:
-        """队列提示到ComfyUI（新架构方法）"""
+        """将工作流加入队列"""
         try:
             result = await self.client.prompts.queue_prompt(prompt=workflow, client_id=self.client_id)
+            
+            if not isinstance(result, dict):
+                raise TypeError(f"排队请求后期望获得字典，但收到了 {type(result)}")
+                
             prompt_id = result.get("prompt_id")
-            
             if not prompt_id:
-                raise Exception("未获取到prompt_id")
-                
-            logger.info(f"工作流提交成功，prompt_id: {prompt_id}")
+                raise ValueError(f"API响应中缺少 'prompt_id': {result}")
             return prompt_id
-            
         except Exception as e:
-            logger.error(f"提交工作流失败: {e}")
+            logger.error(f"加入队列失败: {e}")
             raise
-    
+            
     async def get_result(self, prompt_id: str) -> Dict[str, Any]:
-        """获取结果（新架构方法）"""
+        """获取任务结果"""
         try:
-            # 等待任务完成
-            while True:
-                history = await self.client.prompts.get_history(prompt_id=prompt_id)
-                if not history:
-                    await asyncio.sleep(1)
-                    continue
-                    
-                # 获取输出
-                outputs = history.get("outputs", {})
-                if outputs:
-                    return outputs
-                    
-                await asyncio.sleep(1)
-                
+            history = await self.client.prompts.get_history(prompt_id)
+            if not isinstance(history, dict):
+                raise TypeError(f"获取历史记录后期望获得字典，但收到了 {type(history)}")
+
+            if prompt_id not in history:
+                return {"status": "pending", "prompt_id": prompt_id}
+            
+            return history[prompt_id]
         except Exception as e:
             logger.error(f"获取结果失败: {e}")
             raise
-    
+
     async def get_prompt_status(self, prompt_id: str) -> str:
-        """获取任务状态（新架构方法）"""
+        """获取提示的状态 (running, completed, etc)"""
         try:
-            history = await self.client.prompts.get_history(prompt_id=prompt_id)
-            if not history:
-                # 检查队列
-                queue = await self.client.prompts.get_queue()
-                pending = queue.get("queue_pending", [])
-                running = queue.get("queue_running", [])
-                
-                for item in pending + running:
+            queue_info = await self.client.prompts.get_queue()
+            if isinstance(queue_info, dict):
+                # 检查运行中的队列
+                for item in queue_info.get("queue_running", []):
                     if item[1] == prompt_id:
                         return "running"
-                        
-                return "pending"
-            
-            # 检查是否有错误
-            status = history.get("status", {})
-            if status.get("status_str") == "error":
-                return "failed"
                 
-            return "completed"
+                # 检查待处理的队列
+                for item in queue_info.get("queue_pending", []):
+                    if item[1] == prompt_id:
+                        return "pending"
+            else:
+                 raise TypeError(f"获取队列信息后期望获得字典，但收到了 {type(queue_info)}")
+
+            # 检查历史记录
+            history = await self.client.prompts.get_history(prompt_id)
+            if isinstance(history, dict) and prompt_id in history:
+                return "completed"
             
+            return "unknown"
         except Exception as e:
-            logger.error(f"获取状态失败: {e}")
-            return "failed"
-    
+            logger.error(f"获取提示状态失败: {e}")
+            return "error"
+            
     async def submit_workflow(self, task_id: str, workflow: Dict[str, Any]) -> str:
-        """提交工作流到ComfyUI（简化版本）"""
+        """提交工作流并启动后台轮询"""
         try:
             # 提交工作流
             result = await self.client.prompts.queue_prompt(prompt=workflow, client_id=self.client_id)
