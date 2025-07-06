@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-图像风格变换API服务启动脚本
+ComfyUI工作流服务器启动脚本
 
 提供服务启动、配置验证和环境检查功能。
 """
@@ -74,7 +74,7 @@ def main():
     logger = logging.getLogger(__name__)
     
     # 命令行参数解析
-    parser = argparse.ArgumentParser(description='Style Transform API 服务')
+    parser = argparse.ArgumentParser(description='ComfyUI工作流服务器')
     parser.add_argument('--host', default='0.0.0.0', help='监听地址')
     parser.add_argument('--port', type=int, default=8000, help='监听端口')
     parser.add_argument('--workers', type=int, default=1, help='工作进程数')
@@ -84,7 +84,7 @@ def main():
     args = parser.parse_args()
     
     try:
-        logger.info("=== Style Transform API 服务启动 ===")
+        logger.info("=== ComfyUI工作流服务器启动 ===")
         logger.info(f"Python版本: {sys.version}")
         logger.info(f"工作目录: {project_root}")
         

@@ -27,7 +27,7 @@ class StyleTransformWorkflow(BaseWorkflow):
             description="将输入图像转换为指定风格的图像，支持多种艺术风格",
             version="1.0.0",
             workflow_type=WorkflowType.IMAGE_TO_IMAGE,
-            author="ComfyUI Style Transform API",
+            author="ComfyUI工作流服务器",
             tags=["图像处理", "风格转换", "艺术风格", "AI绘画"],
             parameters=[
                 WorkflowParameter(

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-图像风格变换API客户端使用示例
+ComfyUI工作流服务器客户端使用示例
 
 演示如何调用API进行图像风格变换。
 """
@@ -12,7 +12,7 @@ import time
 from typing import Dict, Any
 
 class StyleTransformClient:
-    """风格变换API客户端"""
+    """ComfyUI工作流服务器客户端"""
     
     def __init__(self, base_url: str = "http://localhost:8000", api_key: str = None):
         self.base_url = base_url.rstrip('/')
@@ -232,7 +232,7 @@ async def main():
 
 if __name__ == "__main__":
     # 运行示例
-    print("Style Transform API 客户端示例")
+    print("ComfyUI工作流服务器 客户端示例")
     print("支持的功能:")
     print("- 单张图像风格变换")
     print("- 批量图像风格变换") 
