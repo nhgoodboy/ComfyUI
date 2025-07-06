@@ -105,9 +105,9 @@ class WorkflowAPIClient:
         raise Exception("任务执行超时")
 
 
-async def demo_style_transform():
-    """演示风格变换工作流"""
-    print("=== 风格变换工作流演示 ===")
+async def demo_clay_style_transform():
+    """演示黏土风格转换工作流"""
+    print("=== 黏土风格转换工作流演示 ===")
     
     async with WorkflowAPIClient() as client:
         # 1. 获取可用工作流
@@ -115,27 +115,20 @@ async def demo_style_transform():
         workflows = await client.get_available_workflows()
         print(f"可用工作流: {workflows}")
         
-        # 2. 获取style_transform工作流的元数据
-        print("\n2. 获取style_transform工作流元数据...")
-        metadata = await client.get_workflow_metadata("style_transform")
+        # 2. 获取clay_style_transform工作流的元数据
+        print("\n2. 获取clay_style_transform工作流元数据...")
+        metadata = await client.get_workflow_metadata("clay_style_transform")
         print(f"工作流名称: {metadata.get('name')}")
         print(f"描述: {metadata.get('description')}")
         print(f"参数: {json.dumps(metadata.get('parameter_schema', {}), indent=2, ensure_ascii=False)}")
         
-        # 3. 执行风格变换
-        print("\n3. 执行风格变换工作流...")
+        # 3. 执行黏土风格转换
+        print("\n3. 执行黏土风格转换工作流...")
         parameters = {
-            "image": "input_image.jpg",  # 这里应该是实际的图像文件路径
-            "style_prompt": "油画风格，印象派，浓重色彩",
-            "strength": 0.7,
-            "steps": 25,
-            "cfg_scale": 7.5,
-            "negative_prompt": "低质量，模糊，噪点",
-            "sampler_name": "euler",
-            "scheduler": "normal"
+            "image_url": "https://example.com/test-image.jpg"  # 这里应该是实际的图像URL
         }
         
-        task_id = await client.execute_workflow("style_transform", parameters)
+        task_id = await client.execute_workflow("clay_style_transform", parameters)
         print(f"任务已提交，任务ID: {task_id}")
         
         # 4. 等待完成
@@ -210,7 +203,7 @@ async def demo_parameter_validation():
     
     async with WorkflowAPIClient() as client:
         # 获取参数Schema
-        async with client.session.get(f"{client.base_url}/api/v1/workflows/style_transform/schema") as response:
+        async with client.session.get(f"{client.base_url}/api/v1/workflows/clay_style_transform/schema") as response:
             if response.status == 200:
                 data = await response.json()
                 schema = data.get("data", {})
@@ -222,14 +215,11 @@ async def demo_parameter_validation():
         # 测试无效参数
         print("\n测试无效参数...")
         invalid_parameters = {
-            "image": "",  # 空字符串，应该失败
-            "style_prompt": "",  # 空字符串，应该失败
-            "strength": 2.0,  # 超出范围，应该失败
-            "steps": -1  # 负数，应该失败
+            "image_url": "",  # 空字符串，应该失败
         }
         
         try:
-            task_id = await client.execute_workflow("style_transform", invalid_parameters)
+            task_id = await client.execute_workflow("clay_style_transform", invalid_parameters)
             print(f"意外成功: {task_id}")
         except Exception as e:
             print(f"验证失败（预期）: {e}")
@@ -244,7 +234,7 @@ async def main():
         ("工作流发现", demo_workflow_discovery),
         ("参数验证", demo_parameter_validation),
         ("API监控", demo_api_monitoring),
-        # ("风格变换", demo_style_transform),  # 需要实际图像文件才能运行
+        # ("黏土风格转换", demo_clay_style_transform),  # 需要实际图像URL才能运行
     ]
     
     for name, demo_func in demos:

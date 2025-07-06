@@ -11,16 +11,10 @@ from ..utils.logger import get_logger, log_transform_start, log_transform_comple
 
 logger = get_logger("transform_service")
 
-# 风格类型到提示词的映射
-STYLE_PROMPTS = {
-    "clay": "Clay Style, lovely, 3d, cute",
-    "anime": "anime style, vibrant colors, detailed",
-    "watercolor": "watercolor painting style, soft colors, artistic",
-    "oil_painting": "oil painting style, classical art, textured",
-    "sketch": "pencil sketch style, black and white, artistic drawing",
-    "cartoon": "cartoon style, colorful, animated",
-    "realistic": "photorealistic, high quality, detailed",
-    "fantasy": "fantasy art style, magical, ethereal"
+# 支持的风格类型
+SUPPORTED_STYLES = {
+    "clay": "黏土风格 - 可爱、3D、立体效果"
+    # 其他风格待实现...
 }
 
 class TransformService:
@@ -69,30 +63,21 @@ class TransformService:
             if not self.session:
                 self.session = aiohttp.ClientSession()
             
-            # 确定风格提示词
-            if custom_prompt:
-                style_prompt = custom_prompt
-            else:
-                style_prompt = STYLE_PROMPTS.get(style_type, STYLE_PROMPTS["clay"])
+            # 检查风格类型是否支持
+            if style_type not in SUPPORTED_STYLES:
+                logger.warning(f"风格类型 '{style_type}' 暂不支持，将使用黏土风格")
+                style_type = "clay"
             
-            # 构建新的工作流API请求
+            # 使用新的专门化工作流
             payload = {
-                "workflow_id": "style_transform",
+                "workflow_id": "clay_style_transform",
                 "parameters": {
-                    "image": image_url,
-                    "style_prompt": style_prompt,
-                    "strength": strength,
-                    "steps": 20,
-                    "cfg_scale": 7.0,
-                    "negative_prompt": "bad quality, blurry, low resolution",
-                    "sampler_name": "euler",
-                    "scheduler": "normal",
-                    "checkpoint": "sd_xl_base_1.0.safetensors"
+                    "image_url": image_url
                 }
             }
             
             async with self.session.post(
-                f"{self.api_base_url}/api/v1/workflows/style_transform/execute",
+                f"{self.api_base_url}/api/v1/workflows/clay_style_transform/execute",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
