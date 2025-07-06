@@ -11,6 +11,14 @@ import logging.config
 import uvicorn
 from dotenv import load_dotenv
 
+# --- 配置加载 ---
+# 必须在导入任何应用模块之前加载环境变量，以避免配置被过早缓存
+# 优先加载.env文件，使其成为默认配置
+default_env_path = Path(__file__).parent / ".env"
+if default_env_path.is_file():
+    # 使用 override=True 确保.env文件优先于系统环境变量
+    load_dotenv(default_env_path, override=True)
+
 # 将项目根目录添加到Python路径
 # 假设start.py在项目根目录下，所以app可以直接导入
 sys.path.insert(0, str(Path(__file__).parent))
@@ -25,20 +33,20 @@ logger = logging.getLogger(__name__)
 def main():
     """主函数，负责配置加载和服务器启动"""
     parser = argparse.ArgumentParser(description="ComfyUI Workflow Server")
-    parser.add_argument("--config", type=str, default=None, help="配置文件路径 (.env)")
+    parser.add_argument("--config", type=str, default=None, help="覆盖默认配置文件的路径 (.env)")
     parser.add_argument("--host", type=str, default=None, help="覆盖服务器主机")
     parser.add_argument("--port", type=int, default=None, help="覆盖服务器端口")
     args = parser.parse_args()
 
-    # 如果提供了配置文件，加载它
+    # 如果提供了 --config 参数，则用它来覆盖已加载的.env配置
     if args.config:
         if Path(args.config).is_file():
             load_dotenv(args.config, override=True)
-            logger.info(f"从 {args.config} 加载配置")
+            logger.info(f"使用 --config 参数从 {args.config} 覆盖配置")
         else:
-            logger.warning(f"配置文件 {args.config} 未找到，将使用环境变量。")
+            logger.warning(f"指定的配置文件 {args.config} 未找到，将使用已加载的配置。")
     
-    # 获取配置
+    # 获取配置 (此时应已正确加载)
     settings: AppConfig = get_settings()
     
     # 重新配置日志系统

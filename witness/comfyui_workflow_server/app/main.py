@@ -73,8 +73,10 @@ async def lifespan(app: FastAPI):
         logger.info("ComfyUI 服务初始化完成。")
 
         logger.debug("正在初始化样式注册表...")
-        style_registry = StyleRegistry(config_path=settings.style_config_path)
-        style_registry.load_styles()
+        style_registry = StyleRegistry(
+            config_file=str(settings.style_config_path),
+            comfyui_service=comfyui_service
+        )
         logger.info("样式注册表初始化完成。")
 
         logger.debug("正在初始化用户文件服务...")
