@@ -17,7 +17,7 @@ from .endpoints.user import UserAPI
 from .endpoints.model import ModelAPI
 from .endpoints.userdata import UserDataAPI
 from .endpoints.internal import InternalAPI
-from .models.prompts import PromptModel, PromptRequest, PromptResponse
+from .models.prompts import Workflow, WorkflowNode, NodeInput
 from .utils.logger import get_logger
 
 __all__ = [
@@ -38,8 +38,8 @@ __all__ = [
     "ModelAPI",
     "UserDataAPI",
     "InternalAPI",
-    "PromptModel",
-    "PromptRequest",
-    "PromptResponse",
+    "Workflow",
+    "WorkflowNode",
+    "NodeInput",
     "get_logger"
 ] 

@@ -11,6 +11,18 @@ from ..utils.logger import get_logger, log_transform_start, log_transform_comple
 
 logger = get_logger("transform_service")
 
+# 风格类型到提示词的映射
+STYLE_PROMPTS = {
+    "clay": "Clay Style, lovely, 3d, cute",
+    "anime": "anime style, vibrant colors, detailed",
+    "watercolor": "watercolor painting style, soft colors, artistic",
+    "oil_painting": "oil painting style, classical art, textured",
+    "sketch": "pencil sketch style, black and white, artistic drawing",
+    "cartoon": "cartoon style, colorful, animated",
+    "realistic": "photorealistic, high quality, detailed",
+    "fantasy": "fantasy art style, magical, ethereal"
+}
+
 class TransformService:
     """图像变换服务"""
     
@@ -57,27 +69,41 @@ class TransformService:
             if not self.session:
                 self.session = aiohttp.ClientSession()
             
+            # 确定风格提示词
+            if custom_prompt:
+                style_prompt = custom_prompt
+            else:
+                style_prompt = STYLE_PROMPTS.get(style_type, STYLE_PROMPTS["clay"])
+            
+            # 构建新的工作流API请求
             payload = {
-                "user_id": settings.DEFAULT_USER_ID,
-                "image_url": image_url,
-                "style_type": style_type,
-                "strength": strength
+                "workflow_id": "style_transform",
+                "parameters": {
+                    "image": image_url,
+                    "style_prompt": style_prompt,
+                    "strength": strength,
+                    "steps": 20,
+                    "cfg_scale": 7.0,
+                    "negative_prompt": "bad quality, blurry, low resolution",
+                    "sampler_name": "euler",
+                    "scheduler": "normal",
+                    "checkpoint": "sd_xl_base_1.0.safetensors"
+                }
             }
             
-            if custom_prompt:
-                payload["custom_prompt"] = custom_prompt
-            
             async with self.session.post(
-                f"{self.api_base_url}/api/v1/transform",
+                f"{self.api_base_url}/api/v1/workflows/style_transform/execute",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
                 if response.status == 200:
                     result = await response.json()
-                    task_id = result.get("task_id")
+                    task_id = result.get("data")  # 新API返回task_id在data字段中
                     if task_id:
                         log_transform_start(task_id, style_type, settings.DEFAULT_USER_ID)
-                    return result
+                        return {"task_id": task_id}
+                    else:
+                        raise Exception("API响应中缺少任务ID")
                 else:
                     error_text = await response.text()
                     raise Exception(f"API请求失败: {response.status} - {error_text}")
@@ -93,17 +119,52 @@ class TransformService:
                 self.session = aiohttp.ClientSession()
             
             async with self.session.get(
-                f"{self.api_base_url}/api/v1/task/{task_id}",
+                f"{self.api_base_url}/api/v1/workflows/tasks/{task_id}",
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 if response.status == 200:
-                    return await response.json()
+                    response_data = await response.json()
+                    # 新API的响应格式
+                    if response_data.get("success"):
+                        task_data = response_data.get("data", {})
+                        return {
+                            "status": task_data.get("status"),
+                            "progress": task_data.get("progress", 0),
+                            "error_message": task_data.get("error_message"),
+                            "task_id": task_id
+                        }
+                    else:
+                        raise Exception(f"API返回错误: {response_data.get('error_message', '未知错误')}")
                 else:
                     error_text = await response.text()
                     raise Exception(f"查询任务状态失败: {response.status} - {error_text}")
                     
         except Exception as e:
             logger.error(f"查询任务状态失败: {e}")
+            raise
+    
+    async def get_task_result(self, task_id: str) -> Dict[str, Any]:
+        """获取任务结果"""
+        try:
+            if not self.session:
+                self.session = aiohttp.ClientSession()
+            
+            async with self.session.get(
+                f"{self.api_base_url}/api/v1/workflows/tasks/{task_id}/result",
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    response_data = await response.json()
+                    if response_data.get("success"):
+                        return response_data.get("data", {})
+                    else:
+                        raise Exception(f"API返回错误: {response_data.get('error_message', '未知错误')}")
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"获取任务结果失败: {response.status} - {error_text}")
+                    
+        except Exception as e:
+            logger.error(f"获取任务结果失败: {e}")
             raise
     
     async def wait_for_completion(self, api_task_id: str, 
@@ -131,9 +192,25 @@ class TransformService:
                 
                 if status == "completed":
                     duration = time.time() - start_time
-                    output_url = result.get("output_image_url")
+                    
+                    # 获取任务结果
+                    try:
+                        task_result = await self.get_task_result(api_task_id)
+                        output_images = task_result.get("result", {}).get("output_images", [])
+                        output_url = output_images[0] if output_images else None
+                    except Exception as e:
+                        logger.error(f"获取任务结果失败: {e}")
+                        output_url = None
+                    
                     log_transform_complete(api_task_id, duration, output_url or "unknown", settings.DEFAULT_USER_ID)
-                    return result
+                    
+                    return {
+                        "status": "completed",
+                        "output_image_url": output_url,
+                        "task_id": api_task_id,
+                        "progress": 1.0
+                    }
+                    
                 elif status == "failed":
                     error_msg = result.get("error_message", "未知错误")
                     log_transform_error(api_task_id, error_msg, settings.DEFAULT_USER_ID)
@@ -203,16 +280,46 @@ class TransformService:
             
             async with self.session.get(
                 f"{self.api_base_url}/health",
-                timeout=aiohttp.ClientTimeout(total=5)
+                timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
-                    return {"status": "unhealthy", "error": f"HTTP {response.status}"}
+                    return {
+                        "status": "unhealthy",
+                        "error": f"HTTP {response.status}"
+                    }
                     
         except Exception as e:
             logger.error(f"检查API健康状态失败: {e}")
-            return {"status": "unhealthy", "error": str(e)}
+            return {
+                "status": "unhealthy",
+                "error": str(e)
+            }
+    
+    async def get_available_workflows(self) -> Dict[str, Any]:
+        """获取可用的工作流列表"""
+        try:
+            if not self.session:
+                self.session = aiohttp.ClientSession()
+            
+            async with self.session.get(
+                f"{self.api_base_url}/api/v1/workflows/",
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    response_data = await response.json()
+                    if response_data.get("success"):
+                        return response_data.get("data", [])
+                    else:
+                        raise Exception(f"API返回错误: {response_data.get('error_message', '未知错误')}")
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"获取工作流列表失败: {response.status} - {error_text}")
+                    
+        except Exception as e:
+            logger.error(f"获取工作流列表失败: {e}")
+            return []
     
     async def get_api_stats(self) -> Dict[str, Any]:
         """获取API统计信息"""
@@ -221,17 +328,75 @@ class TransformService:
                 self.session = aiohttp.ClientSession()
             
             async with self.session.get(
-                f"{self.api_base_url}/api/v1/stats",
+                f"{self.api_base_url}/api/v1/workflows/statistics",
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 if response.status == 200:
-                    return await response.json()
+                    response_data = await response.json()
+                    if response_data.get("success"):
+                        return response_data.get("data", {})
+                    else:
+                        return {"error": response_data.get("error_message", "未知错误")}
                 else:
-                    return {"success": False, "error": f"HTTP {response.status}"}
+                    return {"error": f"HTTP {response.status}"}
                     
         except Exception as e:
-            logger.error(f"获取API统计失败: {e}")
-            return {"success": False, "error": str(e)}
+            logger.error(f"获取API统计信息失败: {e}")
+            return {"error": str(e)}
+
+
+# 异步函数保持向后兼容
+async def transform_image_async(image_path: str, style_type: str,
+                              web_task_id: str,
+                              custom_prompt: Optional[str] = None,
+                              strength: float = 0.6,
+                              progress_callback=None) -> Dict[str, Any]:
+    """
+    异步图像变换函数
+    
+    Args:
+        image_path: 本地图像文件路径
+        style_type: 风格类型
+        web_task_id: Web任务ID（用于追踪）
+        custom_prompt: 自定义提示词
+        strength: 变换强度
+        progress_callback: 进度回调函数
+        
+    Returns:
+        变换结果字典
+    """
+    async with TransformService() as service:
+        try:
+            # 1. 上传图像
+            image_url = await service.upload_image(image_path)
+            
+            # 2. 提交变换任务
+            submit_result = await service.transform_image(
+                image_url=image_url,
+                style_type=style_type,
+                custom_prompt=custom_prompt,
+                strength=strength
+            )
+            
+            api_task_id = submit_result["task_id"]
+            
+            # 3. 等待完成
+            result = await service.wait_for_completion(
+                api_task_id=api_task_id,
+                web_task_id=web_task_id,
+                progress_callback=progress_callback
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"图像变换异步处理失败: {e}")
+            return {
+                "status": "failed",
+                "error_message": str(e),
+                "task_id": web_task_id,
+                "progress": 0
+            }
 
 # 全局服务实例
 transform_service = TransformService()

@@ -1,8 +1,8 @@
 version: '3.8'
 
 services:
-  style-transform-api:
-    build: ./style_transform_api
+  comfyui-workflow-server:
+    build: ./comfyui_workflow_server
     ports:
       - "8000:8000"
     environment:
@@ -12,7 +12,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
     volumes:
-      - ./style_transform_api/app/workflows:/app/app/workflows:ro
+      - ./comfyui_workflow_server/app/workflows:/app/app/workflows:ro
     depends_on:
       - comfyui
     restart: unless-stopped

@@ -13,14 +13,15 @@ Witness 是一个完整的、分层的图像风格变换平台，它集成了强
     *   通过 WebSocket 提供实时的任务进度更新。
     *   是最终用户与系统交互的入口。
 
-2.  **风格变换 API 层 (`style_transform_api`)**:
-    *   核心业务逻辑层，同样基于 FastAPI。
-    *   负责接收来自上层应用的请求，管理变换任务队列，并与 ComfyUI 服务进行通信。
-    *   它将复杂的 ComfyUI工作流（如 `style_change.json`）抽象为简单的 API 调用。
+2.  **ComfyUI工作流服务器 (`comfyui_workflow_server`)**:
+    *   核心业务逻辑层，基于 FastAPI 构建的通用工作流执行平台。
+    *   支持多种AI图像处理工作流，具备可扩展的工作流架构。
+    *   负责接收来自上层应用的请求，管理任务队列，并与 ComfyUI 服务进行通信。
+    *   它将复杂的 ComfyUI工作流抽象为简单的 API 调用。
 
 3.  **ComfyUI 客户端 (`comfyui_client`)**:
     *   一个轻量级的 Python 客户端库，封装了对 ComfyUI 原生 HTTP 和 WebSocket API 的调用。
-    *   为 `style_transform_api` 提供了与 ComfyUI 通信的标准化接口。
+    *   为 `comfyui_workflow_server` 提供了与 ComfyUI 通信的标准化接口。
 
 ```mermaid
 graph TD
@@ -29,7 +30,7 @@ graph TD
     end
 
     subgraph "Witness 平台"
-        B[Web 应用层<br/>web_image_transform] --> C[风格变换 API<br/>style_transform_api]
+        B[Web 应用层<br/>web_image_transform] --> C[ComfyUI工作流服务器<br/>comfyui_workflow_server]
         C --> D[ComfyUI 客户端<br/>comfyui_client]
     end
 
@@ -46,7 +47,7 @@ graph TD
 ```
 witness/
 ├── web_image_transform/    # Web应用前端和服务
-├── style_transform_api/    # 核心业务API
+├── comfyui_workflow_server/ # 通用工作流服务器
 ├── comfyui_client/         # ComfyUI的Python客户端
 ├── workflows/              # ComfyUI工作流模板
 ├── docs/                   # 项目文档
@@ -71,12 +72,12 @@ pip install -r requirements.txt
 
 所有服务都应从项目的根目录 `witness/` 中启动。请按以下顺序独立运行每个服务：
 
-1.  **启动 Style Transform API**
+1.  **启动 ComfyUI工作流服务器**
     此服务现在具备容错能力，即使无法连接到 ComfyUI 也能启动。
     ```bash
     # 在 witness/ 根目录下运行
-    # (根据需要配置 style_transform_api/.env 文件)
-    uvicorn style_transform_api.app.main:app --host 0.0.0.0 --port 8000
+    # (根据需要配置 comfyui_workflow_server/.env 文件)
+    uvicorn comfyui_workflow_server.app.main:app --host 0.0.0.0 --port 8000
     ```
 
 2.  **启动 Web Image Transform 应用**

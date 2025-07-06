@@ -64,7 +64,7 @@ witness/web_image_transform/
 
 ### 环境要求
 - Python 3.8+
-- 图像风格变换API服务（`style_transform_api`，需要先启动）
+- ComfyUI工作流服务器（`comfyui_workflow_server`，需要先启动）
 
 ### 安装依赖
 ```bash
@@ -84,7 +84,7 @@ DEBUG=true
 HOST=0.0.0.0
 PORT=8080
 
-# 风格变换API配置
+# ComfyUI工作流服务器配置
 STYLE_API_BASE_URL=http://localhost:8000
 
 # 文件配置
@@ -188,7 +188,7 @@ GET /api/stats
 ## 配置说明
 
 ### 主要配置项
-- `STYLE_API_BASE_URL`：风格变换API服务地址
+- `STYLE_API_BASE_URL`：ComfyUI工作流服务器地址
 - `MAX_FILE_SIZE`：最大文件上传大小
 - `LOG_LEVEL`：日志级别（DEBUG/INFO/WARNING/ERROR）
 - `CORS_ORIGINS`：跨域请求允许的源
@@ -217,7 +217,7 @@ GET /api/stats
 
 ### 常见问题
 1. **上传失败**：检查文件大小和格式
-2. **变换失败**：确认风格变换API服务正常运行
+2. **变换失败**：确认ComfyUI工作流服务器正常运行
 3. **WebSocket连接失败**：检查防火墙和代理设置
 
 ### 日志查看
