@@ -43,6 +43,11 @@ class UserStatsResponse(BaseModel):
     file_counts: Dict[str, int] = Field(..., description="文件统计")
     storage_used: int = Field(..., description="存储使用量(字节)")
 
+class APIUser(BaseModel):
+    """API用户认证模型"""
+    username: str = Field(..., description="用户名")
+    is_admin: bool = Field(False, description="是否为管理员")
+
 class UserTaskListResponse(BaseModel):
     """用户任务列表响应"""
     success: bool = Field(..., description="是否成功")
