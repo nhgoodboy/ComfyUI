@@ -14,6 +14,7 @@ import logging
 
 from ..base import BaseWorkflow, WorkflowMetadata, WorkflowParameter, WorkflowType
 from ..base.parameter_types import ParameterValidator
+from ...services.comfyui_service import ComfyUIService
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +24,17 @@ class UniversalStyleTransformWorkflow(BaseWorkflow):
     基于配置驱动的工作流处理器，支持任意风格的图像转换。
     """
     
-    def __init__(self, style_id: str, style_config: Dict[str, Any]):
+    def __init__(self, style_id: str, style_config: Dict[str, Any], comfyui_service: ComfyUIService):
         """初始化工作流
         
         Args:
             style_id: 风格ID
             style_config: 风格配置字典
+            comfyui_service: ComfyUI服务实例
         """
         self.style_id = style_id
         self.style_config = style_config
+        self.comfyui_service = comfyui_service
         super().__init__()
         
         # 缓存工作流JSON
@@ -89,22 +92,17 @@ class UniversalStyleTransformWorkflow(BaseWorkflow):
     
     async def pre_process(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """预处理步骤：下载图片并上传到ComfyUI"""
-        from ...services.comfyui_service import get_comfyui_service
-        
         try:
             image_url = parameters["image_url"]
             self.logger.info(f"开始下载图片: {image_url}")
             
-            # 获取ComfyUI服务实例
-            service = get_comfyui_service()
-            
-            # 下载图片
-            image_data = await service.download_image(image_url)
+            # 使用注入的ComfyUI服务实例
+            image_data = await self.comfyui_service.download_image(image_url)
             self.logger.info(f"图片下载完成，大小: {len(image_data)} bytes")
             
             # 根据风格ID生成文件名
             style_name = self.style_id.replace('_transform', '').replace('_style', '')
-            filename = await service.upload_image(image_data, f"{style_name}_input.jpg")
+            filename = await self.comfyui_service.upload_image(image_data, f"{style_name}_input.jpg")
             self.logger.info(f"图片上传完成，文件名: {filename}")
             
             # 更新参数
@@ -207,8 +205,6 @@ class UniversalStyleTransformWorkflow(BaseWorkflow):
     
     async def post_process(self, workflow_result: Dict[str, Any]) -> Dict[str, Any]:
         """后处理步骤：处理结果并生成访问URL"""
-        from ...services.comfyui_service import get_comfyui_service
-        
         try:
             # 从风格ID中提取风格名称
             style_name = self.style_id.replace('_transform', '').replace('_style', '')
@@ -226,16 +222,13 @@ class UniversalStyleTransformWorkflow(BaseWorkflow):
                 }
             }
             
-            # 获取ComfyUI服务实例
-            service = get_comfyui_service()
-            
             # 处理输出图片
             if "images" in workflow_result:
                 for image_info in workflow_result["images"]:
                     filename = image_info.get("filename", "")
                     if filename:
                         # 生成访问URL
-                        image_url = f"{service.client.base_url}/view?filename={filename}&type=output"
+                        image_url = f"{self.comfyui_service.client.base_url}/view?filename={filename}&type=output"
                         processed_result["output_images"].append({
                             "filename": filename,
                             "url": image_url,

@@ -9,15 +9,19 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import logging
 from ..models.api_models import StyleInfo
+from ..services.comfyui_service import ComfyUIService
+from ..workflows.built_in import UniversalStyleTransformWorkflow
 
 logger = logging.getLogger(__name__)
 
 class StyleRegistry:
     """风格注册系统"""
     
-    def __init__(self, config_file: str):
+    def __init__(self, config_file: str, comfyui_service: ComfyUIService):
         self.config_file = Path(config_file)
+        self.comfyui_service = comfyui_service
         self.styles: Dict[str, StyleInfo] = {}
+        self.workflows: Dict[str, UniversalStyleTransformWorkflow] = {}
         self._load_styles()
     
     def _load_styles(self):
@@ -43,13 +47,20 @@ class StyleRegistry:
                             logger.error(f"风格 {style_id} 缺少必要字段: {field}")
                             continue
                     
-                    # 创建StyleInfo对象
+                    # 创建StyleInfo对象 (API元数据)
                     self.styles[style_id] = StyleInfo(
                         id=style_id,
                         name=style_data['name'],
                         description=style_data['description'],
                         estimated_time=style_data['estimated_time'],
                         tags=style_data.get('tags', [])
+                    )
+                    
+                    # 创建可执行的工作流实例
+                    self.workflows[style_id] = UniversalStyleTransformWorkflow(
+                        style_id=style_id,
+                        style_config=style_data,
+                        comfyui_service=self.comfyui_service
                     )
                     
                     logger.info(f"成功加载风格: {style_id}")
@@ -70,6 +81,10 @@ class StyleRegistry:
     def get_style(self, style_id: str) -> Optional[StyleInfo]:
         """获取特定风格"""
         return self.styles.get(style_id)
+    
+    def get_workflow(self, style_id: str) -> Optional[UniversalStyleTransformWorkflow]:
+        """获取可执行的工作流实例"""
+        return self.workflows.get(style_id)
     
     def get_workflow_file(self, style_id: str) -> Optional[str]:
         """获取工作流文件路径"""
@@ -93,6 +108,7 @@ class StyleRegistry:
     def reload_styles(self):
         """重新加载配置文件"""
         self.styles.clear()
+        self.workflows.clear()
         self._load_styles()
     
     def get_style_count(self) -> int:

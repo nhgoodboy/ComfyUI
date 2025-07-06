@@ -77,7 +77,10 @@ async def lifespan(app: FastAPI):
             base_upload_dir=settings.storage.uploads_dir,
             base_output_dir=settings.storage.outputs_dir
         )
-        style_registry = StyleRegistry(str(settings.storage.configs_dir / "style_configs.yaml"))
+        style_registry = StyleRegistry(
+            config_file=str(settings.storage.configs_dir / "style_configs.yaml"),
+            comfyui_service=comfyui_service
+        )
         user_task_service = UserTaskService(
             comfyui_service=comfyui_service, 
             style_registry=style_registry
@@ -203,10 +206,10 @@ async def log_requests(request: Request, call_next):
         raise
 
 @app.get("/")
-async def root():
+async def root(request: Request):
     """根路径"""
     try:
-        styles_list = style_registry.get_all_styles()
+        styles_list = request.app.state.style_registry.get_all_styles()
         available_styles = [style.id for style in styles_list]
     except Exception:
         available_styles = []
@@ -245,11 +248,11 @@ async def health_check(request: Request):
         # 添加风格统计信息
         if style_count > 0:
             health_data["styles_loaded"] = style_count
-            health_data["available_styles"] = [style.id for style in style_registry.get_all_styles()]
+            health_data["available_styles"] = [style.id for style in request.app.state.style_registry.get_all_styles()]
         else:
             health_data["warning"] = "未加载任何风格"
         
-        return health_data
+        return HealthResponse(**health_data)
         
     except Exception as e:
         logger.error(f"健康检查失败: {e}", exc_info=True)

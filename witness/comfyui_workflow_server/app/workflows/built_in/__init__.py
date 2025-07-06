@@ -18,39 +18,10 @@
 """
 
 from .universal_style_transform import UniversalStyleTransformWorkflow
-from .style_registry import (
-    StyleRegistry,
-    get_style_registry,
-    register_all_style_workflows,
-    get_all_registered_workflows,
-    get_workflow_by_id
-)
-
-# 自动注册所有风格工作流
-try:
-    registration_results = register_all_style_workflows()
-    print(f"🎨 风格工作流注册完成: {sum(registration_results.values())}/{len(registration_results)} 成功")
-    
-    # 显示注册成功的风格
-    successful_styles = [style_id for style_id, result in registration_results.items() if result]
-    if successful_styles:
-        print(f"   已注册风格: {', '.join(successful_styles)}")
-    
-    # 显示注册失败的风格
-    failed_styles = [style_id for style_id, result in registration_results.items() if not result]
-    if failed_styles:
-        print(f"   ⚠️  注册失败: {', '.join(failed_styles)}")
-        
-except Exception as e:
-    print(f"❌ 风格工作流注册失败: {e}")
-    registration_results = {}
+from ..base import BaseWorkflow
 
 # 导出所有类和函数
 __all__ = [
     'UniversalStyleTransformWorkflow',
-    'StyleRegistry',
-    'get_style_registry',
-    'register_all_style_workflows',
-    'get_all_registered_workflows',
-    'get_workflow_by_id'
+    'BaseWorkflow'
 ] 

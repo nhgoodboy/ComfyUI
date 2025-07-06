@@ -72,11 +72,10 @@ class UserTaskService:
             task_data.started_at = time.time()
             task_data.progress = 10.0
             
-            # 获取风格配置
-            style_config = self.style_registry.styles[style_id]
-            
-            # 创建工作流处理器实例
-            workflow_processor = UniversalStyleTransformWorkflow(style_id, style_config)
+            # 从注册表获取已创建的工作流处理器实例
+            workflow_processor = self.style_registry.get_workflow(style_id)
+            if not workflow_processor:
+                raise ValueError(f"无法为风格 {style_id} 获取工作流处理器")
             
             # 更新预估时间
             task_data.estimated_remaining = workflow_processor.get_estimated_time({"input_image_path": input_image_path})
