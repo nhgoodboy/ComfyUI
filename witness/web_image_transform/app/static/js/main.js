@@ -29,8 +29,8 @@ document.addEventListener('DOMContentLoaded', () => {
             styleSelect.innerHTML = '<option value="" disabled selected>选择一种艺术风格</option>';
             styles.forEach(style => {
                 const option = document.createElement('option');
-                option.value = style.name;
-                option.textContent = style.display_name;
+                option.value = style.id;
+                option.textContent = style.name;
                 styleSelect.appendChild(option);
             });
         } catch (error) {
@@ -39,10 +39,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // 生成唯一的客户端ID用于WebSocket通信
+    const clientId = `web-client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     // 2. 初始化WebSocket
     function setupWebSocket() {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        socket = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+        // 从模板中注入的全局变量获取主机地址，如果不存在则回退到当前位置
+        const wsHost = window.WEBSOCKET_HOST || window.location.host;
+        const wsUrl = `${wsProtocol}//${wsHost}/ws/${clientId}`;
+        
+        console.log(`Attempting to connect WebSocket to: ${wsUrl}`);
+        socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
             console.log('WebSocket connection established.');
@@ -68,30 +76,41 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateStatus(data) {
         statusCard.style.display = 'block';
         
-        if (data.status === 'processing' && data.progress) {
-            const progress = parseFloat(data.progress);
-            progressFill.style.width = `${progress}%`;
-            progressText.textContent = `${Math.round(progress)}%`;
-            taskInfo.textContent = data.message || '正在处理中...';
-        } else if (data.status === 'completed' && data.image_url) {
-            progressFill.style.width = `100%`;
-            progressText.textContent = `100%`;
-            taskInfo.textContent = '处理完成！';
-            
-            resultCard.style.display = 'block';
-            originalImage.src = data.original_image_url;
-            resultImage.src = data.image_url;
-            downloadLink.href = data.image_url;
-            
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-magic"></i> 再次转换';
-
-        } else if (data.status === 'error') {
-            taskInfo.textContent = `错误: ${data.message}`;
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-magic"></i> 重新尝试';
-        } else {
-             taskInfo.textContent = data.message || '等待任务开始...';
+        switch (data.status) {
+            case 'UPLOADING':
+            case 'UPLOADED':
+            case 'QUEUED':
+                progressFill.style.width = '5%';
+                progressText.textContent = '5%';
+                taskInfo.textContent = data.message || '正在准备...';
+                break;
+            case 'PROCESSING':
+                const progress = parseFloat(data.progress || 0) * 100;
+                progressFill.style.width = `${progress}%`;
+                progressText.textContent = `${Math.round(progress)}%`;
+                taskInfo.textContent = data.message || '正在处理中...';
+                break;
+            case 'COMPLETED':
+                progressFill.style.width = '100%';
+                progressText.textContent = '100%';
+                taskInfo.textContent = '处理完成！';
+                
+                if (data.result && data.result.output_files && data.result.output_files.length > 0) {
+                    resultCard.style.display = 'block';
+                    resultImage.src = data.result.output_files[0].url;
+                    downloadLink.href = data.result.output_files[0].url;
+                }
+                
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-magic"></i> 再次转换';
+                break;
+            case 'FAILED':
+                taskInfo.textContent = `错误: ${data.message}`;
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-magic"></i> 重新尝试';
+                break;
+            default:
+                taskInfo.textContent = data.message || '等待任务开始...';
         }
     }
 
@@ -128,9 +147,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData();
         formData.append('image', imageInput.files[0]);
         formData.append('style_id', styleSelect.value);
+        formData.append('client_id', clientId);
 
         try {
-            const response = await fetch('/api/transform/', {
+            const response = await fetch('/api/transform', {
                 method: 'POST',
                 body: formData,
             });

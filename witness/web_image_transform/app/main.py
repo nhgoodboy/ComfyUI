@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
-import asyncio
 from pathlib import Path
 import time
 
@@ -23,18 +22,22 @@ app = FastAPI(
 # 添加CORS中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源
+    allow_origins=[
+        f"http://{settings.PUBLIC_HOST}:{settings.APP_PORT}",
+        "http://127.0.0.1:8080",
+        "http://localhost:8080",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # 添加可信主机中间件
-if not settings.DEBUG:
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=["localhost", "127.0.0.1", settings.APP_HOST]
-    )
+# if not settings.DEBUG:
+#     app.add_middleware(
+#         TrustedHostMiddleware,
+#         allowed_hosts=[settings.PUBLIC_HOST, "localhost", "127.0.0.1"]
+#     )
 
 # 添加会话中间件，用于区分不同浏览器用户
 # 注意：SESSION_SECRET_KEY在生产环境中必须是一个长而随机的字符串
@@ -58,10 +61,12 @@ app.include_router(transform_router)
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """主页"""
+    websocket_host = f"{settings.PUBLIC_HOST}:{settings.APP_PORT}"
     return templates.TemplateResponse("index.html", {
         "request": request,
         "app_name": settings.APP_NAME,
-        "app_version": settings.APP_VERSION
+        "app_version": settings.APP_VERSION,
+        "websocket_host": websocket_host
     })
 
 # 健康检查路由
@@ -162,7 +167,7 @@ def run_dev_server():
     uvicorn.run(
         "app.main:app",
         host=settings.APP_HOST,
-        port=settings.PORT,
+        port=settings.APP_PORT,
         reload=settings.DEBUG,
         log_level="info" if settings.DEBUG else "warning"
     )

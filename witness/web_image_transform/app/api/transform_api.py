@@ -1,21 +1,13 @@
 import uuid
 from fastapi import APIRouter, Request, UploadFile, File, Form, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse
 
 from app.services.transform_service import transform_service, manager
 
 # 创建API路由
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
-@router.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    """渲染主页面。"""
-    # 确保每个浏览器会话都有一个唯一的ID
-    if "session_id" not in request.session:
-        request.session["session_id"] = str(uuid.uuid4())
-    return templates.TemplateResponse("index.html", {"request": request})
+
 
 @router.get("/api/styles")
 async def get_styles(request: Request):
