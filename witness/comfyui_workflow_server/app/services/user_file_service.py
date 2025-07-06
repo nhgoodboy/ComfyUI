@@ -10,7 +10,7 @@ import time
 import shutil
 from typing import Dict, List, Optional
 from pathlib import Path
-from ..models.user_models import UserFileInfo
+from ..models.api_models import UserFileInfo
 import logging
 
 logger = logging.getLogger(__name__)

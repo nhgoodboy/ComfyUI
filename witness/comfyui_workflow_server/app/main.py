@@ -40,7 +40,7 @@ from .services.jwt_service import JWTService, init_jwt_service, get_jwt_service
 from .utils.crypto_utils import CryptoUtils, init_crypto_utils, get_crypto_utils
 
 # 服务实例将在lifespan中创建并附加到app.state
-from .models.api_models import HealthResponse
+from .models.api_models import HealthResponse, ApiResponse
 
 # 日志将在lifespan中配置
 logger = logging.getLogger(__name__)
@@ -49,92 +49,83 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # --- 1. 初始化配置 ---
+    logger.info("应用启动流程开始...")
     settings = get_settings()
+    logger.info("配置加载完成。")
     
     # --- 2. 配置日志 ---
     logging.config.dictConfig(settings.get_logging_config())
+    logger.info("日志配置完成。")
     
     try:
         # --- 3. 启动时初始化 ---
-        logger.info("=== ComfyUI工作流服务器启动 ===")
-        logger.info(f"应用模式: {'开发' if settings.debug else '生产'}")
+        logger.info("服务初始化开始...")
         
-        # --- 4. 配置验证 ---
-        if not validate_config(settings):
-            raise RuntimeError("配置验证失败")
-        
-        # --- 5. 初始化服务 ---
-        app.state.settings = settings
-        
-        # 服务初始化
-        logger.info("初始化服务...")
-        
-        # 实例化所有服务
+        # # 初始化数据库
+        # logger.debug("正在初始化数据库...")
+        # await init_db()
+        # logger.info("数据库初始化完成。")
+
+        # 初始化服务
+        logger.debug("正在初始化 ComfyUI 服务...")
         comfyui_service = ComfyUIService()
+        await comfyui_service.initialize()
+        logger.info("ComfyUI 服务初始化完成。")
+
+        logger.debug("正在初始化样式注册表...")
+        style_registry = StyleRegistry(config_path=settings.style_config_path)
+        style_registry.load_styles()
+        logger.info("样式注册表初始化完成。")
+
+        logger.debug("正在初始化用户文件服务...")
         user_file_service = UserFileService(
             base_upload_dir=settings.storage.uploads_dir,
             base_output_dir=settings.storage.outputs_dir
         )
-        style_registry = StyleRegistry(
-            config_file=str(settings.storage.configs_dir / "style_configs.yaml"),
-            comfyui_service=comfyui_service
-        )
+        logger.info("用户文件服务初始化完成。")
+        
+        logger.debug("正在初始化用户任务服务...")
         user_task_service = UserTaskService(
-            comfyui_service=comfyui_service, 
+            comfyui_service=comfyui_service,
             style_registry=style_registry
         )
+        logger.info("用户任务服务初始化完成。")
+        
+        logger.debug("正在初始化JWT服务...")
+        jwt_service = JWTService(secret_key=settings.security.jwt_secret_key)
+        logger.info("JWT服务初始化完成。")
+        
+        logger.debug("正在初始化用户服务...")
         user_service = UserService()
-        style_service = StyleService(style_registry=style_registry)
-        
-        # 初始化需要密钥的服务
-        init_crypto_utils(settings.security.api_secret_key)
-        crypto_utils = get_crypto_utils()
-        init_jwt_service(settings.security.jwt_secret_key, settings.security.token_expiry_minutes)
-        jwt_service = get_jwt_service()
+        logger.info("用户服务初始化完成。")
 
-        await comfyui_service.initialize()
-        
-        # 将服务实例附加到app.state
+        # --- 4. 挂载服务到 app.state ---
+        logger.debug("正在将服务挂载到应用状态...")
         app.state.comfyui_service = comfyui_service
+        app.state.style_registry = style_registry
         app.state.user_file_service = user_file_service
         app.state.user_task_service = user_task_service
-        app.state.user_service = user_service
-        app.state.style_service = style_service
         app.state.jwt_service = jwt_service
-        app.state.crypto_utils = crypto_utils
-        app.state.style_registry = style_registry
-
-        logger.info("服务初始化完成")
+        app.state.user_service = user_service
+        logger.info("服务挂载完成。")
         
-        style_registry.reload_styles()
-        style_count = style_registry.get_style_count()
-        logger.info(f"成功加载 {style_count} 个风格")
-
-        settings.storage.uploads_dir.mkdir(exist_ok=True)
-        settings.storage.outputs_dir.mkdir(exist_ok=True)
-        
-        logger.info("业务服务初始化完成")
-        
-        security_summary = settings.security.get_security_summary()
-        logger.info(f"安全配置: {security_summary}")
-        
-        logger.info("应用启动完成 - 所有安全防护已激活")
-        
-        # 启动后台任务
-        # ... existing code ...
-        
+        logger.info("应用启动流程成功完成。")
         yield
         
-        # 应用关闭时清理资源
-        if hasattr(app.state, 'comfyui_service'):
-            await app.state.comfyui_service.close()
-
     except Exception as e:
-        logger.error(f"应用启动失败: {e}")
-        raise
+        logger.critical(f"应用启动失败: {e}", exc_info=True)
+        # 可以在这里添加清理逻辑
+        
     finally:
-        # 清理资源
-        logger.info("应用正在关闭...")
+        # --- 5. 关闭时清理 ---
+        logger.info("应用关闭流程开始...")
+        if hasattr(app.state, 'comfyui_service') and app.state.comfyui_service:
+            await app.state.comfyui_service.close()
+            logger.info("ComfyUI 服务已关闭。")
+        
+        # await close_db()
+        # logger.info("数据库连接已关闭。")
+        logger.info("应用关闭流程完成。")
 
 # 在lifespan之外获取配置，用于FastAPI应用和中间件的初始化
 # get_settings() 是带缓存的，所以不会重复创建实例
@@ -292,40 +283,13 @@ async def security_info():
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """全局异常处理"""
-    client_ip = request.headers.get("x-forwarded-for", request.client.host)
-    logger.error(f"全局异常: {client_ip} - {request.method} {request.url.path} - {str(exc)}", exc_info=True)
-    
+    """全局异常处理器"""
+    logger.error(f"未处理的异常: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={
-            "success": False,
-            "error": "服务器内部错误",
-            "message": str(exc) if settings.debug else "请联系管理员",
-            "timestamp": time.time(),
-            "version": settings.version
-        }
-    )
-
-def run_server():
-    """启动服务器"""
-    # 生产模式启动提示
-    if settings.is_production():
-        logger.warning("生产模式启动 - 确保已配置正确的安全密钥")
-        logger.warning("请确保以下环境变量已正确设置:")
-        logger.warning("- API_SECRET_KEY")
-        logger.warning("- JWT_SECRET_KEY")
-        logger.warning("- ALLOWED_IPS")
-    
-    # 启动服务器
-    uvicorn.run(
-        "app.main:app",
-        host=settings.host,
-        port=settings.port,
-        log_level=settings.log_level.lower(),
-        reload=settings.debug,
-        workers=settings.workers if settings.is_production() else 1
-    )
-
-if __name__ == "__main__":
-    run_server() 
+        content=ApiResponse(
+            success=False, 
+            error="Internal Server Error",
+            data=None
+        ).model_dump()
+    ) 

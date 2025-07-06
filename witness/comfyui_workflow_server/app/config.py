@@ -219,6 +219,9 @@ class AppConfig:
         self.comfyui = ComfyUIConfig()
         self.storage = StorageConfig()
         
+        # 风格配置
+        self.style_config_path = self.storage.configs_dir / "style_configs.yaml"
+        
         # 应用信息
         self.app_name = "ComfyUI Workflow Server"
         self.version = "2.0.0"

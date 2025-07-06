@@ -14,7 +14,7 @@ from pathlib import Path
 from ...models.api_models import UploadFileResponse, ApiResponse, UserFilesResponse, UserFileInfo
 from ...models.user_models import APIUser
 from ...services.user_file_service import UserFileService
-from .auth import get_current_user
+from .auth import get_current_user, get_admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -36,36 +36,31 @@ async def upload_file(
     - 支持的格式: .jpg, .jpeg, .png, .gif, .bmp, .webp
     """
     user_file_service: UserFileService = request.app.state.user_file_service
+    
+    if file.filename is None:
+        raise HTTPException(status_code=400, detail="缺少文件名")
+
+    file_extension = Path(file.filename).suffix.lower()
+    if file_extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的文件类型: {file_extension}. 支持的类型: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+    
+    file_content = await file.read()
+    if len(file_content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"文件过大: {len(file_content) / 1024 / 1024:.2f} MB. 最大允许: {MAX_FILE_SIZE / 1024 / 1024} MB"
+        )
+        
     try:
-        # 验证文件扩展名
-        file_extension = Path(file.filename).suffix.lower()
-        if file_extension not in ALLOWED_EXTENSIONS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的文件类型: {file_extension}. 支持的类型: {', '.join(ALLOWED_EXTENSIONS)}"
-            )
-        
-        # 读取文件内容
-        file_content = await file.read()
-        
-        # 验证文件大小
-        if len(file_content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"文件过大: {len(file_content) / 1024 / 1024:.2f} MB. 最大允许: {MAX_FILE_SIZE / 1024 / 1024} MB"
-            )
-        
-        # 使用用户文件服务保存文件
         file_info = await user_file_service.save_upload_file(
             user_id=user.username,
             file_content=file_content,
             filename=file.filename
         )
-        
         return file_info
-        
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"文件上传失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="文件上传时发生内部错误")
@@ -80,6 +75,7 @@ def list_user_files(
     user_file_service: UserFileService = request.app.state.user_file_service
     files = user_file_service.list_user_files(user.username, limit)
     return UserFilesResponse(
+        success=True,
         user_id=user.username,
         files=files,
         total=len(files)
@@ -109,57 +105,48 @@ def delete_user_file(
     success = user_file_service.delete_user_file(user.username, file_id)
     if not success:
         raise HTTPException(status_code=404, detail="文件删除失败，可能文件不存在或无权访问")
-    return ApiResponse(message=f"文件 {file_id} 已成功删除")
+    return ApiResponse(success=True, data={"message": f"文件 {file_id} 已成功删除"}, error=None)
 
-@router.post("/cleanup", response_model=ApiResponse)
-async def cleanup_old_files(max_age_hours: int = 24, user_id: str = Depends(get_current_user_id)):
-    """清理用户过期文件"""
+@router.post("/cleanup", response_model=ApiResponse, summary="清理所有用户的过期文件 (仅管理员)")
+def cleanup_old_files(
+    request: Request,
+    user: APIUser = Depends(get_admin_user),
+    max_age_hours: int = 24
+):
+    """
+    清理系统中所有超过指定小时数的旧文件。
+    这是一个管理员权限的操作。
+    """
+    user_file_service: UserFileService = request.app.state.user_file_service
     try:
-        # 管理员权限检查可以在这里添加
-        # 现在只允许用户清理自己的文件
+        # 注意: service中的cleanup_old_files是全局的
         user_file_service.cleanup_old_files(max_age_hours)
-        
+        logger.info(f"管理员 '{user.username}' 触发了文件清理。")
         return ApiResponse(
             success=True,
-            data={
-                "message": f"清理完成，清理了 {max_age_hours} 小时前的过期文件",
-                "max_age_hours": max_age_hours
-            }
+            data={"message": f"清理任务已成功触发，将清理超过 {max_age_hours} 小时的文件。"},
+            error=None
         )
-        
     except Exception as e:
-        logger.error(f"清理文件失败: {user_id} - {e}")
-        return ApiResponse(success=False, error=str(e))
+        logger.error(f"管理员 '{user.username}' 清理文件失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="清理文件时发生内部错误")
 
-@router.get("/stats", response_model=ApiResponse)
-async def get_user_file_stats(user_id: str = Depends(get_current_user_id)):
-    """获取用户文件统计"""
+@router.get("/stats", response_model=ApiResponse, summary="获取当前用户的文件统计信息")
+def get_user_file_stats(
+    request: Request,
+    user: APIUser = Depends(get_current_user)
+):
+    """获取当前认证用户的文件总数和存储使用情况。"""
+    user_file_service: UserFileService = request.app.state.user_file_service
     try:
-        storage_used = user_file_service.get_user_storage_usage(user_id)
-        files = user_file_service.list_user_files(user_id, 1000)
-        
-        return ApiResponse(
-            success=True,
-            data={
-                "user_id": user_id,
-                "total_files": len(files),
-                "storage_used": storage_used,
-                "storage_used_mb": round(storage_used / 1024 / 1024, 2)
-            }
-        )
-        
+        files = user_file_service.list_user_files(user.username, limit=10000) # Use a large limit to get all files
+        storage_used = user_file_service.get_user_storage_usage(user.username)
+        stats = {
+            "total_files": len(files),
+            "storage_used_bytes": storage_used,
+            "storage_used_mb": round(storage_used / (1024 * 1024), 2)
+        }
+        return ApiResponse(success=True, data=stats, error=None)
     except Exception as e:
-        logger.error(f"获取用户文件统计失败: {user_id} - {e}")
-        return ApiResponse(success=False, error=str(e))
-
-@router.get("/", response_model=UserFilesResponse)
-async def list_user_files(request: Request, user_id: str = Depends(get_current_user_id), limit: int = 100):
-    """获取用户文件列表"""
-    user_file_service = request.app.state.user_file_service
-    # ... (rest of the function)
-
-@router.delete("/{file_id}", response_model=ApiResponse)
-async def delete_user_file(request: Request, file_id: str, user_id: str = Depends(get_current_user_id)):
-    """删除文件"""
-    user_file_service = request.app.state.user_file_service
-    # ... (rest of the function) 
+        logger.error(f"获取用户 '{user.username}' 文件统计失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="获取统计信息时发生内部错误") 

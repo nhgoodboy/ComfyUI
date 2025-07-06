@@ -3,42 +3,77 @@
 ComfyUI工作流服务器启动脚本
 """
 
-import os
 import sys
-import argparse
-import uvicorn
 from pathlib import Path
+import argparse
+import logging
+import logging.config
+import uvicorn
 from dotenv import load_dotenv
 
-# 在读取任何配置之前加载.env文件
-load_dotenv()
+# 将项目根目录添加到Python路径
+# 假设start.py在项目根目录下，所以app可以直接导入
+sys.path.insert(0, str(Path(__file__).parent))
+
+from app.main import app
+from app.config import get_settings, validate_config, get_environment_info, AppConfig
+
+# 在导入任何其他模块之前配置基本日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def main():
-    """主函数"""
-    # 将项目根目录添加到sys.path，以便uvicorn可以找到app模块
-    # 这是必要的，因为我们是从脚本运行，而不是作为模块
-    ROOT_DIR = Path(__file__).resolve().parent
-    if str(ROOT_DIR) not in sys.path:
-        sys.path.append(str(ROOT_DIR))
-
-    parser = argparse.ArgumentParser(description='ComfyUI工作流服务器')
-    parser.add_argument('--host', type=str, default=os.getenv('HOST', '0.0.0.0'), help='监听地址')
-    parser.add_argument('--port', type=int, default=int(os.getenv('PORT', '8000')), help='监听端口')
-    parser.add_argument('--workers', type=int, default=int(os.getenv('WORKERS', '1')), help='工作进程数')
-    parser.add_argument('--reload', action='store_true', help='启用自动重载（开发模式）')
-    
+    """主函数，负责配置加载和服务器启动"""
+    parser = argparse.ArgumentParser(description="ComfyUI Workflow Server")
+    parser.add_argument("--config", type=str, default=None, help="配置文件路径 (.env)")
+    parser.add_argument("--host", type=str, default=None, help="覆盖服务器主机")
+    parser.add_argument("--port", type=int, default=None, help="覆盖服务器端口")
     args = parser.parse_args()
 
-    # 应用初始化和日志记录现在完全由 app/main.py 的 lifespan 管理
-    # 这个脚本只负责传递命令行参数并启动uvicorn
+    # 如果提供了配置文件，加载它
+    if args.config:
+        if Path(args.config).is_file():
+            load_dotenv(args.config, override=True)
+            logger.info(f"从 {args.config} 加载配置")
+        else:
+            logger.warning(f"配置文件 {args.config} 未找到，将使用环境变量。")
     
+    # 获取配置
+    settings: AppConfig = get_settings()
+    
+    # 重新配置日志系统
+    logging.config.dictConfig(settings.get_logging_config())
+
+    # 打印环境和配置信息
+    logger.info("🚀 环境信息:")
+    env_info = get_environment_info()
+    for key, value in env_info.items():
+        logger.info(f"  - {key}: {value}")
+    
+    logger.info("📋 验证配置...")
+    if validate_config(settings):
+        logger.info("✅ 配置验证通过。")
+    else:
+        logger.warning("❌ 配置验证失败，请检查环境变量或.env文件。")
+
+    # 命令行参数覆盖配置
+    host = args.host or settings.host
+    port = args.port or settings.port
+    
+    logger.info("🚀 启动服务器...")
+    
+    if settings.is_production():
+        logger.warning("生产模式已激活。请确保所有安全设置都已配置。")
+        logger.warning(f"IP白名单: {settings.security.allowed_ips}")
+        logger.warning(f"CORS源: {settings.security.cors_origins}")
+
     uvicorn.run(
-        "app.main:app",
-        host=args.host,
-        port=args.port,
-        workers=args.workers,
-        reload=args.reload,
-        lifespan="on"
+        app,
+        host=host,
+        port=port,
+        workers=settings.workers if not settings.debug else 1,
+        reload=settings.debug,
+        log_level=settings.log_level.lower(),
     )
 
 if __name__ == "__main__":
