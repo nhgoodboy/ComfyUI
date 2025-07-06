@@ -8,6 +8,10 @@ import sys
 import argparse
 import uvicorn
 from pathlib import Path
+from dotenv import load_dotenv
+
+# 在读取任何配置之前加载.env文件
+load_dotenv()
 
 def main():
     """主函数"""
