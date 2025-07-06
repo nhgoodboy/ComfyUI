@@ -13,51 +13,42 @@ import argparse
 import sys
 import os
 from pathlib import Path
+import uvicorn
+from dotenv import load_dotenv
 
 # 添加项目根目录到Python路径
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 def main():
-    """主函数"""
-    parser = argparse.ArgumentParser(description="网页版图像风格变换测试平台")
-    parser.add_argument("--host", default="0.0.0.0", help="服务器主机地址")
-    parser.add_argument("--port", type=int, default=8080, help="服务器端口")
-    parser.add_argument("--prod", action="store_true", help="生产模式（关闭调试和重载）")
-    parser.add_argument("--workers", type=int, default=1, help="工作进程数（生产模式）")
-    
-    args = parser.parse_args()
-    
-    # 设置环境变量
-    os.environ["HOST"] = args.host
-    os.environ["PORT"] = str(args.port)
-    
-    if args.prod:
-        os.environ["DEBUG"] = "false"
-        print(f"🚀 启动生产服务器: http://{args.host}:{args.port}")
-        print(f"📊 工作进程数: {args.workers}")
-        
-        import uvicorn
-        uvicorn.run(
-            "app.main:app",
-            host=args.host,
-            port=args.port,
-            workers=args.workers,
-            log_level="info"
-        )
-    else:
-        os.environ["DEBUG"] = "true"
-        print(f"🔧 启动开发服务器: http://{args.host}:{args.port}")
-        print("📝 调试模式已启用，代码变更将自动重载")
-        
-        import uvicorn
-        uvicorn.run(
-            "app.main:app",
-            host=args.host,
-            port=args.port,
-            reload=True,
-            log_level="debug"
-        )
+    """
+    加载.env文件并启动uvicorn服务器
+    """
+    # 在应用启动前从.env文件加载环境变量
+    # 这确保了app.config中的settings对象能获取到正确的值
+    print("正在从 .env 文件加载配置...")
+    load_dotenv()
+
+    # 从环境变量（或默认值）中获取主机和端口
+    # 注意：此时settings对象还未在主流程中实例化，因此直接从os.environ获取
+    host = os.getenv("APP_HOST", "0.0.0.0")
+    port = int(os.getenv("APP_PORT", 8080))
+    log_level = os.getenv("LOG_LEVEL", "info").lower()
+    debug_mode = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
+
+    print(f"准备启动服务器于 http://{host}:{port}")
+    print(f"调试模式: {'开启' if debug_mode else '关闭'}")
+    print(f"日志级别: {log_level}")
+
+    # 启动Uvicorn服务器
+    # reload=debug_mode 可以在开发时实现代码热重载
+    uvicorn.run(
+        "app.main:app",
+        host=host,
+        port=port,
+        log_level=log_level,
+        reload=debug_mode
+    )
 
 if __name__ == "__main__":
     try:

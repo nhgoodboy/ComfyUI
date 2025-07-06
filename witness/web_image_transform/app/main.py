@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 import asyncio
 from pathlib import Path
@@ -13,16 +14,16 @@ from .config import settings
 from .api.web_api import router as web_api_router
 from .api.websocket import websocket_endpoint, start_task_monitor
 from .utils.logger import get_logger, log_request, log_response
+from app.api.transform_api import router as transform_router
 
 # 初始化日志
 logger = get_logger("main")
 
 # 创建FastAPI应用
 app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    description="网页版图像风格变换测试平台",
-    debug=settings.DEBUG
+    title="Web Image Transform",
+    description="一个安全代理客户端，用于与ComfyUI工作流服务器交互。",
+    version="2.0.0"
 )
 
 # 添加CORS中间件
@@ -40,6 +41,13 @@ if not settings.DEBUG:
         TrustedHostMiddleware,
         allowed_hosts=["localhost", "127.0.0.1", settings.HOST]
     )
+
+# 添加会话中间件，用于区分不同浏览器用户
+# 注意：SESSION_SECRET_KEY在生产环境中必须是一个长而随机的字符串
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SESSION_SECRET_KEY
+)
 
 # 设置静态文件和模板
 BASE_DIR = Path(__file__).resolve().parent
@@ -70,6 +78,7 @@ async def log_requests(request: Request, call_next):
 
 # 包含API路由
 app.include_router(web_api_router)
+app.include_router(transform_router)
 
 # 主页路由
 @app.get("/", response_class=HTMLResponse)
@@ -131,7 +140,7 @@ async def download_file(filename: str):
 # 应用启动事件
 @app.on_event("startup")
 async def startup_event():
-    """应用启动时执行"""
+    """应用启动事件。"""
     logger.info(f"启动 {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"调试模式: {settings.DEBUG}")
     logger.info(f"监听地址: {settings.HOST}:{settings.PORT}")
@@ -154,16 +163,24 @@ async def startup_event():
     
     logger.info("应用启动完成")
 
+    print("Web Image Transform 应用启动...")
+    print(f"连接到主服务器: {settings.COMFYUI_WORKFLOW_SERVER_URL}")
+    if settings.SESSION_SECRET_KEY == "your-web-app-session-secret-key":
+        print("\n⚠️ 警告: 正在使用默认的 SESSION_SECRET_KEY。")
+        print("为了安全，请在 .env 文件中设置一个随机的密钥。\n")
+
 # 应用关闭事件
 @app.on_event("shutdown")
 async def shutdown_event():
-    """应用关闭时执行"""
+    """应用关闭事件。"""
     logger.info("应用正在关闭...")
     
     # 这里可以添加清理逻辑
     # 例如：关闭数据库连接、清理临时文件等
     
     logger.info("应用已关闭")
+
+    print("Web Image Transform 应用关闭。")
 
 # 异常处理
 @app.exception_handler(404)

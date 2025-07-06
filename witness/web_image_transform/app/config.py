@@ -1,19 +1,30 @@
 import os
 from typing import List
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    """网页版图生图系统配置"""
-    
+    """
+    应用配置类，使用pydantic-settings自动加载环境变量
+    """
+    # .env 文件路径和编码配置
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding='utf-8')
+
+    # ComfyUI工作流服务器连接配置
+    COMFYUI_WORKFLOW_SERVER_URL: str = "http://127.0.0.1:8000"
+    API_KEY: str = "your-secret-api-key-here"
+    API_SECRET_KEY: str = "your-64-char-api-secret-key-change-in-production"
+
+    # Web应用自身配置
+    APP_HOST: str = "0.0.0.0"
+    APP_PORT: int = 8080
+    SESSION_SECRET_KEY: str = "your-web-app-session-secret-key"
+    LOG_LEVEL: str = "INFO"
+    DEBUG: bool = False
+
     # 应用基本配置
     APP_NAME: str = Field(default="Web Image Transform", description="应用名称")
     APP_VERSION: str = Field(default="1.0.0", description="应用版本")
-    DEBUG: bool = Field(default=True, description="调试模式")
-    
-    # 服务器配置
-    HOST: str = Field(default="0.0.0.0", description="服务器地址")
-    PORT: int = Field(default=8080, description="服务器端口")
     
     # 风格变换API配置
     STYLE_API_BASE_URL: str = Field(
@@ -31,7 +42,6 @@ class Settings(BaseSettings):
     )
     
     # 日志配置
-    LOG_LEVEL: str = Field(default="INFO", description="日志级别")
     LOG_FORMAT: str = Field(
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="日志格式"
@@ -47,13 +57,8 @@ class Settings(BaseSettings):
     
     # 用户配置
     DEFAULT_USER_ID: str = Field(default="web_user", description="默认用户ID")
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
 
-# 创建全局配置实例
+# 创建一个全局可用的配置实例
 settings = Settings()
 
 # 确保目录存在
