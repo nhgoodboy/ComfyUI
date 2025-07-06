@@ -11,6 +11,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, List
+import logging.config
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,10 +52,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     
     # --- 2. 配置日志 ---
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    logging.config.dictConfig(settings.get_logging_config())
     
     try:
         # --- 3. 启动时初始化 ---

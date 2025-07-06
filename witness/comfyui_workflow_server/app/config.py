@@ -212,7 +212,7 @@ class AppConfig:
     
     # 日志配置
         self.log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-        self.log_file = os.getenv("LOG_FILE", "app.log")
+        self.log_file = os.getenv("LOG_FILE")
         
         # 子配置
         self.security = SecurityConfig()
@@ -236,6 +236,52 @@ class AppConfig:
         logger.info(f"ComfyUI: {self.comfyui.base_url}")
         logger.info(f"安全配置: {self.security.get_security_summary()}")
     
+    def get_logging_config(self) -> Dict[str, Any]:
+        """获取日志配置字典"""
+        log_config = {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "default": {
+                    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                    "datefmt": "%Y-%m-%d %H:%M:%S",
+                },
+            },
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "default",
+                    "level": self.log_level,
+                },
+            },
+            "loggers": {
+                "": {  # Root logger
+                    "handlers": ["console"],
+                    "level": self.log_level,
+                    "propagate": True,
+                },
+                "uvicorn.error": {
+                    "level": "INFO",
+                },
+                "uvicorn.access": {
+                    "handlers": ["console"],
+                    "level": "INFO",
+                    "propagate": False,
+                },
+            },
+        }
+        if self.log_file:
+            log_config["handlers"]["file"] = {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "default",
+                "filename": self.log_file,
+                "maxBytes": 1024 * 1024 * 5,  # 5 MB
+                "backupCount": 5,
+                "level": self.log_level,
+            }
+            log_config["loggers"][""]["handlers"].append("file")
+        return log_config
+
     def get_fastapi_config(self) -> Dict[str, Any]:
         """获取FastAPI配置"""
         return {
@@ -251,26 +297,6 @@ class AppConfig:
     def is_production(self) -> bool:
         """是否生产环境"""
         return not self.debug
-    
-    def get_logging_config(self) -> Dict[str, Any]:
-        """获取日志配置"""
-        return {
-            "level": self.log_level,
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            "handlers": [
-                {
-                    "class": "logging.StreamHandler",
-                    "level": self.log_level,
-                    "formatter": "default"
-                },
-                {
-                    "class": "logging.FileHandler",
-                    "level": self.log_level,
-                    "filename": self.log_file,
-                    "formatter": "default"
-                }
-            ]
-        }
 
 
 @lru_cache(maxsize=1)
