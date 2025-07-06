@@ -13,8 +13,8 @@ logger = get_logger("transform_service")
 
 # 支持的风格类型
 SUPPORTED_STYLES = {
-    "clay": "黏土风格 - 可爱、3D、立体效果"
-    # 其他风格待实现...
+    "clay": "黏土风格 - 可爱、3D、立体效果",
+    "anime": "动漫风格 - 鲜艳色彩、漫画效果"
 }
 
 class TransformService:
@@ -68,16 +68,24 @@ class TransformService:
                 logger.warning(f"风格类型 '{style_type}' 暂不支持，将使用黏土风格")
                 style_type = "clay"
             
-            # 使用新的专门化工作流
+            # 根据风格类型选择对应的工作流
+            workflow_mapping = {
+                "clay": "clay_style_transform",
+                "anime": "anime_style_transform"
+            }
+            
+            workflow_id = workflow_mapping[style_type]
+            
+            # 使用专门化工作流
             payload = {
-                "workflow_id": "clay_style_transform",
+                "workflow_id": workflow_id,
                 "parameters": {
                     "image_url": image_url
                 }
             }
             
             async with self.session.post(
-                f"{self.api_base_url}/api/v1/workflows/clay_style_transform/execute",
+                f"{self.api_base_url}/api/v1/workflows/{workflow_id}/execute",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
