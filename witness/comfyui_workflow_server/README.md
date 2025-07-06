@@ -294,9 +294,9 @@ GET /api/v1/user/{user_id}/tasks?limit=50
 
 ## 工作流配置
 
-系统使用 `app/workflows/style_change.json` 作为基础工作流模板。如果您有自定义的ComfyUI工作流，请：
+系统使用 `workflows/style_change.json` 作为基础工作流模板。如果您有自定义的ComfyUI工作流，请：
 
-1. 将工作流JSON文件放置在 `app/workflows/` 目录
+1. 将工作流JSON文件放置在 `workflows/` 目录
 2. 修改 `app/services/comfyui_service.py` 中的 `customize_workflow` 方法
 3. 确保工作流包含必要的节点：LoadImage、CLIPTextEncode、KSampler、SaveImage
 

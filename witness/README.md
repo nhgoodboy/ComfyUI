@@ -48,8 +48,9 @@ graph TD
 witness/
 ├── web_image_transform/    # Web应用前端和服务
 ├── comfyui_workflow_server/ # 通用工作流服务器
+│   ├── app/                # 应用代码
+│   └── workflows/          # ComfyUI工作流模板
 ├── comfyui_client/         # ComfyUI的Python客户端
-├── workflows/              # ComfyUI工作流模板
 ├── docs/                   # 项目文档
 └── requirements.txt        # 项目总依赖
 ```
