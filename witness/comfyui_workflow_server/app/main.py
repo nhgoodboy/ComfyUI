@@ -29,21 +29,14 @@ from .middleware.security_middleware import SecurityMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
 
 # 导入服务类
-from .services import (
-    UserService,
-    ComfyUIService,
-    UserFileService,
-    UserTaskService,
-    StyleService,
-    style_registry
-)
-
-# 导入新添加的模块
+from .core.style_registry import StyleRegistry
+from .services.comfyui_service import ComfyUIService
+from .services.user_file_service import UserFileService
+from .services.user_task_service import UserTaskService
+from .services.user_service import UserService
 from .services.style_service import StyleService
-from .services.jwt_service import JWTService, jwt_service, init_jwt_service
+from .services.jwt_service import JWTService, init_jwt_service, get_jwt_service
 from .utils.crypto_utils import CryptoUtils, init_crypto_utils, get_crypto_utils
-from .core.workflow_registry import workflow_registry
-from .services.user_service import user_service
 
 # 服务实例将在lifespan中创建并附加到app.state
 from .models.api_models import HealthResponse
@@ -74,7 +67,6 @@ async def lifespan(app: FastAPI):
         
         # --- 5. 初始化服务 ---
         app.state.settings = settings
-        app.state.style_registry = style_registry
         
         # 服务初始化
         logger.info("初始化服务...")
@@ -85,28 +77,33 @@ async def lifespan(app: FastAPI):
             base_upload_dir=settings.storage.uploads_dir,
             base_output_dir=settings.storage.outputs_dir
         )
+        style_registry = StyleRegistry(str(settings.storage.configs_dir / "style_configs.yaml"))
         user_task_service = UserTaskService(
             comfyui_service=comfyui_service, 
             style_registry=style_registry
         )
+        user_service = UserService()
+        style_service = StyleService(style_registry=style_registry)
         
-        # 初始化加密工具，它将创建并持有一个内部实例
+        # 初始化需要密钥的服务
         init_crypto_utils(settings.security.api_secret_key)
-        # 通过getter获取该实例
         crypto_utils = get_crypto_utils()
+        init_jwt_service(settings.security.jwt_secret_key, settings.security.token_expiry_minutes)
+        jwt_service = get_jwt_service()
+
+        await comfyui_service.initialize()
         
-        # 现在可以将实例附加到app.state
+        # 将服务实例附加到app.state
         app.state.comfyui_service = comfyui_service
         app.state.user_file_service = user_file_service
         app.state.user_task_service = user_task_service
         app.state.user_service = user_service
-        app.state.style_service = StyleService()
+        app.state.style_service = style_service
         app.state.jwt_service = jwt_service
         app.state.crypto_utils = crypto_utils
         app.state.style_registry = style_registry
 
-        init_jwt_service(settings.security.jwt_secret_key, settings.security.token_expiry_minutes)
-        logger.info("安全服务初始化完成")
+        logger.info("服务初始化完成")
         
         style_registry.reload_styles()
         style_count = style_registry.get_style_count()
@@ -125,18 +122,6 @@ async def lifespan(app: FastAPI):
         # 启动后台任务
         # ... existing code ...
         
-        await comfyui_service.initialize()
-        
-        # 将服务实例附加到app.state
-        app.state.comfyui_service = comfyui_service
-        app.state.user_file_service = user_file_service
-        app.state.user_task_service = user_task_service
-        app.state.user_service = user_service
-        app.state.style_service = StyleService()
-        app.state.jwt_service = jwt_service
-        app.state.crypto_utils = crypto_utils
-        app.state.style_registry = style_registry
-
         yield
         
         # 应用关闭时清理资源
@@ -161,16 +146,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 添加统一安全中间件（五层防护）
+# 添加中间件 - 安全第一
 app.add_middleware(
     SecurityMiddleware,
     api_users=settings.security.api_users,
     api_secret_key=settings.security.api_secret_key,
     allowed_ips=settings.security.allowed_ips,
-    signature_timeout=settings.security.signature_timeout,
-    rate_limit_per_ip=settings.security.rate_limit_per_ip,
-    rate_limit_per_user=settings.security.rate_limit_per_user
+    signature_timeout=settings.security.signature_timeout
 )
+app.add_middleware(RateLimitMiddleware)
 
 # 添加CORS中间件（仅在开发模式或配置了CORS源时）
 if settings.debug or settings.security.cors_origins:

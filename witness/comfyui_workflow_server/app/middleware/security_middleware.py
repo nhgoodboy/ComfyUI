@@ -14,12 +14,9 @@ from typing import Set, Dict, Optional
 from collections import defaultdict, deque
 from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 import logging
-
-from comfyui_workflow_server.app.services.jwt_service import get_jwt_service
-from comfyui_workflow_server.app.services.user_service import user_service
-from comfyui_workflow_server.app.utils.crypto_utils import get_crypto_utils
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +59,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         logger.info("统一安全中间件初始化完成")
     
     async def dispatch(self, request: Request, call_next):
-        """五层安全验证"""
+        # Services are now retrieved from the app state within the request
+        settings = request.app.state.settings
+        jwt_service = request.app.state.jwt_service
+        user_service = request.app.state.user_service
+        crypto_utils = request.app.state.crypto_utils
+
         try:
             # 检查排除路径
             if request.url.path in self.excluded_paths:
@@ -97,7 +99,6 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             body_bytes = await request.body()
             body_hash = hashlib.sha256(body_bytes).hexdigest()
             
-            crypto_utils = get_crypto_utils()
             is_valid_signature = crypto_utils.verify_signature(
                 signature=signature,
                 timestamp=timestamp,

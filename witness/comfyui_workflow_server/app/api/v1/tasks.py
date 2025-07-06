@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 @router.get("/{task_id}", response_model=TaskStatusResponse)
-async def get_task_status(task_id: str, user_id: str = Depends(get_current_user_id)):
+async def get_task_status(request: Request, task_id: str, user_id: str = Depends(get_current_user_id)):
     """获取任务状态"""
+    user_task_service = request.app.state.user_task_service
     try:
         task_data = user_task_service.get_user_task(user_id, task_id)
         if not task_data:
@@ -33,8 +34,9 @@ async def get_task_status(task_id: str, user_id: str = Depends(get_current_user_
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{task_id}/result", response_model=TaskResultResponse)
-async def get_task_result(task_id: str, user_id: str = Depends(get_current_user_id)):
+async def get_task_result(request: Request, task_id: str, user_id: str = Depends(get_current_user_id)):
     """获取任务结果"""
+    user_task_service = request.app.state.user_task_service
     try:
         # 首先检查任务是否存在
         task_data = user_task_service.get_user_task(user_id, task_id)
@@ -64,8 +66,9 @@ async def get_task_result(task_id: str, user_id: str = Depends(get_current_user_
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{task_id}", response_model=ApiResponse)
-async def cancel_task(task_id: str, user_id: str = Depends(get_current_user_id)):
+async def cancel_task(request: Request, task_id: str, user_id: str = Depends(get_current_user_id)):
     """取消任务"""
+    user_task_service = request.app.state.user_task_service
     try:
         task_data = user_task_service.get_user_task(user_id, task_id)
         if not task_data:
@@ -86,8 +89,9 @@ async def cancel_task(task_id: str, user_id: str = Depends(get_current_user_id))
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/", response_model=UserTasksResponse)
-async def get_user_tasks(user_id: str = Depends(get_current_user_id), limit: int = Query(100, ge=1, le=1000)):
+async def get_user_tasks(request: Request, user_id: str = Depends(get_current_user_id), limit: int = Query(100, ge=1, le=1000)):
     """获取用户任务列表"""
+    user_task_service = request.app.state.user_task_service
     try:
         tasks = user_task_service.list_user_tasks(user_id, limit)
         return UserTasksResponse(
@@ -101,8 +105,9 @@ async def get_user_tasks(user_id: str = Depends(get_current_user_id), limit: int
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/stats", response_model=ApiResponse)
-async def get_user_task_stats(user_id: str = Depends(get_current_user_id)):
+async def get_user_task_stats(request: Request, user_id: str = Depends(get_current_user_id)):
     """获取用户任务统计"""
+    user_task_service = request.app.state.user_task_service
     try:
         stats = user_task_service.get_user_stats(user_id)
         return ApiResponse(success=True, data=stats)

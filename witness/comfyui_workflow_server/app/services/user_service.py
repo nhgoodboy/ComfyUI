@@ -31,5 +31,5 @@ class UserService:
         """通过API Key获取用户"""
         return self._users.get(api_key)
 
-# 从安全配置中创建全局用户服务实例
-user_service = UserService() 
+# 从安全配置中创建全局用户服务实例 - 这将被移除
+# user_service = UserService() 

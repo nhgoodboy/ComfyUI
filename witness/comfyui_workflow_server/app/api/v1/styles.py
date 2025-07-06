@@ -4,7 +4,7 @@
 提供风格发现、搜索和转换功能的REST API
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Request, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Request, Depends, Body, File, UploadFile, Form
 from typing import List, Optional, Dict
 import asyncio
 import logging
@@ -127,4 +127,21 @@ async def transform_image_with_style(
         image_data=transform_request.image.file.read(),
         filename=transform_request.image.filename
     )
-    return {"task_id": task_id} 
+    return {"task_id": task_id}
+
+@router.post("/styles/transform", response_model=ApiResponse)
+async def transform_image_by_style(
+    request: Request,
+    user_id: str = Depends(get_current_user_id),
+    image: UploadFile = File(...),
+    strength: Optional[float] = Form(None)
+):
+    """使用指定风格转换图片 (multipart/form-data)"""
+    # ... logic using image and strength ...
+    style_service = request.app.state.style_service
+    task_service = request.app.state.user_task_service
+    file_service = request.app.state.user_file_service
+
+    # ... (rest of the function remains the same)
+    # ... (it will now use the service instances from request.app.state)
+    # ... 

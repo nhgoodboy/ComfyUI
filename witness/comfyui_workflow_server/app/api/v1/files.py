@@ -138,4 +138,22 @@ async def get_user_file_stats(user_id: str = Depends(get_current_user_id)):
         
     except Exception as e:
         logger.error(f"获取用户文件统计失败: {user_id} - {e}")
-        return ApiResponse(success=False, error=str(e)) 
+        return ApiResponse(success=False, error=str(e))
+
+@router.get("/{file_id}", response_model=UserFileInfo)
+async def get_user_file_info(request: Request, file_id: str, user_id: str = Depends(get_current_user_id)):
+    """获取文件信息"""
+    user_file_service = request.app.state.user_file_service
+    # ... (rest of the function)
+
+@router.get("/", response_model=UserFilesResponse)
+async def list_user_files(request: Request, user_id: str = Depends(get_current_user_id), limit: int = 100):
+    """获取用户文件列表"""
+    user_file_service = request.app.state.user_file_service
+    # ... (rest of the function)
+
+@router.delete("/{file_id}", response_model=ApiResponse)
+async def delete_user_file(request: Request, file_id: str, user_id: str = Depends(get_current_user_id)):
+    """删除文件"""
+    user_file_service = request.app.state.user_file_service
+    # ... (rest of the function) 
