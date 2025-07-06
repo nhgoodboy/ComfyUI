@@ -11,13 +11,7 @@ from pathlib import Path
 import time
 
 from .config import settings
-from .api.web_api import router as web_api_router
-from .api.websocket import websocket_endpoint, start_task_monitor
-from .utils.logger import get_logger, log_request, log_response
 from app.api.transform_api import router as transform_router
-
-# 初始化日志
-logger = get_logger("main")
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -39,7 +33,7 @@ app.add_middleware(
 if not settings.DEBUG:
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["localhost", "127.0.0.1", settings.HOST]
+        allowed_hosts=["localhost", "127.0.0.1", settings.APP_HOST]
     )
 
 # 添加会话中间件，用于区分不同浏览器用户
@@ -57,27 +51,7 @@ app.mount("/outputs", StaticFiles(directory=settings.OUTPUT_DIR), name="outputs"
 
 templates = Jinja2Templates(directory=BASE_DIR.parent / "templates")
 
-# 请求日志中间件
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """记录HTTP请求日志"""
-    start_time = time.time()
-    request_id = f"req_{int(start_time * 1000)}"
-    
-    # 记录请求开始
-    log_request(request_id, request.method, str(request.url.path))
-    
-    # 处理请求
-    response = await call_next(request)
-    
-    # 记录请求完成
-    duration = time.time() - start_time
-    log_response(request_id, response.status_code, duration)
-    
-    return response
-
 # 包含API路由
-app.include_router(web_api_router)
 app.include_router(transform_router)
 
 # 主页路由
@@ -89,12 +63,6 @@ async def index(request: Request):
         "app_name": settings.APP_NAME,
         "app_version": settings.APP_VERSION
     })
-
-# WebSocket路由
-@app.websocket("/ws")
-async def websocket_route(websocket: WebSocket):
-    """WebSocket连接端点"""
-    await websocket_endpoint(websocket)
 
 # 健康检查路由
 @app.get("/health")
@@ -134,35 +102,22 @@ async def download_file(filename: str):
         return JSONResponse(status_code=404, content={"error": "文件不存在"})
         
     except Exception as e:
-        logger.error(f"下载文件失败: {e}")
         return JSONResponse(status_code=500, content={"error": f"下载失败: {str(e)}"})
 
 # 应用启动事件
 @app.on_event("startup")
 async def startup_event():
     """应用启动事件。"""
-    logger.info(f"启动 {settings.APP_NAME} v{settings.APP_VERSION}")
-    logger.info(f"调试模式: {settings.DEBUG}")
-    logger.info(f"监听地址: {settings.HOST}:{settings.PORT}")
-    
-    # 启动任务监控
-    start_task_monitor()
-    logger.info("任务进度监控已启动")
-    
     # 检查目录
     upload_dir = Path(settings.UPLOAD_DIR)
     output_dir = Path(settings.OUTPUT_DIR)
     
     if not upload_dir.exists():
         upload_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"创建上传目录: {upload_dir}")
     
     if not output_dir.exists():
         output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"创建输出目录: {output_dir}")
     
-    logger.info("应用启动完成")
-
     print("Web Image Transform 应用启动...")
     print(f"连接到主服务器: {settings.COMFYUI_WORKFLOW_SERVER_URL}")
     if settings.SESSION_SECRET_KEY == "your-web-app-session-secret-key":
@@ -173,13 +128,6 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭事件。"""
-    logger.info("应用正在关闭...")
-    
-    # 这里可以添加清理逻辑
-    # 例如：关闭数据库连接、清理临时文件等
-    
-    logger.info("应用已关闭")
-
     print("Web Image Transform 应用关闭。")
 
 # 异常处理
@@ -198,8 +146,6 @@ async def not_found_handler(request: Request, exc):
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
     """500错误处理"""
-    logger.error(f"内部服务器错误: {exc}")
-    
     if request.url.path.startswith("/api/"):
         return JSONResponse(status_code=500, content={"error": "内部服务器错误", "message": str(exc)})
     else:
@@ -215,7 +161,7 @@ def run_dev_server():
     """启动开发服务器"""
     uvicorn.run(
         "app.main:app",
-        host=settings.HOST,
+        host=settings.APP_HOST,
         port=settings.PORT,
         reload=settings.DEBUG,
         log_level="info" if settings.DEBUG else "warning"

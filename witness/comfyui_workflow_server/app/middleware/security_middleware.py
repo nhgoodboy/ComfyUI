@@ -43,7 +43,15 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         self.user_requests: Dict[str, deque] = defaultdict(deque)
         
         # 安全排除路径
-        self.excluded_paths = {"/health"}
+        self.excluded_paths = {
+            "/",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/health",
+            "/favicon.ico",
+        }
+        self.excluded_path_prefixes = {"/static", "/ws"}
         
         logger.info("统一安全中间件初始化完成")
     
@@ -53,6 +61,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             # 检查排除路径
             if request.url.path in self.excluded_paths:
                 return await call_next(request)
+
+            # 检查排除路径前缀
+            for prefix in self.excluded_path_prefixes:
+                if request.url.path.startswith(prefix):
+                    return await call_next(request)
             
             client_ip = self._get_client_ip(request)
             
