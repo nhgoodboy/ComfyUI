@@ -45,7 +45,7 @@ class ComfyUIClient:
         }
         return headers
 
-    async def _make_request(self, method: str, path: str, body: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None, files: Optional[Dict] = None) -> Response:
+    async def _make_request(self, method: str, path: str, data: Optional[Dict[str, str]] = None, body: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None, files: Optional[Dict] = None) -> Response:
         """通用请求方法。"""
         url = f"{self.base_url}{path}"
         
@@ -55,6 +55,9 @@ class ComfyUIClient:
         if files:
             headers.pop('Content-Type', None) # httpx handles this for multipart
             response = await self.client.request(method, url, headers=headers, files=files)
+        elif data:
+            # 发送 x-www-form-urlencoded 数据
+            response = await self.client.request(method, url, headers=headers, data=data)
         elif body:
             response = await self.client.request(method, url, headers=headers, json=body)
         else:
@@ -67,10 +70,19 @@ class ComfyUIClient:
         """为指定用户ID获取JWT令牌。"""
         path = "/api/v1/auth/token"
         method = "POST"
-        body = {"user_id": user_id, "expires_in_minutes": expires_in_minutes}
-        headers = self._get_secure_headers(method, path, body)
+
+        # 服务器需要 x-www-form-urlencoded 格式的数据
+        form_data = {
+            "grant_type": "password",
+            "username": settings.API_USERNAME, # 使用从配置加载的用户名
+            "password": settings.API_KEY       # 使用从配置加载的API密钥
+        }
         
-        response = await self._make_request(method, path, body, headers)
+        # 签名时不需要body，但头部需要Content-Type
+        headers = self._get_secure_headers(method, path, body=None)
+        headers['Content-Type'] = 'application/x-www-form-urlencoded'
+        
+        response = await self._make_request(method, path, data=form_data, headers=headers)
         return response.json()["access_token"]
 
     async def list_styles(self, token: str) -> Dict[str, Any]:

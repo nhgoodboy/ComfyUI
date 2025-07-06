@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # ComfyUI工作流服务器连接配置
     COMFYUI_WORKFLOW_SERVER_URL: str = "http://127.0.0.1:8000"
     API_KEY: str = "your-secret-api-key-here"
+    API_USERNAME: str = "default_user"
     API_SECRET_KEY: str = "your-64-char-api-secret-key-change-in-production"
 
     # Web应用自身配置
