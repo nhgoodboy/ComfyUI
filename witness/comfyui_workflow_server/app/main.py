@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 # 导入配置
-from .config import config, security_config, validate_config
+from .config import config, security_config, validate_config, storage_config
 
 # 导入API路由
 from .api.v1 import styles, tasks, files
@@ -26,9 +26,8 @@ from .api.v1 import styles, tasks, files
 # 导入安全中间件
 from .middleware.security_middleware import SecurityMiddleware
 
-# 导入服务初始化
-from .services.user_task_service import init_task_service
-from .services.user_file_service import init_file_service
+# 服务实例已在 services/__init__.py 中创建和配置
+from .services import user_task_service, user_file_service, comfyui_service
 from .services.jwt_service import init_jwt_service
 from .utils.crypto_utils import init_crypto_utils
 from .core.style_registry import style_registry
@@ -67,19 +66,12 @@ async def lifespan(app: FastAPI):
             logger.error(f"加载风格配置失败: {e}")
         
         # 确保必要的目录存在
-        upload_dir = Path("uploads")
-        upload_dir.mkdir(exist_ok=True)
+        storage_config.uploads_dir.mkdir(exist_ok=True)
+        storage_config.outputs_dir.mkdir(exist_ok=True)
         
-        output_dir = Path("outputs")
-        output_dir.mkdir(exist_ok=True)
-        
-        # 初始化业务服务
-        try:
-            init_task_service()
-            init_file_service()
-            logger.info("业务服务初始化完成")
-        except Exception as e:
-            logger.error(f"初始化业务服务失败: {e}")
+        # 业务服务在导入时已自动初始化
+        # 无需再调用init函数
+        logger.info("业务服务初始化完成")
         
         # 安全配置摘要
         security_summary = security_config.get_security_summary()
@@ -123,11 +115,8 @@ if config.debug or security_config.cors_origins:
     )
 
 # 添加静态文件服务
-if Path("uploads").exists():
-    app.mount("/files", StaticFiles(directory="uploads"), name="files")
-
-if Path("outputs").exists():
-    app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
+app.mount(f"/{storage_config.uploads_dir.name}", StaticFiles(directory=storage_config.uploads_dir), name=storage_config.uploads_dir.name)
+app.mount(f"/{storage_config.outputs_dir.name}", StaticFiles(directory=storage_config.outputs_dir), name=storage_config.outputs_dir.name)
 
 # 注册路由
 app.include_router(styles.router, prefix="/api/v1")

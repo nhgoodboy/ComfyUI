@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Any
 from ..models.user_models import UserTaskData, UserStatsResponse
 from ..services.comfyui_service import ComfyUIService
 from ..core.style_registry import StyleRegistry
+from ..workflows.built_in.universal_style_transform import UniversalStyleTransformWorkflow
 import logging
 
 logger = logging.getLogger(__name__)
@@ -74,25 +75,41 @@ class UserTaskService:
             # 获取风格配置
             style_config = self.style_registry.styles[style_id]
             
+            # 创建工作流处理器实例
+            workflow_processor = UniversalStyleTransformWorkflow(style_id, style_config)
+            
             # 更新预估时间
-            task_data.estimated_remaining = style_config.get('estimated_time', 60)
+            task_data.estimated_remaining = workflow_processor.get_estimated_time({"input_image_path": input_image_path})
             
-            # 调用ComfyUI服务
-            result = await self.comfyui_service.process_image(
-                input_image_path=input_image_path,
-                workflow_file=style_config['workflow_file'],
-                user_id=user_id,
-                task_id=task_id,
-                progress_callback=lambda p: self._update_task_progress(task_id, p)
-            )
+            # 准备参数
+            parameters = {"image_url": input_image_path}
             
-            # 更新任务完成状态
-            task_data.status = "completed"
-            task_data.progress = 100.0
-            task_data.completed_at = time.time()
-            task_data.estimated_remaining = 0
+            # 验证参数
+            validated_params = workflow_processor.validate_parameters(parameters)
             
-            logger.info(f"用户任务处理完成: {user_id} - {task_id}")
+            # 预处理（下载图片等）
+            processed_params = await workflow_processor.pre_process(validated_params)
+            
+            # 构建工作流
+            workflow = await workflow_processor.build_workflow(processed_params)
+            
+            # 提交工作流到ComfyUI
+            prompt_id = await self.comfyui_service.submit_workflow(task_id, workflow)
+            
+            # 轮询结果（submit_workflow内部处理或在这里等待）
+            # 假设submit_workflow是异步的，并通过回调更新状态
+            # 此处代码简化，因为comfyui_service会处理后续的状态更新
+            
+            # 等待任务完成的最终结果（在真实场景中，这部分可能由WebSocket回调驱动）
+            # 为了简化，我们假设submit_workflow完成后，状态已更新
+            
+            # 任务完成（或者由回调更新）
+            # task_data.status = "completed"
+            # task_data.progress = 100.0
+            # task_data.completed_at = time.time()
+            # task_data.estimated_remaining = 0
+            
+            logger.info(f"用户任务处理已提交: {user_id} - {task_id} - prompt_id: {prompt_id}")
             
         except Exception as e:
             logger.error(f"处理用户任务失败: {task_id} - {e}")

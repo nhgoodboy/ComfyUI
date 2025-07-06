@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 class UserFileService:
     """多用户文件服务"""
     
-    def __init__(self, base_upload_dir: str = "uploads", base_output_dir: str = "outputs"):
-        self.base_upload_dir = Path(base_upload_dir)
-        self.base_output_dir = Path(base_output_dir)
+    def __init__(self, base_upload_dir: Path, base_output_dir: Path):
+        self.base_upload_dir = base_upload_dir
+        self.base_output_dir = base_output_dir
         self.user_files: Dict[str, Dict[str, UserFileInfo]] = {}  # {user_id: {file_id: file_info}}
         
         # 确保基础目录存在
