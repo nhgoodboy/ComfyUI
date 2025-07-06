@@ -42,68 +42,139 @@
 
 ## 安全配置
 
-### 1. 生成安全密钥
+### 1. 快速配置工具
+
+系统提供了完整的环境配置模板和自动化配置生成器，大大简化了部署过程：
+
+#### 环境配置文件
+- **`env.template`**：完整的环境变量模板文件（348行，包含所有配置选项）
+- **`generate_config.py`**：智能配置生成器脚本（500+行，全自动化配置）
+
+#### 使用配置生成器
 
 ```bash
-# 使用内置工具生成安全配置
-python examples/secure_client_example.py generate-config
+# 生成开发环境配置
+python generate_config.py --env development --output .env.dev
+
+# 生成生产环境配置
+python generate_config.py --env production --output .env.prod
+
+# 生成预发布环境配置  
+python generate_config.py --env staging --output .env.staging
+
+# 验证配置文件完整性和安全性
+python generate_config.py --validate .env
+
+# 显示配置文件详细信息
+python generate_config.py --info .env
+
+# 只生成安全密钥
+python generate_config.py --keys-only
 ```
 
 输出示例：
 ```bash
-=== 安全配置示例 ===
-API_SECRET_KEY=a1b2c3d4e5f6...  # 64字符的十六进制密钥
-JWT_SECRET_KEY=f6e5d4c3b2a1...  # 64字符的十六进制密钥
-ALLOWED_IPS=127.0.0.1,::1,192.168.0.0/24
-RATE_LIMIT_PER_IP=60
-RATE_LIMIT_PER_USER=30
-SIGNATURE_TIMEOUT=300
-TOKEN_EXPIRY_MINUTES=60
+✅ 配置文件已生成: .env.prod
+📝 环境类型: production
+🔐 包含 3 个安全密钥
+⚙️ 包含 45 个配置项
+
+🚨 生产环境安全提醒:
+1. 请修改 ALLOWED_IPS 为实际的服务器IP
+2. 请修改 CORS_ORIGINS 为实际的前端域名
+3. 请确保所有密钥都是随机生成的
+4. 建议定期轮换安全密钥
 ```
 
-### 2. 环境变量配置
-
-创建 `.env` 文件：
+#### 配置验证功能
 
 ```bash
-# === 核心安全配置 ===
-API_SECRET_KEY=your-64-char-api-secret-key
-JWT_SECRET_KEY=your-64-char-jwt-secret-key
-ENCRYPTION_KEY=your-64-char-encryption-key
+# 配置验证示例
+python generate_config.py --validate .env
 
-# === 网络安全配置 ===
-ALLOWED_IPS=127.0.0.1,::1,192.168.0.0/24,10.0.0.0/8
-SIGNATURE_TIMEOUT=300
-ENFORCE_HTTPS=true
-
-# === 认证配置 ===
-TOKEN_EXPIRY_MINUTES=60
-
-# === 速率限制配置 ===
-RATE_LIMIT_PER_IP=60
-RATE_LIMIT_PER_USER=30
-
-# === 应用配置 ===
-HOST=0.0.0.0
-PORT=8000
-DEBUG=false
-LOG_LEVEL=INFO
-
-# === ComfyUI配置 ===
-COMFYUI_HOST=127.0.0.1
-COMFYUI_PORT=8188
-COMFYUI_TIMEOUT=300
-
-# === 存储配置 ===
-UPLOADS_DIR=uploads
-OUTPUTS_DIR=outputs
-MAX_FILE_SIZE=10485760
-
-# === CORS配置（生产环境限制源） ===
-CORS_ORIGINS=https://your-frontend-domain.com
+# 输出：
+📋 配置文件验证结果: .env
+✅ 已验证 45 个配置项
+🎉 配置文件验证通过，无错误和警告
 ```
 
-### 3. IP白名单配置
+### 2. 环境特定配置
+
+#### 开发环境配置
+```bash
+# 生成命令
+python generate_config.py --env development --output .env.dev
+
+# 特性：
+DEBUG=true
+LOG_LEVEL=DEBUG
+ALLOWED_IPS=127.0.0.1,::1,192.168.0.0/24,10.0.0.0/8
+ENFORCE_HTTPS=false
+CORS_ORIGINS=*
+ENABLE_DOCS=true
+DEV_TOOLS=true
+RATE_LIMIT_PER_IP=120
+RATE_LIMIT_PER_USER=60
+```
+
+#### 生产环境配置
+```bash
+# 生成命令
+python generate_config.py --env production --output .env.prod
+
+# 特性：
+DEBUG=false
+LOG_LEVEL=WARNING
+ALLOWED_IPS=10.0.1.100,10.0.1.101  # 需要修改为实际IP
+ENFORCE_HTTPS=true
+CORS_ORIGINS=https://your-frontend.com  # 需要修改为实际域名
+ENABLE_DOCS=false
+DEV_TOOLS=false
+WORKERS=4
+RATE_LIMIT_PER_IP=60
+RATE_LIMIT_PER_USER=30
+```
+
+#### 预发布环境配置
+```bash
+# 生成命令
+python generate_config.py --env staging --output .env.staging
+
+# 特性：
+DEBUG=false
+LOG_LEVEL=INFO
+ALLOWED_IPS=127.0.0.1,::1,192.168.0.0/24,10.0.0.0/8
+ENFORCE_HTTPS=true
+CORS_ORIGINS=https://staging.your-frontend.com
+ENABLE_DOCS=true
+DEV_TOOLS=true
+WORKERS=2
+```
+
+### 3. 核心安全配置
+
+#### 自动生成的安全密钥
+配置生成器会自动生成以下安全密钥：
+```bash
+API_SECRET_KEY=a1b2c3d4e5f6...  # 64字符的十六进制密钥
+JWT_SECRET_KEY=f6e5d4c3b2a1...  # 64字符的十六进制密钥
+ENCRYPTION_KEY=d4c3b2a1f6e5...  # 64字符的十六进制密钥
+COMFYUI_CLIENT_ID=comfyui-client-a1b2c3d4
+```
+
+#### 只生成密钥
+```bash
+python generate_config.py --keys-only
+
+# 输出：
+🔐 生成安全密钥:
+API_SECRET_KEY=a1b2c3d4e5f6789012345678901234567890123456789012345678901234
+JWT_SECRET_KEY=f6e5d4c3b2a1098765432109876543210987654321098765432109876543
+ENCRYPTION_KEY=d4c3b2a1f6e5432109876543210987654321098765432109876543210987
+COMFYUI_CLIENT_ID=comfyui-client-a1b2c3d4
+```
+
+### 4. IP白名单配置
 
 **开发环境**：
 ```bash
@@ -140,8 +211,9 @@ source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 
 # 4. 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，设置安全配置
+# 使用配置生成器生成安全配置
+python generate_config.py --env production --output .env
+# 根据实际环境修改 ALLOWED_IPS 和 CORS_ORIGINS
 
 # 5. 启动服务
 python -m app.main
