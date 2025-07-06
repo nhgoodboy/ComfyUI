@@ -1,97 +1,126 @@
 """
-ComfyUI风格转换API主应用
+ComfyUI工作流服务器主应用
 
-极简化的图像风格转换服务
+多层安全防护的多用户图像风格转换API
+银行级安全架构：API密钥 + 签名验证 + JWT令牌 + IP白名单 + 速率限制
 """
 
 import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 import uvicorn
 
-from .config import settings
+# 导入配置
+from .config import config, security_config, validate_config
+
+# 导入API路由
 from .api.v1 import styles, tasks, files
+
+# 导入安全中间件
+from .middleware.security_middleware import SecurityMiddleware
+
+# 导入服务初始化
+from .services.user_task_service import init_task_service
+from .services.user_file_service import init_file_service
+from .services.jwt_service import init_jwt_service
+from .utils.crypto_utils import init_crypto_utils
 from .core.style_registry import style_registry
 from .models.api_models import HealthResponse
-from .middleware.user_auth import UserAuthMiddleware
-from .services import user_task_service, user_file_service
 
 # 配置日志
 logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL),
-    format=settings.LOG_FORMAT
+    level=getattr(logging, config.log_level),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    # 启动时执行
-    logger.info("启动ComfyUI风格转换服务器...")
-    
-    # 初始化风格注册系统
     try:
-        style_registry.reload_styles()
-        style_count = style_registry.get_style_count()
-        logger.info(f"成功加载 {style_count} 个风格")
-    except Exception as e:
-        logger.error(f"加载风格配置失败: {e}")
-    
-    # 确保必要的目录存在
-    upload_dir = Path("uploads")
-    upload_dir.mkdir(exist_ok=True)
-    
-    output_dir = Path("outputs")
-    output_dir.mkdir(exist_ok=True)
-    
-    # 初始化用户服务
-    try:
-        # 服务已在services模块中创建，这里只是记录日志
-        logger.info("用户服务初始化完成")
+        # 启动时初始化
+        logger.info("=== ComfyUI工作流服务器启动 ===")
+        logger.info("应用模式: 银行级安全防护")
+        
+        # 配置验证
+        if not validate_config():
+            raise RuntimeError("配置验证失败")
+        
+        # 初始化安全服务
+        init_crypto_utils(security_config.api_secret_key)
+        init_jwt_service(security_config.jwt_secret_key, security_config.token_expiry_minutes)
+        logger.info("安全服务初始化完成")
+        
+        # 初始化风格注册表
+        try:
+            style_registry.reload_styles()
+            style_count = style_registry.get_style_count()
+            logger.info(f"成功加载 {style_count} 个风格")
+        except Exception as e:
+            logger.error(f"加载风格配置失败: {e}")
+        
+        # 确保必要的目录存在
+        upload_dir = Path("uploads")
+        upload_dir.mkdir(exist_ok=True)
+        
+        output_dir = Path("outputs")
+        output_dir.mkdir(exist_ok=True)
+        
+        # 初始化业务服务
+        try:
+            init_task_service()
+            init_file_service()
+            logger.info("业务服务初始化完成")
+        except Exception as e:
+            logger.error(f"初始化业务服务失败: {e}")
+        
+        # 安全配置摘要
+        security_summary = security_config.get_security_summary()
+        logger.info(f"安全配置: {security_summary}")
+        
+        logger.info("应用启动完成 - 所有安全防护已激活")
+        yield
         
     except Exception as e:
-        logger.error(f"初始化用户服务失败: {e}")
-    
-    logger.info("服务器启动完成")
-    
-    try:
-        yield
+        logger.error(f"应用启动失败: {e}")
+        raise
     finally:
-        # 关闭时执行
-        logger.info("关闭服务...")
-        logger.info("服务已关闭")
+        # 清理资源
+        logger.info("应用正在关闭...")
 
 # 创建FastAPI应用
+fastapi_config = config.get_fastapi_config()
 app = FastAPI(
-    title="ComfyUI风格转换API",
-    version="2.0.0",
-    description="极简化的图像风格转换服务，基于配置驱动的架构",
-    lifespan=lifespan,
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None
+    **fastapi_config,
+    lifespan=lifespan
 )
 
-# 添加CORS中间件
+# 添加统一安全中间件（五层防护）
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    SecurityMiddleware,
+    api_secret_key=security_config.api_secret_key,
+    allowed_ips=security_config.allowed_ips,
+    signature_timeout=security_config.signature_timeout,
+    rate_limit_per_ip=security_config.rate_limit_per_ip,
+    rate_limit_per_user=security_config.rate_limit_per_user
 )
 
-# 添加用户认证中间件
-app.add_middleware(
-    UserAuthMiddleware,
-    require_user_id=True
-)
+# 添加CORS中间件（仅在开发模式或配置了CORS源时）
+if config.debug or security_config.cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=security_config.cors_origins if security_config.cors_origins else ["*"],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["*"],
+    )
 
 # 添加静态文件服务
 if Path("uploads").exists():
@@ -111,21 +140,24 @@ async def log_requests(request: Request, call_next):
     """记录请求日志"""
     start_time = time.time()
     
+    # 获取客户端IP
+    client_ip = request.headers.get("x-forwarded-for", request.client.host)
+    
     # 记录请求开始
-    logger.info(f"请求开始: {request.method} {request.url.path}")
+    logger.info(f"请求开始: {client_ip} - {request.method} {request.url.path}")
     
     try:
         response = await call_next(request)
         
         # 记录请求完成
         duration = time.time() - start_time
-        logger.info(f"请求完成: {request.method} {request.url.path} - {response.status_code} - {duration:.3f}s")
+        logger.info(f"请求完成: {client_ip} - {request.method} {request.url.path} - {response.status_code} - {duration:.3f}s")
         
         return response
     except Exception as e:
         # 记录请求错误
         duration = time.time() - start_time
-        logger.error(f"请求失败: {request.method} {request.url.path} - {str(e)} - {duration:.3f}s")
+        logger.error(f"请求失败: {client_ip} - {request.method} {request.url.path} - {str(e)} - {duration:.3f}s")
         raise
 
 @app.get("/")
@@ -138,17 +170,19 @@ async def root():
         available_styles = []
     
     return {
-        "message": "ComfyUI风格转换API",
-        "version": "2.0.0",
+        "message": config.app_name,
+        "version": config.version,
+        "description": config.description,
         "status": "running",
-        "architecture": "极简化配置驱动架构",
+        "architecture": "银行级安全防护架构",
+        "security_enabled": True,
         "available_styles": available_styles,
         "api_endpoints": {
             "styles": "/api/v1/styles",
             "tasks": "/api/v1/tasks",
             "files": "/api/v1/files",
             "health": "/health",
-            "docs": "/docs"
+            "docs": "/docs" if config.debug else None
         }
     }
 
@@ -163,7 +197,9 @@ async def health_check():
             "status": "ok",
             "message": "风格转换服务运行正常",
             "timestamp": time.time(),
-            "version": "2.0.0"
+            "version": config.version,
+            "security_layers": 5,
+            "security_enabled": True
         }
         
         # 添加风格统计信息
@@ -183,34 +219,71 @@ async def health_check():
                 "status": "error",
                 "message": f"服务异常: {str(e)}",
                 "timestamp": time.time(),
-                "version": "2.0.0"
+                "version": config.version,
+                "security_enabled": True
             }
         )
+
+@app.get("/security-info")
+async def security_info():
+    """安全信息端点（仅开发模式）"""
+    if not config.debug:
+        return {"message": "仅开发模式可用"}
+    
+    return {
+        "security_summary": security_config.get_security_summary(),
+        "environment": "development" if config.debug else "production",
+        "security_layers": [
+            "第1层: IP白名单控制",
+            "第2层: API密钥认证",
+            "第3层: 请求签名验证",
+            "第4层: 速率限制保护",
+            "第5层: JWT令牌验证"
+        ],
+        "security_features": [
+            "防重放攻击",
+            "防时序攻击",
+            "防DDoS攻击",
+            "数据加密传输",
+            "令牌黑名单机制"
+        ]
+    }
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """全局异常处理"""
-    logger.error(f"全局异常: {request.method} {request.url.path} - {str(exc)}", exc_info=True)
+    client_ip = request.headers.get("x-forwarded-for", request.client.host)
+    logger.error(f"全局异常: {client_ip} - {request.method} {request.url.path} - {str(exc)}", exc_info=True)
     
     return JSONResponse(
         status_code=500,
         content={
             "success": False,
             "error": "服务器内部错误",
-            "message": str(exc) if settings.DEBUG else "请联系管理员",
-            "timestamp": time.time()
+            "message": str(exc) if config.debug else "请联系管理员",
+            "timestamp": time.time(),
+            "version": config.version
         }
     )
 
 def run_server():
-    """运行服务器"""
+    """启动服务器"""
+    # 生产模式启动提示
+    if config.is_production():
+        logger.warning("生产模式启动 - 确保已配置正确的安全密钥")
+        logger.warning("请确保以下环境变量已正确设置:")
+        logger.warning("- API_SECRET_KEY")
+        logger.warning("- JWT_SECRET_KEY")
+        logger.warning("- ALLOWED_IPS")
+    
+    # 启动服务器
     uvicorn.run(
         "app.main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        workers=settings.WORKERS,
-        log_level=settings.LOG_LEVEL.lower(),
-        reload=settings.DEBUG
+        host=config.host,
+        port=config.port,
+        log_level=config.log_level.lower(),
+        reload=config.debug,
+        workers=config.workers if config.is_production() else 1
     )
 
 if __name__ == "__main__":

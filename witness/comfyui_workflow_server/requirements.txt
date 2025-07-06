@@ -1,16 +1,24 @@
-# ComfyUI风格转换API依赖
-# 极简化架构的必要依赖
+# ComfyUI工作流服务器依赖 - 银行级安全版本
+# 多层安全防护架构的必要依赖
 
-# Web框架
+# 核心Web框架
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+starlette>=0.27.0
+
+# 安全依赖 - 银行级防护
+cryptography>=41.0.0      # 加密解密、数字签名
+pyjwt>=2.8.0             # JWT令牌处理
+passlib[bcrypt]>=1.7.4   # 密码哈希和验证
+python-jose[cryptography]>=3.3.0  # JWT扩展支持
+bcrypt>=4.1.2            # 密码加密算法
+
+# 数据验证和配置
+pydantic==2.5.0
+pydantic-settings==2.1.0
 
 # HTTP客户端
 aiohttp==3.9.1
-
-# 数据验证
-pydantic==2.5.0
-pydantic-settings==2.1.0
 
 # YAML配置文件支持
 PyYAML==6.0.1
@@ -20,6 +28,7 @@ python-dotenv==1.0.0
 
 # 文件处理
 aiofiles==23.2.1
+python-multipart==0.0.6
 
 # 图像处理
 Pillow==10.1.0
@@ -27,12 +36,21 @@ Pillow==10.1.0
 # 类型注解
 typing-extensions==4.8.0
 
-# 多用户文件上传
-python-multipart==0.0.6
-
 # 开发和测试工具（可选）
 pytest==7.4.3
 pytest-asyncio==0.21.1
 
-# 示例和测试依赖（可选）
-requests==2.31.0 
+# HTTP请求工具
+requests==2.31.0
+
+# 额外的安全工具
+secrets                   # 内置模块，用于生成安全随机数
+hashlib                   # 内置模块，用于哈希计算
+hmac                      # 内置模块，用于HMAC签名
+ipaddress                 # 内置模块，用于IP地址验证
+time                      # 内置模块，用于时间戳
+base64                    # 内置模块，用于编码
+
+# 生产环境建议
+gunicorn>=21.2.0         # 生产WSGI服务器
+redis>=5.0.1             # 用于分布式缓存和会话存储（可选） 

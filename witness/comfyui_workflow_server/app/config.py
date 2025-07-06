@@ -1,105 +1,297 @@
 """
-应用配置
+应用配置管理
 
-极简化风格转换API的配置管理
+新增多层安全防护配置：
+- API密钥认证
+- JWT令牌验证
+- IP白名单控制
+- 请求签名验证
+- 速率限制配置
 """
 
 import os
-from typing import Optional, List
-from pydantic_settings import BaseSettings
-from pydantic import Field
+from typing import List, Dict, Any, Optional
 from pathlib import Path
+import secrets
+import logging
 
-class Settings(BaseSettings):
-    """应用配置"""
-    
-    # 应用基本配置
-    APP_NAME: str = Field(default="ComfyUI风格转换API", description="应用名称")
-    APP_VERSION: str = Field(default="2.0.0", description="应用版本")
-    DEBUG: bool = Field(default=False, description="调试模式")
-    
-    # 服务器配置
-    HOST: str = Field(default="0.0.0.0", description="服务器地址")
-    PORT: int = Field(default=8000, description="服务器端口")
-    WORKERS: int = Field(default=1, description="工作进程数")
-    
-    # 风格配置
-    STYLE_CONFIG_FILE: str = Field(
-        default="configs/style_configs.yaml",
-        description="风格配置文件路径"
-    )
-    
-    # ComfyUI配置
-    COMFYUI_URL: str = Field(
-        default="http://localhost:8188",
-        description="ComfyUI服务器地址"
-    )
-    COMFYUI_TIMEOUT: int = Field(default=300, description="ComfyUI请求超时时间（秒）")
-    COMFYUI_CLIENT_ID: Optional[str] = Field(default=None, description="ComfyUI客户端ID")
-    MAX_RETRIES: int = Field(default=3, description="最大重试次数")
-    
-    # 任务配置
-    MAX_CONCURRENT_TASKS: int = Field(default=10, description="最大并发任务数")
-    TASK_CLEANUP_HOURS: int = Field(default=24, description="任务清理时间（小时）")
-    MAX_COMPLETED_TASKS: int = Field(default=1000, description="最大保留已完成任务数")
-    
-    # 文件配置
-    UPLOAD_DIR: str = Field(default="uploads", description="上传目录")
-    OUTPUT_DIR: str = Field(default="outputs", description="输出目录")
-    MAX_FILE_SIZE: int = Field(default=10 * 1024 * 1024, description="最大文件大小（字节）")
-    ALLOWED_EXTENSIONS: List[str] = Field(
-        default=[".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"],
-        description="允许的文件扩展名"
-    )
-    FILE_EXPIRE_HOURS: int = Field(default=24, description="文件过期时间（小时）")
-    
-    # 工作流模板目录
-    WORKFLOW_DIR: str = Field(
-        default="workflows",
-        description="工作流模板目录"
-    )
-    
-    # 日志配置
-    LOG_LEVEL: str = Field(default="INFO", description="日志级别")
-    LOG_FORMAT: str = Field(
-        default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        description="日志格式"
-    )
-    
-    # 安全配置
-    API_KEY: Optional[str] = Field(default=None, description="API密钥（可选）")
-    CORS_ORIGINS: List[str] = Field(
-        default=["*"],
-        description="CORS允许的源"
-    )
-    
-    # 多用户配置
-    REQUIRE_USER_ID: bool = Field(default=True, description="是否要求用户身份验证")
-    USER_ID_HEADER: str = Field(default="x-user-id", description="用户ID请求头名称")
-    MIN_USER_ID_LENGTH: int = Field(default=3, description="用户ID最小长度")
-    MAX_USER_ID_LENGTH: int = Field(default=64, description="用户ID最大长度")
-    
-    # 用户资源限制
-    MAX_TASKS_PER_USER: int = Field(default=100, description="每个用户最大任务数")
-    MAX_FILES_PER_USER: int = Field(default=1000, description="每个用户最大文件数")
-    MAX_STORAGE_PER_USER: int = Field(default=1024 * 1024 * 1024, description="每个用户最大存储空间（字节）")
-    
-    # 清理配置
-    USER_CLEANUP_HOURS: int = Field(default=24, description="用户数据清理时间（小时）")
-    ORPHAN_CLEANUP_HOURS: int = Field(default=72, description="孤儿数据清理时间（小时）")
-    
-    # 性能配置
-    REQUEST_TIMEOUT: int = Field(default=300, description="请求超时时间（秒）")
-    ASYNC_TASK_TIMEOUT: int = Field(default=600, description="异步任务超时时间（秒）")
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+logger = logging.getLogger(__name__)
 
-# 创建全局配置实例
-settings = Settings()
+class SecurityConfig:
+    """安全配置类"""
+    
+    def __init__(self):
+        # 基础安全配置
+        self.api_secret_key = os.getenv("API_SECRET_KEY", self._generate_secret_key())
+        self.jwt_secret_key = os.getenv("JWT_SECRET_KEY", self._generate_secret_key())
+        self.encryption_key = os.getenv("ENCRYPTION_KEY", self._generate_secret_key())
+        
+        # IP白名单配置
+        self.allowed_ips = self._parse_ip_list(
+            os.getenv("ALLOWED_IPS", "127.0.0.1,::1,192.168.0.0/24,10.0.0.0/8")
+        )
+        
+        # 认证配置
+        self.signature_timeout = int(os.getenv("SIGNATURE_TIMEOUT", "300"))  # 5分钟
+        self.token_expiry_minutes = int(os.getenv("TOKEN_EXPIRY_MINUTES", "60"))  # 1小时
+        
+        # 速率限制配置
+        self.rate_limit_per_ip = int(os.getenv("RATE_LIMIT_PER_IP", "60"))  # 每IP每分钟
+        self.rate_limit_per_user = int(os.getenv("RATE_LIMIT_PER_USER", "30"))  # 每用户每分钟
+        
+        # 安全选项
+        self.enforce_https = os.getenv("ENFORCE_HTTPS", "false").lower() == "true"
+        self.secure_cookies = os.getenv("SECURE_COOKIES", "true").lower() == "true"
+        self.cors_origins = self._parse_cors_origins(os.getenv("CORS_ORIGINS", ""))
+        
+        # 验证配置
+        self._validate_security_config()
+    
+    def _generate_secret_key(self) -> str:
+        """生成安全密钥"""
+        return secrets.token_hex(32)
+    
+    def _parse_ip_list(self, ip_string: str) -> List[str]:
+        """解析IP白名单"""
+        if not ip_string:
+            return ["127.0.0.1", "::1"]
+        
+        return [ip.strip() for ip in ip_string.split(",") if ip.strip()]
+    
+    def _parse_cors_origins(self, cors_string: str) -> List[str]:
+        """解析CORS源列表"""
+        if not cors_string:
+            return []
+        
+        return [origin.strip() for origin in cors_string.split(",") if origin.strip()]
+    
+    def _validate_security_config(self):
+        """验证安全配置"""
+        # 检查密钥长度
+        if len(self.api_secret_key) < 32:
+            logger.warning("API密钥长度不足32字符，安全性可能降低")
+        
+        if len(self.jwt_secret_key) < 32:
+            logger.warning("JWT密钥长度不足32字符，安全性可能降低")
+        
+        # 检查IP白名单
+        if not self.allowed_ips:
+            logger.warning("IP白名单为空，将拒绝所有请求")
+        
+        # 检查超时设置
+        if self.signature_timeout < 60:
+            logger.warning("签名超时时间过短，可能导致网络延迟问题")
+        
+        if self.signature_timeout > 3600:
+            logger.warning("签名超时时间过长，可能降低安全性")
+    
+    def get_security_summary(self) -> Dict[str, Any]:
+        """获取安全配置摘要"""
+        return {
+            "api_key_configured": bool(self.api_secret_key),
+            "jwt_configured": bool(self.jwt_secret_key),
+            "ip_whitelist_count": len(self.allowed_ips),
+            "signature_timeout": self.signature_timeout,
+            "token_expiry_minutes": self.token_expiry_minutes,
+            "rate_limit_per_ip": self.rate_limit_per_ip,
+            "rate_limit_per_user": self.rate_limit_per_user,
+            "https_enforced": self.enforce_https,
+            "secure_cookies": self.secure_cookies
+        }
 
-def get_settings() -> Settings:
-    """获取配置实例"""
-    return settings 
+
+class ComfyUIConfig:
+    """ComfyUI服务配置"""
+    
+    def __init__(self):
+        self.host = os.getenv("COMFYUI_HOST", "127.0.0.1")
+        self.port = int(os.getenv("COMFYUI_PORT", "8188"))
+        self.timeout = int(os.getenv("COMFYUI_TIMEOUT", "300"))
+        self.max_retries = int(os.getenv("COMFYUI_MAX_RETRIES", "3"))
+        self.retry_delay = int(os.getenv("COMFYUI_RETRY_DELAY", "5"))
+        
+        # 构建完整URL
+        self.base_url = f"http://{self.host}:{self.port}"
+    
+    def get_config_dict(self) -> Dict[str, Any]:
+        """获取配置字典"""
+        return {
+            "host": self.host,
+            "port": self.port,
+            "base_url": self.base_url,
+            "timeout": self.timeout,
+            "max_retries": self.max_retries,
+            "retry_delay": self.retry_delay
+        }
+
+
+class StorageConfig:
+    """存储配置"""
+    
+    def __init__(self):
+        self.uploads_dir = Path(os.getenv("UPLOADS_DIR", "uploads"))
+        self.outputs_dir = Path(os.getenv("OUTPUTS_DIR", "outputs"))
+        self.workflows_dir = Path(os.getenv("WORKFLOWS_DIR", "workflows"))
+        self.configs_dir = Path(os.getenv("CONFIGS_DIR", "configs"))
+        
+        # 确保目录存在
+        self._ensure_directories()
+        
+        # 文件大小限制
+        self.max_file_size = int(os.getenv("MAX_FILE_SIZE", "10485760"))  # 10MB
+        self.allowed_extensions = self._parse_extensions(
+            os.getenv("ALLOWED_EXTENSIONS", "jpg,jpeg,png,gif,bmp,webp")
+        )
+    
+    def _ensure_directories(self):
+        """确保所有目录存在"""
+        for directory in [self.uploads_dir, self.outputs_dir, self.workflows_dir, self.configs_dir]:
+            directory.mkdir(parents=True, exist_ok=True)
+    
+    def _parse_extensions(self, extensions_string: str) -> List[str]:
+        """解析允许的文件扩展名"""
+        return [ext.strip().lower() for ext in extensions_string.split(",") if ext.strip()]
+    
+    def get_user_upload_dir(self, user_id: str) -> Path:
+        """获取用户上传目录"""
+        user_dir = self.uploads_dir / user_id
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return user_dir
+    
+    def get_user_output_dir(self, user_id: str) -> Path:
+        """获取用户输出目录"""
+        user_dir = self.outputs_dir / user_id
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return user_dir
+
+
+class AppConfig:
+    """应用主配置"""
+    
+    def __init__(self):
+        # 基础配置
+        self.debug = os.getenv("DEBUG", "false").lower() == "true"
+        self.host = os.getenv("HOST", "0.0.0.0")
+        self.port = int(os.getenv("PORT", "8000"))
+        self.workers = int(os.getenv("WORKERS", "1"))
+        
+        # 日志配置
+        self.log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+        self.log_file = os.getenv("LOG_FILE", "app.log")
+        
+        # 子配置
+        self.security = SecurityConfig()
+        self.comfyui = ComfyUIConfig()
+        self.storage = StorageConfig()
+        
+        # 应用信息
+        self.app_name = "ComfyUI Workflow Server"
+        self.version = "2.0.0"
+        self.description = "多用户安全图像处理工作流服务"
+        
+        # 配置摘要
+        self._log_config_summary()
+    
+    def _log_config_summary(self):
+        """记录配置摘要"""
+        logger.info(f"=== {self.app_name} v{self.version} ===")
+        logger.info(f"运行模式: {'开发' if self.debug else '生产'}")
+        logger.info(f"服务地址: {self.host}:{self.port}")
+        logger.info(f"日志级别: {self.log_level}")
+        logger.info(f"ComfyUI: {self.comfyui.base_url}")
+        logger.info(f"安全配置: {self.security.get_security_summary()}")
+    
+    def get_fastapi_config(self) -> Dict[str, Any]:
+        """获取FastAPI配置"""
+        return {
+            "title": self.app_name,
+            "description": self.description,
+            "version": self.version,
+            "debug": self.debug,
+            "docs_url": "/docs" if self.debug else None,
+            "redoc_url": "/redoc" if self.debug else None,
+            "openapi_url": "/openapi.json" if self.debug else None
+        }
+    
+    def is_production(self) -> bool:
+        """是否生产环境"""
+        return not self.debug
+    
+    def get_logging_config(self) -> Dict[str, Any]:
+        """获取日志配置"""
+        return {
+            "level": self.log_level,
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            "handlers": [
+                {
+                    "class": "logging.StreamHandler",
+                    "level": self.log_level,
+                    "formatter": "default"
+                },
+                {
+                    "class": "logging.FileHandler",
+                    "level": self.log_level,
+                    "filename": self.log_file,
+                    "formatter": "default"
+                }
+            ]
+        }
+
+
+# 全局配置实例
+config = AppConfig()
+
+# 快捷访问
+security_config = config.security
+comfyui_config = config.comfyui
+storage_config = config.storage
+
+# 配置验证函数
+def validate_config() -> bool:
+    """验证配置有效性"""
+    try:
+        # 检查必需的安全配置
+        if not security_config.api_secret_key:
+            logger.error("API密钥未配置")
+            return False
+        
+        if not security_config.jwt_secret_key:
+            logger.error("JWT密钥未配置")
+            return False
+        
+        if not security_config.allowed_ips:
+            logger.error("IP白名单未配置")
+            return False
+        
+        # 检查ComfyUI连接
+        # TODO: 添加ComfyUI健康检查
+        
+        logger.info("配置验证通过")
+        return True
+        
+    except Exception as e:
+        logger.error(f"配置验证失败: {e}")
+        return False
+
+
+def get_environment_info() -> Dict[str, Any]:
+    """获取环境信息"""
+    return {
+        "python_version": os.sys.version,
+        "working_directory": os.getcwd(),
+        "environment_variables": {
+            key: value for key, value in os.environ.items()
+            if not key.endswith("_KEY") and not key.endswith("_SECRET")
+        }
+    }
+
+
+# 导出配置
+__all__ = [
+    "config",
+    "security_config", 
+    "comfyui_config",
+    "storage_config",
+    "validate_config",
+    "get_environment_info"
+] 
