@@ -21,16 +21,18 @@ class ComfyUIClient:
         self.api_secret = settings.API_SECRET_KEY
         self.client = httpx.AsyncClient(timeout=300)
 
-    def _get_secure_headers(self, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
-        """为API请求生成安全头部。"""
+    def _get_secure_headers(self, method: str, path: str, query: str = "", body: Optional[bytes] = None) -> Dict[str, str]:
+        """为API请求生成安全头部，与服务器逻辑完全匹配。"""
         timestamp = str(int(time.time()))
         
-        body_str = ""
-        if body:
-            body_str = json.dumps(body, separators=(',', ':'), ensure_ascii=False)
+        # 1. 计算Body哈希
+        body_hash = hashlib.sha256(body if body else b"").hexdigest()
 
-        message_to_sign = f"{method.upper()}\n{path}\n{timestamp}\n{body_str}"
+        # 2. 构造服务器端签名字符串
+        # 格式: timestamp + method + path + query + body_hash
+        message_to_sign = f"{timestamp}{method.upper()}{path}{query}{body_hash}"
         
+        # 3. 计算HMAC-SHA256签名
         signature = hmac.new(
             self.api_secret.encode('utf-8'),
             message_to_sign.encode('utf-8'),
@@ -49,17 +51,28 @@ class ComfyUIClient:
         """通用请求方法。"""
         url = f"{self.base_url}{path}"
         
+        body_bytes: Optional[bytes] = None
+        if body:
+            body_bytes = json.dumps(body, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+
         if not headers:
-            headers = self._get_secure_headers(method, path, body)
+            # 传递 body_bytes 以计算哈希
+            headers = self._get_secure_headers(method, path, body=body_bytes)
         
         if files:
-            headers.pop('Content-Type', None) # httpx handles this for multipart
-            response = await self.client.request(method, url, headers=headers, files=files)
+            # 文件上传时，签名时不包含文件内容，body_hash是空字符串的哈希
+            # 我们需要重新生成头部
+            upload_headers = self._get_secure_headers(method, path, body=b"")
+            upload_headers['Authorization'] = headers.get('Authorization', '')
+            upload_headers.pop('Content-Type', None) # httpx handles this for multipart
+            response = await self.client.request(method, url, headers=upload_headers, files=files)
         elif data:
-            # 发送 x-www-form-urlencoded 数据
-            response = await self.client.request(method, url, headers=headers, data=data)
-        elif body:
-            response = await self.client.request(method, url, headers=headers, json=body)
+            # 对于表单数据，签名时body部分为空
+            form_headers = self._get_secure_headers(method, path, body=b"")
+            form_headers['Content-Type'] = 'application/x-www-form-urlencoded'
+            response = await self.client.request(method, url, headers=form_headers, data=data)
+        elif body_bytes:
+            response = await self.client.request(method, url, headers=headers, content=body_bytes)
         else:
             response = await self.client.request(method, url, headers=headers)
         
@@ -71,23 +84,19 @@ class ComfyUIClient:
         path = "/api/v1/auth/token"
         method = "POST"
 
-        # 服务器需要 x-www-form-urlencoded 格式的数据
         form_data = {
             "grant_type": "password",
-            "username": settings.API_USERNAME, # 使用从配置加载的用户名
-            "password": settings.API_KEY       # 使用从配置加载的API密钥
+            "username": settings.API_USERNAME,
+            "password": settings.API_KEY
         }
         
-        # 签名时不需要body，但头部需要Content-Type
-        headers = self._get_secure_headers(method, path, body=None)
-        headers['Content-Type'] = 'application/x-www-form-urlencoded'
-        
-        response = await self._make_request(method, path, data=form_data, headers=headers)
+        # 表单请求不包含在签名body中
+        response = await self._make_request(method, path, data=form_data)
         return response.json()["access_token"]
 
     async def list_styles(self, token: str) -> Dict[str, Any]:
         """获取可用风格列表。"""
-        path = "/api/v1/styles"
+        path = "/api/v1/styles/"
         method = "GET"
         headers = self._get_secure_headers(method, path)
         headers['Authorization'] = f"Bearer {token}"
@@ -100,8 +109,7 @@ class ComfyUIClient:
         path = "/api/v1/files/upload"
         method = "POST"
         
-        # 签名需要空的body
-        headers = self._get_secure_headers(method, path)
+        headers = {} # headers 将在 make_request 中生成
         headers['Authorization'] = f"Bearer {token}"
         
         files = {'file': (filename, file_content)}
@@ -115,7 +123,9 @@ class ComfyUIClient:
         method = "POST"
         body = {"image_id": image_id}
         
-        headers = self._get_secure_headers(method, path, body)
+        # 预先创建 body_bytes 以生成签名
+        body_bytes = json.dumps(body, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+        headers = self._get_secure_headers(method, path, body=body_bytes)
         headers['Authorization'] = f"Bearer {token}"
 
         response = await self._make_request(method, path, body=body, headers=headers)

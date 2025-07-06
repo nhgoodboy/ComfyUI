@@ -105,6 +105,10 @@ async def lifespan(app: FastAPI):
         crypto_utils = CryptoUtils(secret_key=settings.security.api_secret_key)
         logger.info("加密工具初始化完成。")
 
+        logger.debug("正在初始化样式服务...")
+        style_service = StyleService(style_registry=style_registry)
+        logger.info("样式服务初始化完成。")
+
         # --- 4. 挂载服务到 app.state ---
         logger.debug("正在将服务挂载到应用状态...")
         app.state.comfyui_service = comfyui_service
@@ -114,6 +118,7 @@ async def lifespan(app: FastAPI):
         app.state.jwt_service = jwt_service
         app.state.user_service = user_service
         app.state.crypto_utils = crypto_utils
+        app.state.style_service = style_service
         app.state.settings = settings  # 将配置也挂载到state
         logger.info("服务挂载完成。")
         
