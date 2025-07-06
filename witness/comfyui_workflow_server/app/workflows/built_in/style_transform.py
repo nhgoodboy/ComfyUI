@@ -105,19 +105,32 @@ class StyleTransformWorkflow(BaseWorkflow):
                     enum_values=["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"]
                 ),
                 WorkflowParameter(
-                    name="checkpoint",
-                    type="enum",
+                    name="lora_strength",
+                    type="number",
                     required=False,
-                    default="sd_xl_base_1.0.safetensors",
-                    description="使用的检查点模型",
-                    enum_values=["sd_xl_base_1.0.safetensors", "sd_xl_refiner_1.0.safetensors", "sd_xl_turbo_1.0.safetensors"]
+                    default=1.0,
+                    description="LoRA模型强度，影响风格转换的程度",
+                    min_value=0.0,
+                    max_value=2.0
                 )
             ],
             input_types=["image"],
             output_types=["image"],
-            model_requirements=["sd_xl_base_1.0.safetensors"],
-            node_requirements=["LoadImage", "CLIPTextEncode", "CheckpointLoaderSimple", "KSampler", "VAEEncode", "VAEDecode", "SaveImage"],
-            estimated_time=30,
+            model_requirements=[
+                "flux1-dev.safetensors",
+                "clip_l.safetensors", 
+                "t5xxl_fp8_e4m3fn.safetensors",
+                "ae.sft",
+                "flux-lora-000005 (1).safetensors",
+                "FLUX.1-dev-ControlNet-Union-Pro-2.0.safetensors"
+            ],
+            node_requirements=[
+                "LoadImage", "CLIPTextEncodeFlux", "UNETLoader", "DualCLIPLoader", 
+                "VAELoader", "VAEEncode", "VAEDecode", "KSampler", "SaveImage",
+                "LoraLoaderModelOnly", "ControlNetLoader", "ControlNetApplyAdvanced",
+                "ModelSamplingFlux", "easy positive", "SetUnionControlNetType"
+            ],
+            estimated_time=45,
             gpu_required=True
         )
     
@@ -160,15 +173,15 @@ class StyleTransformWorkflow(BaseWorkflow):
                 elif param.type == "integer":
                     validated_params[param_name] = ParameterValidator.validate_integer(
                         value if value is not None else param.default,
-                        min_value=param.min_value,
-                        max_value=param.max_value
+                        min_value=int(param.min_value) if param.min_value is not None else None,
+                        max_value=int(param.max_value) if param.max_value is not None else None
                     )
                     
                 # 验证枚举
                 elif param.type == "enum":
                     validated_params[param_name] = ParameterValidator.validate_enum(
                         value if value is not None else param.default,
-                        enum_values=param.enum_values
+                        enum_values=param.enum_values or []
                     )
                     
                 else:
@@ -188,100 +201,79 @@ class StyleTransformWorkflow(BaseWorkflow):
         # 自定义模板参数
         workflow = copy.deepcopy(template)
         
-        # 设置输入图像
-        if "1" in workflow and workflow["1"]["class_type"] == "LoadImage":
+        # 设置输入图像 (节点1: LoadImage)
+        if "1" in workflow and workflow["1"].get("class_type") == "LoadImage":
             workflow["1"]["inputs"]["image"] = parameters["image"]
+            self.logger.debug(f"设置输入图像: {parameters['image']}")
         
-        # 设置正面提示词
-        if "2" in workflow and workflow["2"]["class_type"] == "CLIPTextEncode":
-            workflow["2"]["inputs"]["text"] = parameters["style_prompt"]
+        # 设置正面提示词 (节点79: easy positive)
+        if "79" in workflow and workflow["79"].get("class_type") == "easy positive":
+            # 构建完整的正面提示词，包含风格前缀
+            full_prompt = f"Clay Style, lovely, 3d, cute, {parameters['style_prompt']}"
+            workflow["79"]["inputs"]["positive"] = full_prompt
+            self.logger.debug(f"设置正面提示词: {full_prompt}")
         
-        # 设置负面提示词
-        if "3" in workflow and workflow["3"]["class_type"] == "CLIPTextEncode":
-            workflow["3"]["inputs"]["text"] = parameters["negative_prompt"]
-        
-        # 设置检查点模型
-        if "4" in workflow and workflow["4"]["class_type"] == "CheckpointLoaderSimple":
-            workflow["4"]["inputs"]["ckpt_name"] = parameters["checkpoint"]
-        
-        # 设置采样器参数
-        if "5" in workflow and workflow["5"]["class_type"] == "KSampler":
-            sampler_inputs = workflow["5"]["inputs"]
+        # 设置采样器参数 (节点73: KSampler)
+        if "73" in workflow and workflow["73"].get("class_type") == "KSampler":
+            sampler_inputs = workflow["73"]["inputs"]
             sampler_inputs["seed"] = parameters["seed"] if parameters["seed"] != -1 else self._generate_random_seed()
             sampler_inputs["steps"] = parameters["steps"]
             sampler_inputs["cfg"] = parameters["cfg_scale"]
             sampler_inputs["sampler_name"] = parameters["sampler_name"]
             sampler_inputs["scheduler"] = parameters["scheduler"]
             sampler_inputs["denoise"] = parameters["strength"]
+            self.logger.debug(f"设置采样器参数: steps={parameters['steps']}, cfg={parameters['cfg_scale']}, denoise={parameters['strength']}")
         
+        # 设置输出文件名 (节点35: SaveImage)
+        if "35" in workflow and workflow["35"].get("class_type") == "SaveImage":
+            workflow["35"]["inputs"]["filename_prefix"] = "style_transform"
+            self.logger.debug("设置输出文件前缀: style_transform")
+        
+        # 设置LoRA强度 (节点90: LoraLoaderModelOnly) - 如果存在
+        if "90" in workflow and workflow["90"].get("class_type") == "LoraLoaderModelOnly":
+            # 使用lora_strength参数，如果没有则使用strength参数的映射
+            lora_strength = parameters.get("lora_strength", parameters["strength"] * 2.0)
+            lora_strength = min(lora_strength, 2.0)  # 最大2.0
+            workflow["90"]["inputs"]["strength_model"] = lora_strength
+            self.logger.debug(f"设置LoRA强度: {lora_strength}")
+        
+        self.logger.info(f"工作流构建完成，包含 {len(workflow)} 个节点")
         return workflow
     
     def _get_workflow_template(self) -> Dict[str, Any]:
-        """获取工作流模板"""
-        return {
-            "1": {
-                "class_type": "LoadImage",
-                "inputs": {
-                    "image": "input_image.jpg"
-                }
-            },
-            "2": {
-                "class_type": "CLIPTextEncode",
-                "inputs": {
-                    "text": "Clay Style, lovely, 3d, cute",
-                    "clip": ["4", 1]
-                }
-            },
-            "3": {
-                "class_type": "CLIPTextEncode",
-                "inputs": {
-                    "text": "bad quality, blurry, low resolution",
-                    "clip": ["4", 1]
-                }
-            },
-            "4": {
-                "class_type": "CheckpointLoaderSimple",
-                "inputs": {
-                    "ckpt_name": "sd_xl_base_1.0.safetensors"
-                }
-            },
-            "5": {
-                "class_type": "KSampler",
-                "inputs": {
-                    "seed": 42,
-                    "steps": 20,
-                    "cfg": 7.0,
-                    "sampler_name": "euler",
-                    "scheduler": "normal",
-                    "denoise": 0.6,
-                    "model": ["4", 0],
-                    "positive": ["2", 0],
-                    "negative": ["3", 0],
-                    "latent_image": ["6", 0]
-                }
-            },
-            "6": {
-                "class_type": "VAEEncode",
-                "inputs": {
-                    "pixels": ["1", 0],
-                    "vae": ["4", 2]
-                }
-            },
-            "7": {
-                "class_type": "VAEDecode",
-                "inputs": {
-                    "samples": ["5", 0],
-                    "vae": ["4", 2]
-                }
-            },
-            "8": {
-                "class_type": "SaveImage",
-                "inputs": {
-                    "filename_prefix": "style_transform",
-                    "images": ["7", 0]
-                }
-            }
-        }
+        """从JSON文件读取工作流模板"""
+        import json
+        import os
+        
+        try:
+            # 获取JSON模板文件路径
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            template_path = os.path.join(
+                current_dir, 
+                "../../../workflows/style_change.json"
+            )
+            
+            # 规范化路径
+            template_path = os.path.normpath(template_path)
+            
+            self.logger.info(f"加载工作流模板: {template_path}")
+            
+            # 读取JSON文件
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template = json.load(f)
+            
+            self.logger.info(f"成功加载工作流模板，包含 {len(template)} 个节点")
+            return template
+            
+        except FileNotFoundError:
+            self.logger.error(f"工作流模板文件未找到: {template_path}")
+            raise FileNotFoundError(f"工作流模板文件不存在: {template_path}")
+        except json.JSONDecodeError as e:
+            self.logger.error(f"工作流模板JSON解析失败: {e}")
+            raise ValueError(f"工作流模板JSON格式错误: {e}")
+        except Exception as e:
+            self.logger.error(f"加载工作流模板时发生错误: {e}")
+            raise RuntimeError(f"加载工作流模板失败: {e}")
     
     def _generate_random_seed(self) -> int:
         """生成随机种子"""
@@ -290,7 +282,7 @@ class StyleTransformWorkflow(BaseWorkflow):
     
     def get_estimated_time(self, parameters: Dict[str, Any]) -> int:
         """根据参数估算执行时间"""
-        base_time = 30  # 基础时间30秒
+        base_time = 45  # Flux模型基础时间45秒
         
         # 根据步数调整时间
         steps = parameters.get("steps", 20)
@@ -298,18 +290,22 @@ class StyleTransformWorkflow(BaseWorkflow):
         
         # 根据强度调整时间
         strength = parameters.get("strength", 0.6)
-        strength_multiplier = 0.5 + (strength * 0.5)  # 强度越高耗时越长
+        strength_multiplier = 0.7 + (strength * 0.3)  # 强度越高耗时越长
         
-        estimated_time = int(base_time * time_multiplier * strength_multiplier)
-        return max(estimated_time, 15)  # 最少15秒
+        # LoRA强度也会影响时间
+        lora_strength = parameters.get("lora_strength", 1.0)
+        lora_multiplier = 0.9 + (lora_strength * 0.1)  # LoRA强度影响较小
+        
+        estimated_time = int(base_time * time_multiplier * strength_multiplier * lora_multiplier)
+        return max(estimated_time, 25)  # 最少25秒
     
     def get_resource_requirements(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """获取资源需求"""
         return {
             "gpu_required": True,
-            "estimated_memory_mb": 4096,  # 4GB内存
-            "estimated_vram_mb": 8192,    # 8GB显存
-            "cpu_cores": 2
+            "estimated_memory_mb": 8192,   # 8GB内存 (Flux模型需要更多内存)
+            "estimated_vram_mb": 12288,    # 12GB显存 (Flux模型需要更多显存)
+            "cpu_cores": 4
         }
     
     def validate_requirements(self) -> List[str]:
