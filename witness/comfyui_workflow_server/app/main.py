@@ -20,6 +20,8 @@ from .config import settings
 from .api.v1 import styles, tasks, files
 from .core.style_registry import style_registry
 from .models.api_models import HealthResponse
+from .middleware.user_auth import UserAuthMiddleware
+from .services import user_task_service, user_file_service
 
 # 配置日志
 logging.basicConfig(
@@ -49,6 +51,14 @@ async def lifespan(app: FastAPI):
     output_dir = Path("outputs")
     output_dir.mkdir(exist_ok=True)
     
+    # 初始化用户服务
+    try:
+        # 服务已在services模块中创建，这里只是记录日志
+        logger.info("用户服务初始化完成")
+        
+    except Exception as e:
+        logger.error(f"初始化用户服务失败: {e}")
+    
     logger.info("服务器启动完成")
     
     try:
@@ -77,9 +87,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 添加用户认证中间件
+app.add_middleware(
+    UserAuthMiddleware,
+    require_user_id=True
+)
+
 # 添加静态文件服务
 if Path("uploads").exists():
-    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+    app.mount("/files", StaticFiles(directory="uploads"), name="files")
 
 if Path("outputs").exists():
     app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")

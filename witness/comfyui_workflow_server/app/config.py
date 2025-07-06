@@ -30,12 +30,13 @@ class Settings(BaseSettings):
     )
     
     # ComfyUI配置
-    COMFYUI_BASE_URL: str = Field(
+    COMFYUI_URL: str = Field(
         default="http://localhost:8188",
         description="ComfyUI服务器地址"
     )
     COMFYUI_TIMEOUT: int = Field(default=300, description="ComfyUI请求超时时间（秒）")
     COMFYUI_CLIENT_ID: Optional[str] = Field(default=None, description="ComfyUI客户端ID")
+    MAX_RETRIES: int = Field(default=3, description="最大重试次数")
     
     # 任务配置
     MAX_CONCURRENT_TASKS: int = Field(default=10, description="最大并发任务数")
@@ -71,6 +72,21 @@ class Settings(BaseSettings):
         default=["*"],
         description="CORS允许的源"
     )
+    
+    # 多用户配置
+    REQUIRE_USER_ID: bool = Field(default=True, description="是否要求用户身份验证")
+    USER_ID_HEADER: str = Field(default="x-user-id", description="用户ID请求头名称")
+    MIN_USER_ID_LENGTH: int = Field(default=3, description="用户ID最小长度")
+    MAX_USER_ID_LENGTH: int = Field(default=64, description="用户ID最大长度")
+    
+    # 用户资源限制
+    MAX_TASKS_PER_USER: int = Field(default=100, description="每个用户最大任务数")
+    MAX_FILES_PER_USER: int = Field(default=1000, description="每个用户最大文件数")
+    MAX_STORAGE_PER_USER: int = Field(default=1024 * 1024 * 1024, description="每个用户最大存储空间（字节）")
+    
+    # 清理配置
+    USER_CLEANUP_HOURS: int = Field(default=24, description="用户数据清理时间（小时）")
+    ORPHAN_CLEANUP_HOURS: int = Field(default=72, description="孤儿数据清理时间（小时）")
     
     # 性能配置
     REQUEST_TIMEOUT: int = Field(default=300, description="请求超时时间（秒）")

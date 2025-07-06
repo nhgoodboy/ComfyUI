@@ -4,7 +4,7 @@
 提供风格发现、搜索和转换功能的REST API
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Request, Depends
 from typing import List, Optional
 import asyncio
 import logging
@@ -13,7 +13,8 @@ from ...models.api_models import (
     ApiResponse, TaskStatus
 )
 from ...services.style_service import style_service
-from ...services.task_service import task_service
+from ...services import user_task_service
+from ...middleware.user_auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ async def get_style(style_id: str):
         return ApiResponse(success=False, error=str(e))
 
 @router.post("/transform", response_model=TransformResponse)
-async def transform_image(request: TransformRequest, background_tasks: BackgroundTasks):
+async def transform_image(request: TransformRequest, req: Request, user_id: str = Depends(get_current_user_id)):
     """执行风格转换"""
     try:
         # 验证风格存在
@@ -62,44 +63,28 @@ async def transform_image(request: TransformRequest, background_tasks: Backgroun
         if not style:
             raise HTTPException(status_code=404, detail="风格不存在")
         
-        # 创建任务
-        task_id = await task_service.create_task(request.style_id, {
-            "image_url": request.image_url
-        })
+        # 创建用户任务
+        task_id = await user_task_service.create_task(
+            user_id=user_id,
+            style_id=request.style_id,
+            input_image_path=request.image_url
+        )
         
-        # 启动异步处理
-        background_tasks.add_task(process_transform_task, task_id, request.style_id, request.image_url)
+        logger.info(f"用户风格转换任务创建: {user_id} - {task_id} - {request.style_id}")
         
         return TransformResponse(
             success=True,
             task_id=task_id,
+            user_id=user_id,
             estimated_time=style.estimated_time
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"提交转换任务失败: {e}")
+        logger.error(f"提交转换任务失败: {user_id} - {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-async def process_transform_task(task_id: str, style_id: str, image_url: str):
-    """处理转换任务"""
-    try:
-        # 更新任务状态为处理中
-        await task_service.update_task_progress(task_id, 10.0, TaskStatus.PROCESSING)
-        
-        # 执行转换
-        result = await style_service.execute_style_transform(style_id, image_url)
-        
-        if result.get("success"):
-            # 转换成功
-            await task_service.complete_task(task_id, result.get("result", {}))
-        else:
-            # 转换失败
-            await task_service.fail_task(task_id, result.get("error", "转换失败"))
-        
-    except Exception as e:
-        logger.error(f"处理转换任务失败: {e}")
-        await task_service.fail_task(task_id, str(e))
+
 
 @router.get("/stats/count", response_model=ApiResponse)
 async def get_style_count():

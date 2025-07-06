@@ -4,28 +4,26 @@
 提供文件上传、管理功能的REST API
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
 import uuid
 import time
 import logging
 from pathlib import Path
-from ...models.api_models import UploadFileResponse, ApiResponse
+from ...models.api_models import UploadFileResponse, ApiResponse, UserFilesResponse
+from ...services import user_file_service
+from ...middleware.user_auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["files"])
 
 # 配置上传参数
-UPLOAD_DIR = Path("uploads")
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
-# 确保上传目录存在
-UPLOAD_DIR.mkdir(exist_ok=True)
-
 @router.post("/upload", response_model=UploadFileResponse)
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
     """上传文件"""
     try:
         # 验证文件扩展名
@@ -46,105 +44,105 @@ async def upload_file(file: UploadFile = File(...)):
                 detail=f"文件过大: {len(file_content)} bytes. 最大允许: {MAX_FILE_SIZE} bytes"
             )
         
-        # 生成唯一文件名
-        file_id = str(uuid.uuid4())
-        filename = f"{file_id}{file_extension}"
-        file_path = UPLOAD_DIR / filename
+        # 使用用户文件服务保存文件
+        file_id = await user_file_service.save_upload_file(
+            user_id=user_id,
+            file_content=file_content,
+            filename=file.filename
+        )
         
-        # 保存文件
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-        
-        # 计算过期时间（24小时后）
-        expires_at = time.time() + 24 * 60 * 60
+        # 获取文件信息
+        file_info = user_file_service.get_user_file(user_id, file_id)
         
         return UploadFileResponse(
             success=True,
             data={
                 "file_id": file_id,
-                "filename": filename,
-                "original_name": file.filename,
-                "url": f"/uploads/{filename}",
-                "size": len(file_content),
-                "expires_at": expires_at
+                "filename": file_info.filename,
+                "original_name": file_info.original_name,
+                "url": file_info.url,
+                "size": file_info.size,
+                "expires_at": file_info.created_at + 24 * 60 * 60  # 24小时后过期
             }
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"文件上传失败: {e}")
+        logger.error(f"文件上传失败: {user_id} - {e}")
         return UploadFileResponse(success=False, error=str(e))
 
-@router.get("/", response_model=ApiResponse)
-async def list_files():
-    """列出上传的文件"""
+@router.get("/", response_model=UserFilesResponse)
+async def list_user_files(user_id: str = Depends(get_current_user_id), limit: int = 100):
+    """列出用户文件"""
     try:
-        files = []
-        for file_path in UPLOAD_DIR.glob("*"):
-            if file_path.is_file():
-                stat = file_path.stat()
-                files.append({
-                    "filename": file_path.name,
-                    "size": stat.st_size,
-                    "created_at": stat.st_ctime,
-                    "url": f"/uploads/{file_path.name}"
-                })
+        files = user_file_service.list_user_files(user_id, limit)
         
-        # 按创建时间排序
-        files.sort(key=lambda x: x["created_at"], reverse=True)
-        
-        return ApiResponse(success=True, data=files)
+        return UserFilesResponse(
+            success=True,
+            user_id=user_id,
+            files=files,
+            total=len(files)
+        )
         
     except Exception as e:
-        logger.error(f"列出文件失败: {e}")
-        return ApiResponse(success=False, error=str(e))
+        logger.error(f"列出用户文件失败: {user_id} - {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/{filename}", response_model=ApiResponse)
-async def delete_file(filename: str):
-    """删除文件"""
+@router.delete("/{file_id}", response_model=ApiResponse)
+async def delete_user_file(file_id: str, user_id: str = Depends(get_current_user_id)):
+    """删除用户文件"""
     try:
-        file_path = UPLOAD_DIR / filename
+        success = user_file_service.delete_user_file(user_id, file_id)
         
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="文件不存在")
+        if not success:
+            raise HTTPException(status_code=404, detail="文件不存在或无权删除")
         
-        if not file_path.is_file():
-            raise HTTPException(status_code=400, detail="不是有效的文件")
-        
-        file_path.unlink()
-        
-        return ApiResponse(success=True, data={"message": f"文件 {filename} 已删除"})
+        return ApiResponse(success=True, data={"message": f"文件 {file_id} 已删除"})
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"删除文件失败: {e}")
+        logger.error(f"删除用户文件失败: {user_id} - {file_id} - {e}")
         return ApiResponse(success=False, error=str(e))
 
 @router.post("/cleanup", response_model=ApiResponse)
-async def cleanup_old_files(max_age_hours: int = 24):
-    """清理过期文件"""
+async def cleanup_old_files(max_age_hours: int = 24, user_id: str = Depends(get_current_user_id)):
+    """清理用户过期文件"""
     try:
-        current_time = time.time()
-        max_age_seconds = max_age_hours * 60 * 60
-        deleted_count = 0
-        
-        for file_path in UPLOAD_DIR.glob("*"):
-            if file_path.is_file():
-                file_age = current_time - file_path.stat().st_ctime
-                if file_age > max_age_seconds:
-                    file_path.unlink()
-                    deleted_count += 1
+        # 管理员权限检查可以在这里添加
+        # 现在只允许用户清理自己的文件
+        user_file_service.cleanup_old_files(max_age_hours)
         
         return ApiResponse(
             success=True,
             data={
-                "message": f"清理完成，删除了 {deleted_count} 个过期文件",
-                "deleted_count": deleted_count
+                "message": f"清理完成，清理了 {max_age_hours} 小时前的过期文件",
+                "max_age_hours": max_age_hours
             }
         )
         
     except Exception as e:
-        logger.error(f"清理文件失败: {e}")
+        logger.error(f"清理文件失败: {user_id} - {e}")
+        return ApiResponse(success=False, error=str(e))
+
+@router.get("/stats", response_model=ApiResponse)
+async def get_user_file_stats(user_id: str = Depends(get_current_user_id)):
+    """获取用户文件统计"""
+    try:
+        storage_used = user_file_service.get_user_storage_usage(user_id)
+        files = user_file_service.list_user_files(user_id, 1000)
+        
+        return ApiResponse(
+            success=True,
+            data={
+                "user_id": user_id,
+                "total_files": len(files),
+                "storage_used": storage_used,
+                "storage_used_mb": round(storage_used / 1024 / 1024, 2)
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"获取用户文件统计失败: {user_id} - {e}")
         return ApiResponse(success=False, error=str(e)) 
