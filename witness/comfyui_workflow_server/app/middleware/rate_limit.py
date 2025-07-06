@@ -29,11 +29,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # 存储每个IP的阻塞状态: IP -> (blocked_until, block_count)
         self.ip_blocks: Dict[str, Tuple[float, int]] = {}
         
-        # 配置限流参数
-        self.rate_limit_per_minute = 60  # 每分钟最多60个请求
-        self.rate_limit_per_hour = 1000  # 每小时最多1000个请求
-        self.user_rate_limit_per_minute = 10  # 每个用户每分钟最多10个请求
-        self.user_rate_limit_per_hour = 100  # 每个用户每小时最多100个请求
+        # 从配置中获取限流参数
+        self.rate_limit_per_minute = settings.RATE_LIMIT_PER_MINUTE
+        self.rate_limit_per_hour = settings.RATE_LIMIT_PER_HOUR
+        self.user_rate_limit_per_minute = max(1, self.rate_limit_per_minute // 6)  # 用户限制为IP限制的1/6
+        self.user_rate_limit_per_hour = max(1, self.rate_limit_per_hour // 10)  # 用户限制为IP限制的1/10
         
         # 阻塞配置
         self.block_duration = 300  # 阻塞时间（秒）
@@ -42,6 +42,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # 清理间隔
         self.last_cleanup = time.time()
         self.cleanup_interval = 300  # 5分钟清理一次
+        
+        logger.info(f"限流中间件初始化完成，IP限制: {self.rate_limit_per_minute}/min, {self.rate_limit_per_hour}/hour")
         
     async def dispatch(self, request: Request, call_next):
         """处理限流检查"""
@@ -130,7 +132,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 status_code=429,
                 detail=ErrorResponse(
                     error_code="RATE_LIMIT_EXCEEDED",
-                    error_message="请求过于频繁，每分钟最多允许60个请求",
+                    error_message=f"请求过于频繁，每分钟最多允许{self.rate_limit_per_minute}个请求",
                     details={
                         "limit_type": "per_minute",
                         "current_count": minute_requests,
@@ -148,7 +150,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 status_code=429,
                 detail=ErrorResponse(
                     error_code="RATE_LIMIT_EXCEEDED",
-                    error_message="请求过于频繁，每小时最多允许1000个请求",
+                    error_message=f"请求过于频繁，每小时最多允许{self.rate_limit_per_hour}个请求",
                     details={
                         "limit_type": "per_hour",
                         "current_count": hour_requests,
@@ -173,7 +175,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 status_code=429,
                 detail=ErrorResponse(
                     error_code="USER_RATE_LIMIT_EXCEEDED",
-                    error_message="用户请求过于频繁，每分钟最多允许10个请求",
+                    error_message=f"用户请求过于频繁，每分钟最多允许{self.user_rate_limit_per_minute}个请求",
                     details={
                         "limit_type": "user_per_minute",
                         "user_id": user_id,
@@ -191,7 +193,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 status_code=429,
                 detail=ErrorResponse(
                     error_code="USER_RATE_LIMIT_EXCEEDED",
-                    error_message="用户请求过于频繁，每小时最多允许100个请求",
+                    error_message=f"用户请求过于频繁，每小时最多允许{self.user_rate_limit_per_hour}个请求",
                     details={
                         "limit_type": "user_per_hour",
                         "user_id": user_id,
@@ -255,8 +257,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def _extract_user_id(self, request: Request) -> Optional[str]:
         """从请求中提取用户ID"""
         
-        # 尝试从请求体中提取用户ID
-        if request.method in ["POST", "PUT", "PATCH"]:
+        # 方式1: 从请求头获取
+        user_id = request.headers.get("X-User-ID")
+        if user_id:
+            return user_id.strip()
+        
+        # 方式2: 从认证信息获取（如果有）
+        if hasattr(request.state, 'user_id'):
+            return request.state.user_id
+        
+        # 方式3: 从请求体获取（POST请求）
+        if request.method == "POST":
             try:
                 body = await request.body()
                 if body:
@@ -264,21 +275,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     data = json.loads(body)
                     user_id = data.get("user_id")
                     if user_id and isinstance(user_id, str):
-                        return user_id
-                    # 重新设置请求体
-                    request._body = body
-            except:
+                        return user_id.strip()
+            except Exception:
                 pass
-        
-        # 尝试从查询参数中提取
-        user_id = request.query_params.get("user_id")
-        if user_id:
-            return user_id
-        
-        # 尝试从请求头中提取
-        user_id = request.headers.get("X-User-ID")
-        if user_id:
-            return user_id
         
         return None
     
@@ -307,24 +306,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         current_time = time.time()
         
-        # 统计活跃IP数量
-        active_ips = len([ip for ip, requests in self.ip_requests.items() 
-                         if requests and current_time - requests[-1] <= 300])  # 5分钟内活跃
+        # 统计活跃的IP和用户
+        active_ips = len([ip for ip, requests in self.ip_requests.items() if requests])
+        active_users = len([user for user, requests in self.user_requests.items() if requests])
         
-        # 统计活跃用户数量
-        active_users = len([user for user, requests in self.user_requests.items() 
-                           if requests and current_time - requests[-1] <= 300])  # 5分钟内活跃
-        
-        # 统计被阻塞的IP数量
-        blocked_ips = len([ip for ip, (blocked_until, _) in self.ip_blocks.items() 
-                          if current_time < blocked_until])
+        # 统计阻塞的IP
+        blocked_ips = len([ip for ip, (blocked_until, _) in self.ip_blocks.items() if current_time < blocked_until])
         
         return {
-            "total_tracked_ips": len(self.ip_requests),
             "active_ips": active_ips,
-            "blocked_ips": blocked_ips,
-            "total_tracked_users": len(self.user_requests),
             "active_users": active_users,
+            "blocked_ips": blocked_ips,
             "rate_limits": {
                 "ip_per_minute": self.rate_limit_per_minute,
                 "ip_per_hour": self.rate_limit_per_hour,

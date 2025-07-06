@@ -7,8 +7,8 @@
 from typing import Optional, Dict, Any
 
 
-class StyleTransformAPIException(Exception):
-    """API服务基础异常类"""
+class WorkflowAPIException(Exception):
+    """工作流API服务基础异常类"""
     
     def __init__(
         self,
@@ -24,7 +24,7 @@ class StyleTransformAPIException(Exception):
         super().__init__(error_message)
 
 
-class ValidationError(StyleTransformAPIException):
+class ValidationError(WorkflowAPIException):
     """输入验证错误"""
     
     def __init__(self, message: str, field: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
@@ -36,7 +36,7 @@ class ValidationError(StyleTransformAPIException):
         )
 
 
-class AuthenticationError(StyleTransformAPIException):
+class AuthenticationError(WorkflowAPIException):
     """认证错误"""
     
     def __init__(self, message: str = "认证失败", details: Optional[Dict[str, Any]] = None):
@@ -48,7 +48,7 @@ class AuthenticationError(StyleTransformAPIException):
         )
 
 
-class AuthorizationError(StyleTransformAPIException):
+class AuthorizationError(WorkflowAPIException):
     """授权错误"""
     
     def __init__(self, message: str = "权限不足", details: Optional[Dict[str, Any]] = None):
@@ -60,7 +60,7 @@ class AuthorizationError(StyleTransformAPIException):
         )
 
 
-class ResourceNotFoundError(StyleTransformAPIException):
+class ResourceNotFoundError(WorkflowAPIException):
     """资源未找到错误"""
     
     def __init__(self, resource_type: str, resource_id: str, details: Optional[Dict[str, Any]] = None):
@@ -72,7 +72,7 @@ class ResourceNotFoundError(StyleTransformAPIException):
         )
 
 
-class RateLimitError(StyleTransformAPIException):
+class RateLimitError(WorkflowAPIException):
     """限流错误"""
     
     def __init__(self, message: str, limit_type: str, limit_value: int, details: Optional[Dict[str, Any]] = None):
@@ -84,7 +84,7 @@ class RateLimitError(StyleTransformAPIException):
         )
 
 
-class ServiceUnavailableError(StyleTransformAPIException):
+class ServiceUnavailableError(WorkflowAPIException):
     """服务不可用错误"""
     
     def __init__(self, service_name: str, details: Optional[Dict[str, Any]] = None):
@@ -96,7 +96,7 @@ class ServiceUnavailableError(StyleTransformAPIException):
         )
 
 
-class ComfyUIError(StyleTransformAPIException):
+class ComfyUIError(WorkflowAPIException):
     """ComfyUI相关错误"""
     
     def __init__(self, message: str, operation: str, details: Optional[Dict[str, Any]] = None):
@@ -108,7 +108,7 @@ class ComfyUIError(StyleTransformAPIException):
         )
 
 
-class ImageProcessingError(StyleTransformAPIException):
+class ImageProcessingError(WorkflowAPIException):
     """图像处理错误"""
     
     def __init__(self, message: str, stage: str, details: Optional[Dict[str, Any]] = None):
@@ -120,7 +120,7 @@ class ImageProcessingError(StyleTransformAPIException):
         )
 
 
-class NetworkError(StyleTransformAPIException):
+class NetworkError(WorkflowAPIException):
     """网络错误"""
     
     def __init__(self, message: str, operation: str, details: Optional[Dict[str, Any]] = None):
@@ -132,7 +132,7 @@ class NetworkError(StyleTransformAPIException):
         )
 
 
-class TaskError(StyleTransformAPIException):
+class TaskError(WorkflowAPIException):
     """任务处理错误"""
     
     def __init__(self, message: str, task_id: str, details: Optional[Dict[str, Any]] = None):
@@ -144,7 +144,7 @@ class TaskError(StyleTransformAPIException):
         )
 
 
-class ConfigurationError(StyleTransformAPIException):
+class ConfigurationError(WorkflowAPIException):
     """配置错误"""
     
     def __init__(self, message: str, config_key: str, details: Optional[Dict[str, Any]] = None):
@@ -156,7 +156,7 @@ class ConfigurationError(StyleTransformAPIException):
         )
 
 
-class TimeoutError(StyleTransformAPIException):
+class TimeoutError(WorkflowAPIException):
     """超时错误"""
     
     def __init__(self, operation: str, timeout_seconds: int, details: Optional[Dict[str, Any]] = None):
@@ -168,7 +168,7 @@ class TimeoutError(StyleTransformAPIException):
         )
 
 
-class QuotaExceededError(StyleTransformAPIException):
+class QuotaExceededError(WorkflowAPIException):
     """配额超限错误"""
     
     def __init__(self, quota_type: str, limit: int, current: int, details: Optional[Dict[str, Any]] = None):
@@ -185,7 +185,7 @@ class QuotaExceededError(StyleTransformAPIException):
         )
 
 
-class DatabaseError(StyleTransformAPIException):
+class DatabaseError(WorkflowAPIException):
     """数据库错误"""
     
     def __init__(self, message: str, operation: str, details: Optional[Dict[str, Any]] = None):
@@ -197,7 +197,7 @@ class DatabaseError(StyleTransformAPIException):
         )
 
 
-class FileOperationError(StyleTransformAPIException):
+class FileOperationError(WorkflowAPIException):
     """文件操作错误"""
     
     def __init__(self, message: str, operation: str, file_path: str, details: Optional[Dict[str, Any]] = None):

@@ -76,14 +76,14 @@ class ValidationMiddleware(BaseHTTPMiddleware):
                 ).dict()
             )
         
-        # 获取请求体进行验证
+        # 获取请求体进行基本验证
         if request.method in ["POST", "PUT", "PATCH"]:
             try:
                 body = await request.body()
                 if body:
                     import json
                     data = json.loads(body)
-                    await self._validate_request_data(data, request.url.path)
+                    await self._validate_common_data(data)
                     
                     # 重新设置请求体以供后续处理使用
                     request._body = body
@@ -97,92 +97,35 @@ class ValidationMiddleware(BaseHTTPMiddleware):
                     ).dict()
                 )
     
-    async def _validate_request_data(self, data: dict, path: str):
-        """验证请求数据内容"""
-        
-        # 验证图像变换相关的请求
-        if "/transform" in path:
-            await self._validate_transform_request(data)
-    
-    async def _validate_transform_request(self, data: dict):
-        """验证图像变换请求"""
-        
-        # 验证user_id
-        user_id = data.get("user_id")
-        if not user_id or not isinstance(user_id, str) or len(user_id.strip()) == 0:
+    async def _validate_common_data(self, data: dict):
+        """验证通用请求数据"""
+        # 验证工作流ID（如果存在）
+        workflow_id = data.get("workflow_id")
+        if workflow_id and not isinstance(workflow_id, str):
             raise HTTPException(
                 status_code=400,
                 detail=ErrorResponse(
-                    error_code="INVALID_USER_ID",
-                    error_message="user_id 必须是非空字符串"
+                    error_code="INVALID_WORKFLOW_ID",
+                    error_message="workflow_id 必须是字符串类型"
                 ).dict()
             )
         
-        # 验证user_id长度和格式
-        if len(user_id) > 100:
+        # 验证参数对象（如果存在）
+        parameters = data.get("parameters")
+        if parameters and not isinstance(parameters, dict):
             raise HTTPException(
                 status_code=400,
                 detail=ErrorResponse(
-                    error_code="USER_ID_TOO_LONG",
-                    error_message="user_id 长度不能超过100个字符"
+                    error_code="INVALID_PARAMETERS",
+                    error_message="parameters 必须是对象类型"
                 ).dict()
             )
         
-        # 验证user_id格式（只允许字母、数字、下划线、连字符）
-        if not re.match(r'^[a-zA-Z0-9_-]+$', user_id):
-            raise HTTPException(
-                status_code=400,
-                detail=ErrorResponse(
-                    error_code="INVALID_USER_ID_FORMAT",
-                    error_message="user_id 只能包含字母、数字、下划线和连字符"
-                ).dict()
-            )
-        
-        # 验证图像URL
-        image_url = data.get("image_url")
-        image_urls = data.get("image_urls", [])
-        
-        urls_to_validate = []
-        if image_url:
-            urls_to_validate.append(image_url)
-        if image_urls:
-            urls_to_validate.extend(image_urls)
-        
-        for url in urls_to_validate:
-            await self._validate_image_url(url)
-        
-        # 验证批量请求的数量限制
-        if image_urls and len(image_urls) > 10:
-            raise HTTPException(
-                status_code=400,
-                detail=ErrorResponse(
-                    error_code="TOO_MANY_IMAGES",
-                    error_message="批量处理最多支持10张图像"
-                ).dict()
-            )
-        
-        # 验证strength参数
-        strength = data.get("strength")
-        if strength is not None:
-            if not isinstance(strength, (int, float)) or strength < 0.1 or strength > 1.0:
-                raise HTTPException(
-                    status_code=400,
-                    detail=ErrorResponse(
-                        error_code="INVALID_STRENGTH",
-                        error_message="strength 必须是0.1到1.0之间的数值"
-                    ).dict()
-                )
-        
-        # 验证custom_prompt长度
-        custom_prompt = data.get("custom_prompt")
-        if custom_prompt and len(custom_prompt) > 1000:
-            raise HTTPException(
-                status_code=400,
-                detail=ErrorResponse(
-                    error_code="PROMPT_TOO_LONG",
-                    error_message="custom_prompt 长度不能超过1000个字符"
-                ).dict()
-            )
+        # 验证图像URL（如果存在）
+        if parameters and isinstance(parameters, dict):
+            for key, value in parameters.items():
+                if key.endswith("_url") and value:
+                    await self._validate_image_url(value)
     
     async def _validate_image_url(self, url: str):
         """验证图像URL的安全性和可访问性"""
@@ -192,7 +135,7 @@ class ValidationMiddleware(BaseHTTPMiddleware):
                 status_code=400,
                 detail=ErrorResponse(
                     error_code="INVALID_IMAGE_URL",
-                    error_message="image_url 必须是有效的URL字符串"
+                    error_message="图像URL必须是有效的URL字符串"
                 ).dict()
             )
         
@@ -254,54 +197,25 @@ class ValidationMiddleware(BaseHTTPMiddleware):
                     error_message="URL长度不能超过2048个字符"
                 ).dict()
             )
-        
-        # 检查图像URL的可访问性和类型（可选，为了性能考虑可能会跳过）
-        if settings.DEBUG:  # 只在调试模式下进行实际检查
-            await self._check_image_accessibility(url)
     
     async def _check_image_accessibility(self, url: str):
-        """检查图像的可访问性和类型"""
+        """检查图像是否可访问（可选功能）"""
         try:
             async with aiohttp.ClientSession() as session:
-                # 只获取头部信息，不下载完整文件
-                async with session.head(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with session.head(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                     if response.status != 200:
                         raise HTTPException(
                             status_code=400,
                             detail=ErrorResponse(
                                 error_code="IMAGE_NOT_ACCESSIBLE",
-                                error_message=f"无法访问图像URL: HTTP {response.status}"
+                                error_message=f"图像不可访问，状态码: {response.status}"
                             ).dict()
                         )
-                    
-                    # 检查Content-Type
-                    content_type = response.headers.get("content-type", "").lower()
-                    if content_type and not any(allowed in content_type for allowed in self.allowed_image_types):
-                        raise HTTPException(
-                            status_code=400,
-                            detail=ErrorResponse(
-                                error_code="UNSUPPORTED_IMAGE_TYPE",
-                                error_message=f"不支持的图像类型: {content_type}"
-                            ).dict()
-                        )
-                    
-                    # 检查文件大小
-                    content_length = response.headers.get("content-length")
-                    if content_length and int(content_length) > self.max_image_size:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=ErrorResponse(
-                                error_code="IMAGE_TOO_LARGE",
-                                error_message=f"图像文件过大，最大允许 {self.max_image_size // (1024*1024)}MB"
-                            ).dict()
-                        )
-        
         except aiohttp.ClientError as e:
-            logger.warning(f"图像可访问性检查失败: {e}")
             raise HTTPException(
                 status_code=400,
                 detail=ErrorResponse(
-                    error_code="IMAGE_ACCESSIBILITY_CHECK_FAILED",
-                    error_message="无法验证图像URL的可访问性"
+                    error_code="IMAGE_ACCESS_ERROR",
+                    error_message=f"图像访问错误: {e}"
                 ).dict()
             ) 

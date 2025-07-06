@@ -276,14 +276,24 @@ class WorkflowRegistry:
         Returns:
             str: 模块名
         """
-        # 移除扩展名
-        module_name = os.path.splitext(os.path.basename(file_path))[0]
+        # 获取文件名（不含扩展名）
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
         
         # 确保模块名是有效的Python标识符
-        if not module_name.isidentifier():
-            module_name = f"workflow_{hash(file_path) % 1000000}"
+        if not base_name.isidentifier():
+            # 替换非字母数字字符为下划线
+            import re
+            base_name = re.sub(r'[^a-zA-Z0-9_]', '_', base_name)
+            
+            # 确保以字母或下划线开头
+            if base_name and not base_name[0].isalpha() and base_name[0] != '_':
+                base_name = f"workflow_{base_name}"
+            
+            # 如果仍然无效，使用哈希值
+            if not base_name or not base_name.isidentifier():
+                base_name = f"workflow_{hash(file_path) % 1000000}"
         
-        return module_name
+        return base_name
     
     def initialize(self) -> None:
         """初始化工作流注册中心
@@ -293,18 +303,41 @@ class WorkflowRegistry:
         if self._is_initialized:
             return
         
-        # 获取当前文件的目录
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # 内置工作流路径
-        built_in_path = os.path.join(current_dir, "..", "workflows", "built_in")
-        custom_path = os.path.join(current_dir, "..", "workflows", "custom")
-        
-        # 自动发现工作流
-        discovered_count = self.auto_discover_workflows([built_in_path, custom_path])
-        
-        logger.info(f"工作流注册中心初始化完成，发现 {discovered_count} 个工作流")
-        self._is_initialized = True
+        try:
+            # 获取当前文件的目录
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # 内置工作流路径（使用更健壮的路径解析）
+            built_in_path = os.path.normpath(os.path.join(current_dir, "..", "workflows", "built_in"))
+            custom_path = os.path.normpath(os.path.join(current_dir, "..", "workflows", "custom"))
+            
+            # 确保路径存在
+            search_paths = []
+            for path in [built_in_path, custom_path]:
+                if os.path.exists(path):
+                    search_paths.append(path)
+                    logger.debug(f"工作流搜索路径: {path}")
+                else:
+                    logger.warning(f"工作流路径不存在: {path}")
+            
+            if not search_paths:
+                logger.warning("没有找到可用的工作流搜索路径")
+                self._is_initialized = True
+                return
+            
+            # 自动发现工作流
+            discovered_count = self.auto_discover_workflows(search_paths)
+            
+            if discovered_count > 0:
+                logger.info(f"工作流注册中心初始化完成，发现 {discovered_count} 个工作流: {list(self._workflows.keys())}")
+            else:
+                logger.warning("工作流注册中心初始化完成，但未发现任何工作流")
+                
+            self._is_initialized = True
+            
+        except Exception as e:
+            logger.error(f"工作流注册中心初始化失败: {e}")
+            self._is_initialized = True  # 即使失败也标记为已初始化，避免重复尝试
     
     def is_initialized(self) -> bool:
         """检查是否已初始化

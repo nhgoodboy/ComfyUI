@@ -20,7 +20,6 @@ sys.path.insert(0, str(witness_path))
 from comfyui_client.client import ComfyUIClient
 from comfyui_client.websocket import ComfyUIWebSocketClient
 from ..config import settings
-from ..utils.task_manager import task_manager, TaskInfo
 from ..core.workflow_manager import TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -322,11 +321,8 @@ class ComfyUIService:
             return "failed"
     
     async def submit_workflow(self, task_id: str, workflow: Dict[str, Any]) -> str:
-        """提交工作流到ComfyUI"""
+        """提交工作流到ComfyUI（简化版本）"""
         try:
-            # 提取采样器节点ID
-            sampler_node_ids = self._get_sampler_node_ids(workflow)
-
             # 提交工作流
             result = await self.client.prompts.queue_prompt(prompt=workflow, client_id=self.client_id)
             prompt_id = result.get("prompt_id")
@@ -334,178 +330,55 @@ class ComfyUIService:
             if not prompt_id:
                 raise Exception("未获取到prompt_id")
             
-            # 更新任务状态，并存入采样器ID
-            await task_manager.update_task_status(
-                task_id=task_id,
-                status=TaskStatus.RUNNING,
-                comfyui_prompt_id=prompt_id,
-                sampler_node_ids=sampler_node_ids
-            )
-            
             logger.info(f"任务 {task_id} 提交成功，prompt_id: {prompt_id}, client_id: {self.client_id}")
-            
-            # 启动兜底轮询
-            asyncio.create_task(self._poll_history(task_id, prompt_id))
             return prompt_id
             
         except Exception as e:
             logger.error(f"提交工作流失败 {task_id}: {e}")
-            await task_manager.update_task_status(
-                task_id=task_id,
-                status=TaskStatus.FAILED,
-                error_message=str(e)
-            )
             raise
     
 # 废弃方法已删除：process_image - 旧架构专用方法
     
     async def _on_progress(self, prompt_id: str, progress_data: Dict[str, Any]):
-        """进度回调"""
+        """处理进度更新"""
         try:
-            # 查找对应的任务
-            task = await self._find_task_by_prompt_id(prompt_id)
-            if not task:
-                return
-
-            # 检查是否是我们关心的采样器节点的进度
-            node_id = progress_data.get("node")
-            if node_id and task.sampler_node_ids and node_id not in task.sampler_node_ids:
-                return # 忽略非采样器节点的进度
-
-            value = progress_data.get("value")
-            max_v = progress_data.get("max")
-
-            # 仅当 value 和 max 都存在且有效时才处理
-            if isinstance(value, (int, float)) and isinstance(max_v, (int, float)) and max_v > 0:
-                progress = min(max(value / max_v * 100, 0), 100)  # 计算并裁剪到 0-100
-
-                await task_manager.update_task_status(
-                    task_id=task.task_id,
-                    status=TaskStatus.RUNNING,
-                    progress=progress
-                )
-                logger.debug(f"任务 {task.task_id} 进度: {progress:.1f}%")
-
+            logger.debug(f"收到进度更新: {prompt_id}, 数据: {progress_data}")
+            
+            # 这里可以添加进度处理逻辑
+            # 新架构中，进度通过WorkflowManager处理
+            
         except Exception as e:
-            logger.error(f"处理进度回调失败: {e}")
-    
+            logger.error(f"处理进度更新失败: {e}")
+
     async def _on_completion(self, prompt_id: str, result_data: Dict[str, Any]):
-        """完成回调"""
+        """处理完成事件"""
         try:
-            # 查找对应的任务
-            task = await self._find_task_by_prompt_id(prompt_id)
-            if not task:
-                logger.warning(f"未找到prompt_id {prompt_id} 对应的任务")
-                return
+            logger.info(f"收到完成事件: {prompt_id}")
             
-            # 兼容 ComfyUI 不同版本：有的键名为 "outputs"，有的为 "output"
-            output_images = result_data.get("outputs") or result_data.get("output") or {}
+            # 这里可以添加完成处理逻辑
+            # 新架构中，完成事件通过WorkflowManager处理
             
-            logger.debug(f"执行完成回调 raw output_images: {output_images}")
-            
-            if output_images:
-                image_info = None
-
-                # 情形1：output_images 本身带有 "images" 字段（较新 ComfyUI 版本）
-                if isinstance(output_images, dict) and "images" in output_images:
-                    img_list = output_images.get("images", [])
-                    if img_list:
-                        image_info = img_list[0]
-
-                # 情形2：旧版格式，最外层按 node_id 分组
-                if image_info is None and isinstance(output_images, dict):
-                    for _node_id, node_output in output_images.items():
-                        if isinstance(node_output, dict) and "images" in node_output:
-                            img_list = node_output["images"]
-                            if img_list:
-                                image_info = img_list[0]
-                                break
-
-                if image_info:
-                    # 构建图像URL
-                    filename = image_info["filename"]
-                    subfolder = image_info.get("subfolder", "")
-                    img_type = image_info.get("type", "")
-
-                    # 如果是 temp 类型且未提供子目录, ComfyUI 实际存放在 temp 目录
-                    if not subfolder and img_type == "temp":
-                        subfolder = "temp"
-
-                    query_parts = [f"filename={filename}"]
-                    # ComfyUI /view 支持 subfolder 和 type 可选参数
-                    if subfolder:
-                        query_parts.append(f"subfolder={subfolder}")
-                    if img_type:
-                        query_parts.append(f"type={img_type}")
-
-                    query_string = "&".join(query_parts)
-                    # 使用 urljoin 确保 URL 格式正确，避免双斜杠
-                    base_view_url = urljoin(settings.COMFYUI_BASE_URL, "view")
-                    image_url = f"{base_view_url}?{query_string}"
-                    
-                    # 等待 /view 端点可访问，避免前端403
-                    if await self._wait_until_view_ready(image_url):
-                        await task_manager.update_task_status(
-                            task_id=task.task_id,
-                            status=TaskStatus.COMPLETED,
-                            output_image_url=image_url,
-                            progress=100.0
-                        )
-                        logger.info(f"任务 {task.task_id} 完成，输出: {image_url}")
-                    else:
-                        logger.debug(f"输出 {image_url} 在等待超时内不可访问，延迟完成")
-                        return
-                else:
-                    # executed 消息不包含 output 字段，可能是其他插件事件，忽略
-                    return
-                
         except Exception as e:
-            logger.error(f"处理完成回调失败: {e}")
-    
-    async def _find_task_by_prompt_id(self, prompt_id: str) -> Optional[TaskInfo]:
-        """根据prompt_id查找任务"""
-        # 这里需要遍历所有任务，实际使用中可以考虑建立索引
-        for task_id, task in task_manager._tasks.items():
-            if task.comfyui_prompt_id == prompt_id:
-                return task
+            logger.error(f"处理完成事件失败: {e}")
+
+    async def _find_task_by_prompt_id(self, prompt_id: str) -> Optional[str]:
+        """根据prompt_id查找任务ID（暂时返回None，由新架构处理）"""
+        # 新架构中，这个映射由WorkflowManager维护
         return None
 
     async def _poll_history(self, task_id: str, prompt_id: str):
-        """在未收到 WebSocket 事件时轮询 ComfyUI /history 作为兜底"""
-        start_time = time.time()
-        poll_interval = 3  # 秒
+        """轮询ComfyUI历史记录（简化版本）"""
         try:
-            while True:
-                # 若任务已结束则退出
-                task = await task_manager.get_task(task_id)
-                if not task or task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
-                    return
-
-                # 超时检查
-                if time.time() - start_time > settings.COMFYUI_TIMEOUT:
-                    await task_manager.update_task_status(
-                        task_id=task_id,
-                        status=TaskStatus.FAILED,
-                        error_message="任务超时"
-                    )
-                    return
-
-                try:
-                    history = await self.client.prompts.get_history(prompt_id)
-                    # 检查 prompt_id 是否是 history 字典中的一个键
-                    if history and prompt_id in history:
-                        # 将特定 prompt 的数据传递给完成回调
-                        await self._on_completion(prompt_id, history[prompt_id])
-                        return
-                except Exception as e:
-                    logger.debug(f"轮询 history 失败: {e}")
-
-                await asyncio.sleep(poll_interval)
+            logger.debug(f"开始轮询历史记录: {task_id}, {prompt_id}")
+            
+            # 在新架构中，这个功能被WorkflowManager的监控机制替代
+            # 这里只是占位符
+            
         except Exception as e:
-            logger.error(f"轮询任务 {task_id} 失败: {e}")
+            logger.error(f"轮询历史记录失败: {e}")
 
     async def _wait_until_view_ready(self, url: str, timeout: int = 10, interval: float = 0.5) -> bool:
-        """轮询查看 /view 图片是否可访问"""
+        """等待图像URL可访问"""
         start = time.time()
         async with aiohttp.ClientSession() as session:
             while time.time() - start < timeout:

@@ -22,7 +22,7 @@ from .schemas.response import ErrorResponse
 from .middleware.validation import ValidationMiddleware
 from .middleware.auth import APIKeyMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
-from .exceptions import StyleTransformAPIException
+from .exceptions import WorkflowAPIException
 
 # 配置日志
 logging.basicConfig(
@@ -199,8 +199,8 @@ async def health_check():
             }
         )
 
-@app.exception_handler(StyleTransformAPIException)
-async def api_exception_handler(request: Request, exc: StyleTransformAPIException):
+@app.exception_handler(WorkflowAPIException)
+async def api_exception_handler(request: Request, exc: WorkflowAPIException):
     """API自定义异常处理"""
     logger.warning(f"API异常: {exc.error_code} - {exc.error_message}", exc_info=True)
     
