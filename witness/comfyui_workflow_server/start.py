@@ -80,6 +80,7 @@ def main():
             workers=args.workers,
             reload=args.reload,
             log_level="info",
+            lifespan="on"
         )
         server = uvicorn.Server(uvicorn_config)
         

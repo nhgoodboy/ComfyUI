@@ -14,6 +14,8 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import secrets
 import logging
+import json
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,9 @@ class SecurityConfig:
         self.secure_cookies = os.getenv("SECURE_COOKIES", "true").lower() == "true"
         self.cors_origins = self._parse_cors_origins(os.getenv("CORS_ORIGINS", ""))
         
+        # 多用户配置
+        self.api_users = self._parse_api_users(os.getenv("API_USERS"))
+        
         # 验证配置
         self._validate_security_config()
     
@@ -65,6 +70,31 @@ class SecurityConfig:
             return []
         
         return [origin.strip() for origin in cors_string.split(",") if origin.strip()]
+    
+    def _parse_api_users(self, users_json_string: Optional[str]) -> Dict[str, Dict]:
+        """解析API用户配置"""
+        if not users_json_string:
+            logger.warning("API_USERS环境变量未设置，将使用默认的示例用户。")
+            return {
+                "user_01_key": {
+                    "username": "default_user",
+                    "permissions": ["read", "write"]
+                }
+            }
+        
+        try:
+            users = json.loads(users_json_string)
+            if not isinstance(users, dict):
+                raise ValueError("API_USERS必须是一个JSON对象的字符串")
+            return users
+        except json.JSONDecodeError:
+            logger.error("API_USERS环境变量包含无效的JSON，将使用默认用户。")
+            return {
+                "user_01_key": {
+                    "username": "default_user",
+                    "permissions": ["read", "write"]
+                }
+            }
     
     def _validate_security_config(self):
         """验证安全配置"""
@@ -178,8 +208,8 @@ class AppConfig:
         self.host = os.getenv("HOST", "0.0.0.0")
         self.port = int(os.getenv("PORT", "8000"))
         self.workers = int(os.getenv("WORKERS", "1"))
-        
-        # 日志配置
+    
+    # 日志配置
         self.log_level = os.getenv("LOG_LEVEL", "INFO").upper()
         self.log_file = os.getenv("LOG_FILE", "app.log")
         
@@ -281,7 +311,7 @@ def validate_config() -> bool:
 def get_environment_info() -> Dict[str, Any]:
     """获取环境信息"""
     return {
-        "python_version": os.sys.version,
+        "python_version": sys.version,
         "working_directory": os.getcwd(),
         "environment_variables": {
             key: value for key, value in os.environ.items()

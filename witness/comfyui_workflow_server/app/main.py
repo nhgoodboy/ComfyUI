@@ -10,6 +10,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Dict, List
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +22,7 @@ import uvicorn
 from .config import config, security_config, validate_config, storage_config
 
 # 导入API路由
-from .api.v1 import styles, tasks, files
+from .api.v1 import styles, tasks, files, auth
 
 # 导入安全中间件
 from .middleware.security_middleware import SecurityMiddleware
@@ -97,6 +98,7 @@ app = FastAPI(
 # 添加统一安全中间件（五层防护）
 app.add_middleware(
     SecurityMiddleware,
+    api_users=security_config.api_users,
     api_secret_key=security_config.api_secret_key,
     allowed_ips=security_config.allowed_ips,
     signature_timeout=security_config.signature_timeout,
@@ -122,6 +124,7 @@ app.mount(f"/{storage_config.outputs_dir.name}", StaticFiles(directory=storage_c
 app.include_router(styles.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(files.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
 
 # 添加请求日志中间件
 @app.middleware("http")

@@ -12,10 +12,14 @@ import json
 import ipaddress
 from typing import Set, Dict, Optional
 from collections import defaultdict, deque
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 import logging
+
+from comfyui_workflow_server.app.services.jwt_service import get_jwt_service
+from comfyui_workflow_server.app.services.user_service import user_service
+from comfyui_workflow_server.app.utils.crypto_utils import get_crypto_utils
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     def __init__(
         self, 
         app,
+        api_users: Dict[str, Dict],
         api_secret_key: str,
         allowed_ips: list,
         signature_timeout: int = 300,
@@ -37,6 +42,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         self.signature_timeout = signature_timeout
         self.rate_limit_per_ip = rate_limit_per_ip
         self.rate_limit_per_user = rate_limit_per_user
+        self.api_users = api_users
         
         # 速率限制存储 - 生产环境应使用Redis
         self.ip_requests: Dict[str, deque] = defaultdict(deque)
@@ -51,7 +57,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "/health",
             "/favicon.ico",
         }
-        self.excluded_path_prefixes = {"/static", "/ws"}
+        self.excluded_path_prefixes = {"/static", "/ws", "/api/v1/auth"}
         
         logger.info("统一安全中间件初始化完成")
     
@@ -84,9 +90,24 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             timestamp = request.headers.get("x-timestamp")
             signature = request.headers.get("x-signature")
             
-            # 读取请求体
-            body = await request.body()
-            if not await self._verify_signature(request, timestamp, signature, body):
+            if not signature or not timestamp:
+                raise HTTPException(status_code=401, detail="缺少签名或时间戳")
+
+            # 验证签名
+            body_bytes = await request.body()
+            body_hash = hashlib.sha256(body_bytes).hexdigest()
+            
+            crypto_utils = get_crypto_utils()
+            is_valid_signature = crypto_utils.verify_signature(
+                signature=signature,
+                timestamp=timestamp,
+                method=request.method,
+                path=str(request.url.path),
+                query=str(request.url.query) if request.url.query else "",
+                body_hash=body_hash
+            )
+            
+            if not is_valid_signature:
                 logger.warning(f"签名验证失败: {client_ip}")
                 raise HTTPException(status_code=401, detail="请求签名无效")
             
@@ -94,7 +115,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             from fastapi import Request as FastAPIRequest
             
             async def receive():
-                return {"type": "http.request", "body": body}
+                return {"type": "http.request", "body": body_bytes}
             
             request._receive = receive
             
@@ -152,50 +173,8 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         if not api_key:
             return False
         
-        # 使用恒定时间比较防止时序攻击
-        return hmac.compare_digest(api_key.encode(), self.api_secret_key)
-    
-    async def _verify_signature(
-        self, 
-        request: Request, 
-        timestamp: Optional[str], 
-        signature: Optional[str],
-        body: bytes
-    ) -> bool:
-        """请求签名验证"""
-        if not timestamp or not signature:
-            return False
-        
-        try:
-            # 时间戳验证（防重放攻击）
-            request_time = int(timestamp)
-            current_time = int(time.time())
-            
-            if abs(current_time - request_time) > self.signature_timeout:
-                logger.warning(f"请求时间戳过期: {request_time}, 当前: {current_time}")
-                return False
-            
-            # 计算预期签名
-            method = request.method
-            path = str(request.url.path)
-            query = str(request.url.query) if request.url.query else ""
-            body_hash = hashlib.sha256(body).hexdigest()
-            
-            # 签名内容：timestamp + method + path + query + body_hash
-            sign_content = f"{timestamp}{method}{path}{query}{body_hash}"
-            
-            expected_signature = hmac.new(
-                self.api_secret_key,
-                sign_content.encode(),
-                hashlib.sha256
-            ).hexdigest()
-            
-            # 恒定时间比较
-            return hmac.compare_digest(signature, expected_signature)
-            
-        except (ValueError, TypeError) as e:
-            logger.error(f"签名验证错误: {e}")
-            return False
+        # 验证API Key是否存在于用户列表中
+        return api_key in self.api_users
     
     def _check_rate_limit(self, client_ip: str, user_id: Optional[str]) -> bool:
         """速率限制检查"""
