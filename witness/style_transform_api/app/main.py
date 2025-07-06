@@ -12,8 +12,10 @@ import uvicorn
 
 from .config import settings
 from .api.transform import router as transform_router
+from .api.monitoring import router as monitoring_router
 from .services.comfyui_service import comfyui_service
 from .utils.task_manager import start_cleanup_task
+from .utils.monitoring import performance_monitor, PerformanceTimer
 from .schemas.response import ErrorResponse
 from .middleware.validation import ValidationMiddleware
 from .middleware.auth import APIKeyMiddleware
@@ -53,6 +55,10 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         
+        # 停止性能监控器
+        performance_monitor.stop()
+        logger.info("性能监控器已停止")
+        
         # 关闭ComfyUI服务
         await comfyui_service.close()
         logger.info("服务已关闭")
@@ -86,8 +92,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 5. 性能监控中间件
+@app.middleware("http")
+async def performance_monitoring_middleware(request: Request, call_next):
+    """性能监控中间件"""
+    # 获取用户ID（如果有）
+    user_id = getattr(request.state, 'user_id', None)
+    
+    # 记录请求开始
+    with PerformanceTimer(
+        endpoint=request.url.path,
+        method=request.method,
+        user_id=user_id
+    ) as timer:
+        try:
+            response = await call_next(request)
+            timer.set_status(response.status_code)
+            return response
+        except Exception as e:
+            timer.set_status(500, str(e))
+            raise
+
 # 注册路由
 app.include_router(transform_router)
+app.include_router(monitoring_router)
 
 @app.get("/")
 async def root():
