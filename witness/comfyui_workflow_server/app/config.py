@@ -16,6 +16,7 @@ import secrets
 import logging
 import json
 import sys
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -272,39 +273,41 @@ class AppConfig:
         }
 
 
-# 全局配置实例
-config = AppConfig()
+@lru_cache(maxsize=1)
+def get_settings() -> AppConfig:
+    """获取应用配置实例（带缓存）"""
+    return AppConfig()
 
-# 快捷访问
-security_config = config.security
-comfyui_config = config.comfyui
-storage_config = config.storage
 
 # 配置验证函数
-def validate_config() -> bool:
-    """验证配置有效性"""
+def validate_config(settings: AppConfig) -> bool:
+    """验证配置的有效性"""
+    # 验证逻辑可以根据需要扩展
+    # 这里只是一个基本示例
     try:
         # 检查必需的安全配置
-        if not security_config.api_secret_key:
+        if not settings.security.api_secret_key:
             logger.error("API密钥未配置")
             return False
         
-        if not security_config.jwt_secret_key:
+        if not settings.security.jwt_secret_key:
             logger.error("JWT密钥未配置")
             return False
         
-        if not security_config.allowed_ips:
+        if not settings.security.allowed_ips:
             logger.error("IP白名单未配置")
             return False
         
         # 检查ComfyUI连接
-        # TODO: 添加ComfyUI健康检查
+        if not settings.comfyui.host or not settings.comfyui.port:
+            logger.error("ComfyUI主机或端口未配置")
+            return False
         
         logger.info("配置验证通过")
         return True
-        
+    
     except Exception as e:
-        logger.error(f"配置验证失败: {e}")
+        logger.error(f"配置验证期间发生错误: {e}")
         return False
 
 
@@ -312,20 +315,18 @@ def get_environment_info() -> Dict[str, Any]:
     """获取环境信息"""
     return {
         "python_version": sys.version,
-        "working_directory": os.getcwd(),
-        "environment_variables": {
-            key: value for key, value in os.environ.items()
-            if not key.endswith("_KEY") and not key.endswith("_SECRET")
-        }
+        "os": sys.platform,
+        "cwd": os.getcwd()
     }
 
 
 # 导出配置
 __all__ = [
-    "config",
-    "security_config", 
-    "comfyui_config",
-    "storage_config",
+    "get_settings",
     "validate_config",
-    "get_environment_info"
+    "get_environment_info",
+    "AppConfig",
+    "SecurityConfig",
+    "ComfyUIConfig",
+    "StorageConfig"
 ] 

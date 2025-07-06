@@ -12,8 +12,10 @@ from urllib.parse import urlparse
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response
 
-from ..config import storage_config
+from ..config import get_settings
 from ..models.api_models import ErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -23,10 +25,11 @@ class ValidationMiddleware(BaseHTTPMiddleware):
     
     def __init__(self, app):
         super().__init__(app)
-        self.max_image_size = storage_config.max_file_size
-        self.allowed_image_types = storage_config.allowed_extensions
+        settings = get_settings()
+        self.max_file_size = settings.storage.max_file_size
+        self.allowed_extensions = settings.storage.allowed_extensions
         
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: StarletteRequest, call_next):
         """处理请求验证"""
         try:
             # 只对API端点进行验证
@@ -51,7 +54,7 @@ class ValidationMiddleware(BaseHTTPMiddleware):
                 ).dict()
             )
     
-    async def _validate_request(self, request: Request):
+    async def _validate_request(self, request: StarletteRequest):
         """验证请求数据"""
         # 验证Content-Type
         if request.method in ["POST", "PUT", "PATCH"]:

@@ -19,68 +19,130 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 # 导入配置
-from .config import config, security_config, validate_config, storage_config
+from .config import get_settings, validate_config, AppConfig
 
 # 导入API路由
 from .api.v1 import styles, tasks, files, auth
 
 # 导入安全中间件
 from .middleware.security_middleware import SecurityMiddleware
+from .middleware.rate_limit import RateLimitMiddleware
 
-# 服务实例已在 services/__init__.py 中创建和配置
-from .services import user_task_service, user_file_service, comfyui_service
-from .services.jwt_service import init_jwt_service
-from .utils.crypto_utils import init_crypto_utils
-from .core.style_registry import style_registry
+# 导入服务类
+from .services import (
+    UserService,
+    ComfyUIService,
+    UserFileService,
+    UserTaskService,
+    StyleService,
+    style_registry
+)
+
+# 导入新添加的模块
+from .services.style_service import StyleService
+from .services.jwt_service import JWTService, jwt_service, init_jwt_service
+from .utils.crypto_utils import CryptoUtils, init_crypto_utils, get_crypto_utils
+from .core.workflow_registry import workflow_registry
+from .services.user_service import user_service
+
+# 服务实例将在lifespan中创建并附加到app.state
 from .models.api_models import HealthResponse
 
-# 配置日志
-logging.basicConfig(
-    level=getattr(logging, config.log_level),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# 日志将在lifespan中配置
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    # --- 1. 初始化配置 ---
+    settings = get_settings()
+    
+    # --- 2. 配置日志 ---
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    
     try:
-        # 启动时初始化
+        # --- 3. 启动时初始化 ---
         logger.info("=== ComfyUI工作流服务器启动 ===")
-        logger.info("应用模式: 银行级安全防护")
+        logger.info(f"应用模式: {'开发' if settings.debug else '生产'}")
         
-        # 配置验证
-        if not validate_config():
+        # --- 4. 配置验证 ---
+        if not validate_config(settings):
             raise RuntimeError("配置验证失败")
         
-        # 初始化安全服务
-        init_crypto_utils(security_config.api_secret_key)
-        init_jwt_service(security_config.jwt_secret_key, security_config.token_expiry_minutes)
+        # --- 5. 初始化服务 ---
+        app.state.settings = settings
+        app.state.style_registry = style_registry
+        
+        # 服务初始化
+        logger.info("初始化服务...")
+        
+        # 实例化所有服务
+        comfyui_service = ComfyUIService()
+        user_file_service = UserFileService(
+            base_upload_dir=settings.storage.uploads_dir,
+            base_output_dir=settings.storage.outputs_dir
+        )
+        user_task_service = UserTaskService(
+            comfyui_service=comfyui_service, 
+            style_registry=style_registry
+        )
+        
+        # 初始化加密工具，它将创建并持有一个内部实例
+        init_crypto_utils(settings.security.api_secret_key)
+        # 通过getter获取该实例
+        crypto_utils = get_crypto_utils()
+        
+        # 现在可以将实例附加到app.state
+        app.state.comfyui_service = comfyui_service
+        app.state.user_file_service = user_file_service
+        app.state.user_task_service = user_task_service
+        app.state.user_service = user_service
+        app.state.style_service = StyleService()
+        app.state.jwt_service = jwt_service
+        app.state.crypto_utils = crypto_utils
+        app.state.style_registry = style_registry
+
+        init_jwt_service(settings.security.jwt_secret_key, settings.security.token_expiry_minutes)
         logger.info("安全服务初始化完成")
         
-        # 初始化风格注册表
-        try:
-            style_registry.reload_styles()
-            style_count = style_registry.get_style_count()
-            logger.info(f"成功加载 {style_count} 个风格")
-        except Exception as e:
-            logger.error(f"加载风格配置失败: {e}")
+        style_registry.reload_styles()
+        style_count = style_registry.get_style_count()
+        logger.info(f"成功加载 {style_count} 个风格")
+
+        settings.storage.uploads_dir.mkdir(exist_ok=True)
+        settings.storage.outputs_dir.mkdir(exist_ok=True)
         
-        # 确保必要的目录存在
-        storage_config.uploads_dir.mkdir(exist_ok=True)
-        storage_config.outputs_dir.mkdir(exist_ok=True)
-        
-        # 业务服务在导入时已自动初始化
-        # 无需再调用init函数
         logger.info("业务服务初始化完成")
         
-        # 安全配置摘要
-        security_summary = security_config.get_security_summary()
+        security_summary = settings.security.get_security_summary()
         logger.info(f"安全配置: {security_summary}")
         
         logger.info("应用启动完成 - 所有安全防护已激活")
+        
+        # 启动后台任务
+        # ... existing code ...
+        
+        await comfyui_service.initialize()
+        
+        # 将服务实例附加到app.state
+        app.state.comfyui_service = comfyui_service
+        app.state.user_file_service = user_file_service
+        app.state.user_task_service = user_task_service
+        app.state.user_service = user_service
+        app.state.style_service = StyleService()
+        app.state.jwt_service = jwt_service
+        app.state.crypto_utils = crypto_utils
+        app.state.style_registry = style_registry
+
         yield
         
+        # 应用关闭时清理资源
+        if hasattr(app.state, 'comfyui_service'):
+            await app.state.comfyui_service.close()
+
     except Exception as e:
         logger.error(f"应用启动失败: {e}")
         raise
@@ -88,8 +150,12 @@ async def lifespan(app: FastAPI):
         # 清理资源
         logger.info("应用正在关闭...")
 
+# 在lifespan之外获取配置，用于FastAPI应用和中间件的初始化
+# get_settings() 是带缓存的，所以不会重复创建实例
+settings = get_settings()
+
 # 创建FastAPI应用
-fastapi_config = config.get_fastapi_config()
+fastapi_config = settings.get_fastapi_config()
 app = FastAPI(
     **fastapi_config,
     lifespan=lifespan
@@ -98,27 +164,27 @@ app = FastAPI(
 # 添加统一安全中间件（五层防护）
 app.add_middleware(
     SecurityMiddleware,
-    api_users=security_config.api_users,
-    api_secret_key=security_config.api_secret_key,
-    allowed_ips=security_config.allowed_ips,
-    signature_timeout=security_config.signature_timeout,
-    rate_limit_per_ip=security_config.rate_limit_per_ip,
-    rate_limit_per_user=security_config.rate_limit_per_user
+    api_users=settings.security.api_users,
+    api_secret_key=settings.security.api_secret_key,
+    allowed_ips=settings.security.allowed_ips,
+    signature_timeout=settings.security.signature_timeout,
+    rate_limit_per_ip=settings.security.rate_limit_per_ip,
+    rate_limit_per_user=settings.security.rate_limit_per_user
 )
 
 # 添加CORS中间件（仅在开发模式或配置了CORS源时）
-if config.debug or security_config.cors_origins:
+if settings.debug or settings.security.cors_origins:
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=security_config.cors_origins if security_config.cors_origins else ["*"],
+        allow_origins=settings.security.cors_origins if settings.security.cors_origins else ["*"],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["*"],
     )
 
 # 添加静态文件服务
-app.mount(f"/{storage_config.uploads_dir.name}", StaticFiles(directory=storage_config.uploads_dir), name=storage_config.uploads_dir.name)
-app.mount(f"/{storage_config.outputs_dir.name}", StaticFiles(directory=storage_config.outputs_dir), name=storage_config.outputs_dir.name)
+app.mount(f"/{settings.storage.uploads_dir.name}", StaticFiles(directory=settings.storage.uploads_dir), name=settings.storage.uploads_dir.name)
+app.mount(f"/{settings.storage.outputs_dir.name}", StaticFiles(directory=settings.storage.outputs_dir), name=settings.storage.outputs_dir.name)
 
 # 注册路由
 app.include_router(styles.router, prefix="/api/v1")
@@ -162,9 +228,9 @@ async def root():
         available_styles = []
     
     return {
-        "message": config.app_name,
-        "version": config.version,
-        "description": config.description,
+        "message": settings.app_name,
+        "version": settings.version,
+        "description": settings.description,
         "status": "running",
         "architecture": "银行级安全防护架构",
         "security_enabled": True,
@@ -174,22 +240,20 @@ async def root():
             "tasks": "/api/v1/tasks",
             "files": "/api/v1/files",
             "health": "/health",
-            "docs": "/docs" if config.debug else None
+            "docs": "/docs" if settings.debug else None
         }
     }
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check(request: Request):
     """健康检查"""
     try:
-        # 检查风格注册系统
-        style_count = style_registry.get_style_count()
-        
+        style_count = request.app.state.style_registry.get_style_count()
         health_data = {
             "status": "ok",
             "message": "风格转换服务运行正常",
             "timestamp": time.time(),
-            "version": config.version,
+            "version": request.app.state.settings.version,
             "security_layers": 5,
             "security_enabled": True
         }
@@ -211,7 +275,7 @@ async def health_check():
                 "status": "error",
                 "message": f"服务异常: {str(e)}",
                 "timestamp": time.time(),
-                "version": config.version,
+                "version": settings.version,
                 "security_enabled": True
             }
         )
@@ -219,12 +283,12 @@ async def health_check():
 @app.get("/security-info")
 async def security_info():
     """安全信息端点（仅开发模式）"""
-    if not config.debug:
+    if not settings.debug:
         return {"message": "仅开发模式可用"}
     
     return {
-        "security_summary": security_config.get_security_summary(),
-        "environment": "development" if config.debug else "production",
+        "security_summary": settings.security.get_security_summary(),
+        "environment": "development" if settings.debug else "production",
         "security_layers": [
             "第1层: IP白名单控制",
             "第2层: API密钥认证",
@@ -252,16 +316,16 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={
             "success": False,
             "error": "服务器内部错误",
-            "message": str(exc) if config.debug else "请联系管理员",
+            "message": str(exc) if settings.debug else "请联系管理员",
             "timestamp": time.time(),
-            "version": config.version
+            "version": settings.version
         }
     )
 
 def run_server():
     """启动服务器"""
     # 生产模式启动提示
-    if config.is_production():
+    if settings.is_production():
         logger.warning("生产模式启动 - 确保已配置正确的安全密钥")
         logger.warning("请确保以下环境变量已正确设置:")
         logger.warning("- API_SECRET_KEY")
@@ -271,11 +335,11 @@ def run_server():
     # 启动服务器
     uvicorn.run(
         "app.main:app",
-        host=config.host,
-        port=config.port,
-        log_level=config.log_level.lower(),
-        reload=config.debug,
-        workers=config.workers if config.is_production() else 1
+        host=settings.host,
+        port=settings.port,
+        log_level=settings.log_level.lower(),
+        reload=settings.debug,
+        workers=settings.workers if settings.is_production() else 1
     )
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ sys.path.insert(0, str(witness_path))
 
 from comfyui_client.client import ComfyUIClient
 from comfyui_client.websocket import ComfyUIWebSocketClient
-from ..config import comfyui_config, storage_config
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,9 @@ class ComfyUIService:
     """ComfyUI服务封装"""
     
     def __init__(self):
+        settings = get_settings()
+        comfyui_config = settings.comfyui
+        
         parsed_url = urlparse(comfyui_config.base_url)
         if not parsed_url.hostname or not parsed_url.port:
             raise ValueError(f"无效的ComfyUI地址: {comfyui_config.base_url}")
@@ -249,16 +252,21 @@ class ComfyUIService:
         if workflow_name in self._workflow_cache:
             return self._workflow_cache[workflow_name]
         
+        settings = get_settings()
+        storage_config = settings.storage
         workflow_path = storage_config.workflows_dir / f"{workflow_name}.json"
+        
+        if not workflow_path.exists():
+            logger.error(f"工作流文件不存在: {workflow_path}")
+            raise FileNotFoundError(f"工作流文件不存在: {workflow_path}")
         
         try:
             async with aiofiles.open(workflow_path, 'r', encoding='utf-8') as f:
-                content = await f.read()
-                workflow = json.loads(content)
-                self._workflow_cache[workflow_name] = workflow
-                return workflow
+                workflow = json.loads(await f.read())
+            self._workflow_cache[workflow_name] = workflow
+            return workflow
         except Exception as e:
-            logger.error(f"加载工作流失败 {workflow_name}: {e}")
+            logger.error(f"加载工作流失败: {workflow_path}, {e}")
             raise
     
 # 废弃方法已删除：customize_workflow - 旧架构专用方法

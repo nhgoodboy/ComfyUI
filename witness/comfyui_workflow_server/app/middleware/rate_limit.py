@@ -11,17 +11,46 @@ from collections import defaultdict, deque
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
-from ..config import security_config
+from ..config import get_settings
 from ..models.api_models import ErrorResponse
 
 logger = logging.getLogger(__name__)
+
+class RateLimiter:
+    def __init__(self, limit, period, prefix):
+        self.limit = limit
+        self.period = period
+        self.prefix = prefix
+        self.requests = deque()
+
+    def allow_request(self, current_time):
+        self.requests.append(current_time)
+        self._clean_old_requests(current_time)
+        return len(self.requests) <= self.limit
+
+    def _clean_old_requests(self, current_time):
+        while self.requests and current_time - self.requests[0] > self.period:
+            self.requests.popleft()
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """限流中间件"""
     
     def __init__(self, app):
         super().__init__(app)
+        settings = get_settings()
+        self.rate_limiter_by_ip = RateLimiter(
+            limit=settings.security.rate_limit_per_ip, 
+            period=60, 
+            prefix="ip"
+        )
+        self.rate_limiter_by_user = RateLimiter(
+            limit=settings.security.rate_limit_per_user, 
+            period=60, 
+            prefix="user"
+        )
         # 存储每个IP的请求历史: IP -> deque of timestamps
         self.ip_requests: Dict[str, deque] = defaultdict(lambda: deque())
         # 存储每个用户的请求历史: user_id -> deque of timestamps
@@ -30,9 +59,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.ip_blocks: Dict[str, Tuple[float, int]] = {}
         
         # 从配置中获取限流参数
-        self.rate_limit_per_minute = security_config.rate_limit_per_ip
-        self.rate_limit_per_hour = security_config.rate_limit_per_ip_hour
-        self.user_rate_limit_per_minute = security_config.rate_limit_per_user
+        self.rate_limit_per_minute = settings.security.rate_limit_per_ip
+        self.rate_limit_per_hour = settings.security.rate_limit_per_ip_hour
+        self.user_rate_limit_per_minute = settings.security.rate_limit_per_user
         self.user_rate_limit_per_hour = max(1, self.rate_limit_per_hour // 2)  # 用户小时限制为IP小时限制的一半
         
         # 阻塞配置

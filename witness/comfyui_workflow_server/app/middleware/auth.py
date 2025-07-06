@@ -5,22 +5,28 @@ API密钥认证中间件
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.security import APIKeyHeader
+from jose import JWTError, jwt
 
-from ..config import security_config
+from ..config import get_settings
 from ..models.api_models import ErrorResponse
+from ..services.jwt_service import JWTService
 
 logger = logging.getLogger(__name__)
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
     """API密钥认证中间件"""
     
-    def __init__(self, app):
-        super().__init__(app)
-        self.api_key = security_config.api_secret_key
+    def __init__(self, jwt_service: JWTService):
+        super().__init__(jwt_service)
+        self._jwt_service = jwt_service
+        settings = get_settings()
+        self._jwt_secret_key = settings.security.jwt_secret_key
+        self._algorithm = "HS256"
         self.protected_paths = ["/api/v1"]  # 需要认证的路径前缀
         self.public_paths = ["/", "/health", "/docs", "/redoc", "/openapi.json"]  # 公开路径
         
@@ -53,7 +59,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         """判断是否需要进行认证"""
         
         # 如果没有配置API密钥，则不进行认证
-        if not self.api_key:
+        if not self._jwt_secret_key:
             return False
         
         path = request.url.path
@@ -134,7 +140,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         
         # 简单的字符串比较
         # 在生产环境中，建议使用更安全的比较方法和密钥管理
-        return api_key == self.api_key
+        return api_key == self._jwt_secret_key
     
     def _get_client_ip(self, request: Request) -> str:
         """获取客户端IP地址"""

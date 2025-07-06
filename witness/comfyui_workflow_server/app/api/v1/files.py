@@ -4,14 +4,15 @@
 提供文件上传、管理功能的REST API
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Request, HTTPException, Depends
+from fastapi.responses import FileResponse
 from typing import List
 import uuid
 import time
 import logging
 from pathlib import Path
 from ...models.api_models import UploadFileResponse, ApiResponse, UserFilesResponse
-from ...services import user_file_service
+from ...models.user_models import UserFileInfo
 from ...middleware.user_auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
@@ -22,9 +23,10 @@ router = APIRouter(prefix="/files", tags=["files"])
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
-@router.post("/upload", response_model=UploadFileResponse)
-async def upload_file(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
+@router.post("/upload", response_model=UserFileInfo)
+async def upload_file(request: Request, file: UploadFile = File(...)):
     """上传文件"""
+    user_file_service = request.app.state.user_file_service
     try:
         # 验证文件扩展名
         file_extension = Path(file.filename).suffix.lower()
@@ -46,47 +48,38 @@ async def upload_file(file: UploadFile = File(...), user_id: str = Depends(get_c
         
         # 使用用户文件服务保存文件
         file_id = await user_file_service.save_upload_file(
-            user_id=user_id,
+            user_id="default_user",
             file_content=file_content,
             filename=file.filename
         )
         
         # 获取文件信息
-        file_info = user_file_service.get_user_file(user_id, file_id)
+        file_info = user_file_service.get_user_file(user_id="default_user", file_id=file_id)
         
-        return UploadFileResponse(
-            success=True,
-            data={
-                "file_id": file_id,
-                "filename": file_info.filename,
-                "original_name": file_info.original_name,
-                "url": file_info.url,
-                "size": file_info.size,
-                "expires_at": file_info.created_at + 24 * 60 * 60  # 24小时后过期
-            }
-        )
+        return file_info
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"文件上传失败: {user_id} - {e}")
-        return UploadFileResponse(success=False, error=str(e))
+        logger.error(f"文件上传失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/", response_model=UserFilesResponse)
-async def list_user_files(user_id: str = Depends(get_current_user_id), limit: int = 100):
+async def list_user_files(request: Request, limit: int = 100):
     """列出用户文件"""
+    user_file_service = request.app.state.user_file_service
     try:
-        files = user_file_service.list_user_files(user_id, limit)
+        files = user_file_service.list_user_files(user_id="default_user", limit=limit)
         
         return UserFilesResponse(
             success=True,
-            user_id=user_id,
+            user_id="default_user",
             files=files,
             total=len(files)
         )
         
     except Exception as e:
-        logger.error(f"列出用户文件失败: {user_id} - {e}")
+        logger.error(f"列出用户文件失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{file_id}", response_model=ApiResponse)

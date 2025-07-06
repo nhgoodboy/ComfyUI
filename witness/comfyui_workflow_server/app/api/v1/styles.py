@@ -5,34 +5,35 @@
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Request, Depends
-from typing import List, Optional
+from typing import List, Optional, Dict
 import asyncio
 import logging
 from ...models.api_models import (
     StyleInfo, TransformRequest, TransformResponse, 
     ApiResponse, TaskStatus
 )
-from ...services.style_service import style_service
-from ...services import user_task_service
+from ...schemas.request import StyleTransformRequest
 from ...middleware.user_auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/styles", tags=["styles"])
 
-@router.get("/", response_model=ApiResponse)
-async def get_styles():
+@router.get("/styles", response_model=List[StyleInfo])
+async def get_styles(request: Request):
     """获取所有风格"""
+    style_service = request.app.state.style_service
     try:
         styles = await style_service.get_all_styles()
-        return ApiResponse(success=True, data=styles)
+        return styles
     except Exception as e:
         logger.error(f"获取风格列表失败: {e}")
-        return ApiResponse(success=False, error=str(e))
+        return []
 
 @router.get("/search", response_model=ApiResponse)
-async def search_styles(q: str = Query(..., description="搜索关键词")):
+async def search_styles(request: Request, q: str = Query(..., description="搜索关键词")):
     """搜索风格"""
+    style_service = request.app.state.style_service
     try:
         styles = await style_service.search_styles(q)
         return ApiResponse(success=True, data=styles)
@@ -41,8 +42,9 @@ async def search_styles(q: str = Query(..., description="搜索关键词")):
         return ApiResponse(success=False, error=str(e))
 
 @router.get("/{style_id}", response_model=ApiResponse)
-async def get_style(style_id: str):
+async def get_style(style_id: str, request: Request):
     """获取特定风格"""
+    style_service = request.app.state.style_service
     try:
         style = await style_service.get_style(style_id)
         if not style:
@@ -59,12 +61,13 @@ async def transform_image(request: TransformRequest, req: Request, user_id: str 
     """执行风格转换"""
     try:
         # 验证风格存在
+        style_service = req.app.state.style_service
         style = await style_service.get_style(request.style_id)
         if not style:
             raise HTTPException(status_code=404, detail="风格不存在")
         
         # 创建用户任务
-        task_id = await user_task_service.create_task(
+        task_id = await style_service.create_task(
             user_id=user_id,
             style_id=request.style_id,
             input_image_path=request.image_url
@@ -84,11 +87,10 @@ async def transform_image(request: TransformRequest, req: Request, user_id: str 
         logger.error(f"提交转换任务失败: {user_id} - {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
 @router.get("/stats/count", response_model=ApiResponse)
-async def get_style_count():
+async def get_style_count(request: Request):
     """获取风格数量"""
+    style_service = request.app.state.style_service
     try:
         count = await style_service.get_style_count()
         return ApiResponse(success=True, data={"count": count})
@@ -97,8 +99,9 @@ async def get_style_count():
         return ApiResponse(success=False, error=str(e))
 
 @router.post("/reload", response_model=ApiResponse)
-async def reload_styles():
+async def reload_styles(request: Request):
     """重新加载风格配置"""
+    style_service = request.app.state.style_service
     try:
         await style_service.reload_styles()
         styles = await style_service.get_all_styles()
@@ -108,4 +111,20 @@ async def reload_styles():
         })
     except Exception as e:
         logger.error(f"重新加载风格配置失败: {e}")
-        return ApiResponse(success=False, error=str(e)) 
+        return ApiResponse(success=False, error=str(e))
+
+@router.post("/styles/{style_id}/transform", response_model=Dict[str, str])
+async def transform_image_with_style(
+    style_id: str,
+    request: Request,
+    transform_request: StyleTransformRequest = Depends(StyleTransformRequest.as_form)
+):
+    """使用指定风格转换图像"""
+    style_service = request.app.state.style_service
+    task_id = await style_service.process_transform_request(
+        style_id=style_id,
+        user_id="default_user",  # 以后可以从认证信息中获取
+        image_data=transform_request.image.file.read(),
+        filename=transform_request.image.filename
+    )
+    return {"task_id": task_id} 

@@ -2,7 +2,8 @@ from typing import Dict, Optional
 from pydantic import BaseModel, Field
 import logging
 
-from ..config import security_config
+from ..config import get_settings
+from ..utils.crypto_utils import CryptoUtils
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +15,11 @@ class APIUser(BaseModel):
 
 class UserService:
     """用户服务，负责管理API用户"""
-    def __init__(self, user_config: Dict[str, Dict]):
+    def __init__(self):
+        settings = get_settings()
+        self.api_users = settings.security.api_users
         self._users: Dict[str, APIUser] = {}
-        for api_key, user_data in user_config.items():
+        for api_key, user_data in self.api_users.items():
             self._users[api_key] = APIUser(
                 api_key=api_key,
                 username=user_data.get("username", "default_user"),
@@ -29,4 +32,4 @@ class UserService:
         return self._users.get(api_key)
 
 # 从安全配置中创建全局用户服务实例
-user_service = UserService(security_config.api_users) 
+user_service = UserService() 

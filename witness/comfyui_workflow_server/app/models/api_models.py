@@ -131,4 +131,9 @@ class ErrorResponse(BaseModel):
     success: bool = Field(False, description="是否成功")
     error: str = Field(..., description="错误类型")
     message: str = Field(..., description="错误消息")
-    details: Optional[Dict[str, Any]] = Field(None, description="错误详情") 
+    details: Optional[Dict[str, Any]] = Field(None, description="错误详情")
+
+class Token(BaseModel):
+    """JWT令牌模型"""
+    access_token: str
+    token_type: str 

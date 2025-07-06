@@ -10,8 +10,8 @@ import logging
 from ...models.api_models import (
     TaskStatusResponse, TaskResultResponse, ApiResponse, UserTasksResponse
 )
-from ...services import user_task_service
 from ...middleware.user_auth import get_current_user_id
+from ...models.user_models import UserTaskData
 
 logger = logging.getLogger(__name__)
 
@@ -108,4 +108,20 @@ async def get_user_task_stats(user_id: str = Depends(get_current_user_id)):
         return ApiResponse(success=True, data=stats)
     except Exception as e:
         logger.error(f"获取用户任务统计失败: {user_id} - {e}")
-        return ApiResponse(success=False, error=str(e)) 
+        return ApiResponse(success=False, error=str(e))
+
+@router.get("/tasks", response_model=List[UserTaskData])
+async def list_tasks(request: Request, limit: int = 100):
+    """列出当前用户的所有任务"""
+    user_task_service = request.app.state.user_task_service
+    # 以后可以从认证信息中获取 user_id
+    return user_task_service.list_user_tasks(user_id="default_user", limit=limit)
+
+@router.get("/tasks/{task_id}", response_model=UserTaskData)
+async def get_task_status(task_id: str, request: Request):
+    """获取指定任务的状态"""
+    user_task_service = request.app.state.user_task_service
+    task = user_task_service.get_user_task(user_id="default_user", task_id=task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务未找到")
+    return task 
