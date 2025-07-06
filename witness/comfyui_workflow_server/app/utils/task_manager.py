@@ -4,7 +4,7 @@ import uuid
 from typing import Dict, Optional, List
 from datetime import datetime
 from dataclasses import dataclass, field
-from ..schemas.response import TaskStatus
+from ..core.workflow_manager import TaskStatus
 import logging
 
 logger = logging.getLogger(__name__)

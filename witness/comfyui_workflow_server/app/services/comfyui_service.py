@@ -21,7 +21,7 @@ from comfyui_client.client import ComfyUIClient
 from comfyui_client.websocket import ComfyUIWebSocketClient
 from ..config import settings
 from ..utils.task_manager import task_manager, TaskInfo
-from ..schemas.response import TaskStatus
+from ..core.workflow_manager import TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -255,45 +255,71 @@ class ComfyUIService:
             logger.error(f"加载工作流失败 {workflow_name}: {e}")
             raise
     
-    async def customize_workflow(self, workflow: Dict[str, Any], 
-                                input_image: str, style_type: str,
-                                custom_prompt: Optional[str] = None,
-                                strength: float = 0.6) -> Dict[str, Any]:
-        """自定义工作流参数"""
-        # 复制工作流避免修改原始模板
-        customized = json.loads(json.dumps(workflow))
-        
-        # 根据工作流结构更新参数
-        # 这里需要根据实际的style_change.json结构来调整
-        for node_id, node in customized.items():
-            node_type = node.get("class_type", "")
+# 废弃方法已删除：customize_workflow - 旧架构专用方法
+    
+    async def queue_prompt(self, workflow: Dict[str, Any]) -> str:
+        """队列提示到ComfyUI（新架构方法）"""
+        try:
+            result = await self.client.prompts.queue_prompt(prompt=workflow, client_id=self.client_id)
+            prompt_id = result.get("prompt_id")
             
-            # 更新输入图像
-            if node_type == "LoadImage":
-                node["inputs"]["image"] = input_image
+            if not prompt_id:
+                raise Exception("未获取到prompt_id")
+                
+            logger.info(f"工作流提交成功，prompt_id: {prompt_id}")
+            return prompt_id
             
-            # 更新提示词
-            elif node_type == "CLIPTextEncode":
-                if "text" in node["inputs"]:
-                    if custom_prompt:
-                        node["inputs"]["text"] = custom_prompt
-                    else:
-                        # 使用预设的风格提示词
-                        style_prompts = {
-                            "clay": "Clay Style, lovely, 3d, cute",
-                            "anime": "Anime Style, beautiful, detailed",
-                            "realistic": "Realistic Style, high quality, detailed",
-                            "cartoon": "Cartoon Style, colorful, fun",
-                            "oil_painting": "Oil Painting Style, artistic, classical"
-                        }
-                        node["inputs"]["text"] = style_prompts.get(style_type, style_prompts["clay"])
+        except Exception as e:
+            logger.error(f"提交工作流失败: {e}")
+            raise
+    
+    async def get_result(self, prompt_id: str) -> Dict[str, Any]:
+        """获取结果（新架构方法）"""
+        try:
+            # 等待任务完成
+            while True:
+                history = await self.client.prompts.get_history(prompt_id=prompt_id)
+                if not history:
+                    await asyncio.sleep(1)
+                    continue
+                    
+                # 获取输出
+                outputs = history.get("outputs", {})
+                if outputs:
+                    return outputs
+                    
+                await asyncio.sleep(1)
+                
+        except Exception as e:
+            logger.error(f"获取结果失败: {e}")
+            raise
+    
+    async def get_prompt_status(self, prompt_id: str) -> str:
+        """获取任务状态（新架构方法）"""
+        try:
+            history = await self.client.prompts.get_history(prompt_id=prompt_id)
+            if not history:
+                # 检查队列
+                queue = await self.client.prompts.get_queue()
+                pending = queue.get("queue_pending", [])
+                running = queue.get("queue_running", [])
+                
+                for item in pending + running:
+                    if item[1] == prompt_id:
+                        return "running"
+                        
+                return "pending"
             
-            # 更新强度参数
-            elif node_type in ["ControlNetApply", "IPAdapter"]:
-                if "strength" in node["inputs"]:
-                    node["inputs"]["strength"] = strength
-        
-        return customized
+            # 检查是否有错误
+            status = history.get("status", {})
+            if status.get("status_str") == "error":
+                return "failed"
+                
+            return "completed"
+            
+        except Exception as e:
+            logger.error(f"获取状态失败: {e}")
+            return "failed"
     
     async def submit_workflow(self, task_id: str, workflow: Dict[str, Any]) -> str:
         """提交工作流到ComfyUI"""
@@ -311,7 +337,7 @@ class ComfyUIService:
             # 更新任务状态，并存入采样器ID
             await task_manager.update_task_status(
                 task_id=task_id,
-                status=TaskStatus.PROCESSING,
+                status=TaskStatus.RUNNING,
                 comfyui_prompt_id=prompt_id,
                 sampler_node_ids=sampler_node_ids
             )
@@ -331,39 +357,7 @@ class ComfyUIService:
             )
             raise
     
-    async def process_image(self, task_id: str, image_url: str, 
-                          style_type: str, custom_prompt: Optional[str] = None,
-                          strength: float = 0.6) -> str:
-        """处理单张图像"""
-        try:
-            # 1. 下载输入图像
-            logger.info(f"任务 {task_id}: 下载图像 {image_url}")
-            image_data = await self.download_image(image_url)
-            
-            # 2. 上传到ComfyUI
-            filename = f"input_{task_id}.jpg"
-            uploaded_name = await self.upload_image(image_data, filename)
-            logger.info(f"任务 {task_id}: 图像上传成功 {uploaded_name}")
-            
-            # 3. 加载并自定义工作流
-            workflow = await self.load_workflow("style_change")
-            customized_workflow = await self.customize_workflow(
-                workflow, uploaded_name, style_type, custom_prompt, strength
-            )
-            
-            # 4. 提交工作流
-            prompt_id = await self.submit_workflow(task_id, customized_workflow)
-            
-            return prompt_id
-            
-        except Exception as e:
-            logger.error(f"处理图像失败 {task_id}: {e}")
-            await task_manager.update_task_status(
-                task_id=task_id,
-                status=TaskStatus.FAILED,
-                error_message=str(e)
-            )
-            raise
+# 废弃方法已删除：process_image - 旧架构专用方法
     
     async def _on_progress(self, prompt_id: str, progress_data: Dict[str, Any]):
         """进度回调"""
@@ -387,7 +381,7 @@ class ComfyUIService:
 
                 await task_manager.update_task_status(
                     task_id=task.task_id,
-                    status=TaskStatus.PROCESSING,
+                    status=TaskStatus.RUNNING,
                     progress=progress
                 )
                 logger.debug(f"任务 {task.task_id} 进度: {progress:.1f}%")

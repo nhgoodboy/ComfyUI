@@ -1,22 +1,13 @@
 """
 Pydantic数据模型
 
-定义API请求和响应的数据结构。
+定义API响应的数据结构。
 """
 
-from .request import TransformRequest, BatchTransformRequest, StyleType
-from .response import (
-    TransformResponse, BatchTransformResponse, TaskStatusResponse,
-    ErrorResponse, TaskStatus
-)
+from .response import BaseResponse, SuccessResponse, ErrorResponse
 
 __all__ = [
-    "TransformRequest",
-    "BatchTransformRequest", 
-    "StyleType",
-    "TransformResponse",
-    "BatchTransformResponse",
-    "TaskStatusResponse",
-    "ErrorResponse",
-    "TaskStatus"
+    "BaseResponse",
+    "SuccessResponse", 
+    "ErrorResponse"
 ] 
