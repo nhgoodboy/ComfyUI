@@ -1,7 +1,7 @@
 {
   "1": {
     "inputs": {
-      "image": "sleep-4200036_1280.jpg"
+      "image": "china-6788187_1280.jpg"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -19,7 +19,7 @@
   },
   "24": {
     "inputs": {
-      "clip_l": "Clay Style, lovely, 3d, cute, ",
+      "clip_l": "Clay Style, lovely, 3d, cute,  ",
       "t5xxl": [
         "77",
         0
@@ -96,7 +96,7 @@
   },
   "35": {
     "inputs": {
-      "filename_prefix": "clay_style",
+      "filename_prefix": "ComfyUI",
       "images": [
         "33",
         0
@@ -207,7 +207,7 @@
   },
   "73": {
     "inputs": {
-      "seed": 532989339558677,
+      "seed": 699172329931578,
       "steps": 25,
       "cfg": 3,
       "sampler_name": "euler",
@@ -311,7 +311,7 @@
   },
   "90": {
     "inputs": {
-      "lora_name": "flux-lora-000005 (1).safetensors",
+      "lora_name": "flux-lora-clay.safetensors",
       "strength_model": 1.5,
       "model": [
         "97",
@@ -325,7 +325,7 @@
   },
   "97": {
     "inputs": {
-      "unet_name": "flux1-dev.safetensors",
+      "unet_name": "flux1_dev.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
@@ -336,7 +336,7 @@
   "98": {
     "inputs": {
       "clip_name1": "clip_l.safetensors",
-      "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
+      "clip_name2": "t5xxl_fp16.safetensors",
       "type": "flux",
       "device": "default"
     },
@@ -347,7 +347,7 @@
   },
   "103": {
     "inputs": {
-      "text": "The image shows three young girls lying on a red and gold patterned blanket. The girl on the left is wearing a blue and orange floral dress with a white headscarf. She is lying on her back with her eyes closed and her head resting on her hands. The other two girls are lying next to her, wearing red dresses with floral patterns. They are all smiling and appear to be sleeping. The background is dark and out of focus, making the girls the focal point of the image.",
+      "text": "The image shows a street scene in an Asian city. There are two rickshaws parked on the side of the street, one with a pink canopy and the other with a green canopy. The rickshaw on the left has a basket on the front and a table with various items on it, while the one on the right has a red and yellow striped umbrella. In the background, there are buildings and shops with Chinese characters written on them. A woman is standing behind the ricksha, wearing a black apron and holding a basket of food. There is also a motorcycle parked nearby. The street is lined with trees and there are a few people walking on the sidewalk.",
       "anything": [
         "76",
         0
@@ -358,4 +358,4 @@
       "title": "展示任何"
     }
   }
-} 
+}

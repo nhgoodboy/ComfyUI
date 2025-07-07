@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 taskInfo.textContent = data.message || '正在准备...';
                 break;
             case 'PROCESSING':
-                const progress = parseFloat(data.progress || 0) * 100;
+                const progress = parseFloat(data.progress || 0);
             progressFill.style.width = `${progress}%`;
             progressText.textContent = `${Math.round(progress)}%`;
             taskInfo.textContent = data.message || '正在处理中...';
