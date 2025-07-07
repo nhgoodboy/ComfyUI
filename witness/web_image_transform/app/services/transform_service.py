@@ -57,26 +57,26 @@ class TransformService:
     ):
         """处理完整的图像转换流程并启动后台监控。"""
         try:
-            # 1. 获取用户令牌
-            token = await comfyui_client.get_user_token(session_id)
+            # 1. 为上传操作获取一个全新的令牌
             await manager.send_json(client_id, {"status": "UPLOADING", "message": "正在上传图片..."})
-
-            # 2. 上传文件
-            upload_result = await comfyui_client.upload_file(file_content, filename, token)
-            image_id = upload_result["id"]
+            token_for_upload = await comfyui_client.get_user_token(session_id)
+            upload_result = await comfyui_client.upload_file(file_content, filename, token_for_upload)
+            image_id = upload_result  # upload_result is already the file_id string
             await manager.send_json(client_id, {"status": "UPLOADED", "message": "图片上传成功，正在创建任务..."})
 
-            # 3. 创建转换任务
-            task_result = await comfyui_client.create_transform_task(style_id, image_id, token)
+            # 2. 为创建任务操作获取一个全新的令牌
+            token_for_task = await comfyui_client.get_user_token(session_id)
+            task_result = await comfyui_client.create_transform_task(style_id, image_id, token_for_task)
             task_id = task_result["task_id"]
             await manager.send_json(client_id, {"status": "QUEUED", "message": "任务已加入队列，等待处理。", "task_id": task_id})
 
-            # 4. 在后台启动任务状态轮询
-            asyncio.create_task(self.monitor_task(client_id, task_id, token))
+            # 3. 为后台监控获取一个全新的令牌
+            token_for_monitor = await comfyui_client.get_user_token(session_id)
+            asyncio.create_task(self.monitor_task(client_id, task_id, token_for_monitor))
 
             return {"task_id": task_id}
         except Exception as e:
-            logger.error(f"Transform process failed for session {session_id}: {e}")
+            logger.error(f"Transform process failed for session {session_id}: {e}", exc_info=True)
             await manager.send_json(client_id, {"status": "FAILED", "message": str(e)})
             raise
 

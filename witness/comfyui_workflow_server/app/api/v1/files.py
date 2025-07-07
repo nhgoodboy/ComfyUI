@@ -55,11 +55,15 @@ async def upload_file(
         )
         
     try:
-        file_info = await user_file_service.save_upload_file(
+        file_id = await user_file_service.save_upload_file(
             user_id=user.username,
             file_content=file_content,
             filename=file.filename
         )
+        # 获取文件信息对象
+        file_info = user_file_service.get_user_file(user.username, file_id)
+        if not file_info:
+            raise HTTPException(status_code=500, detail="文件保存成功但无法获取文件信息")
         return file_info
     except Exception as e:
         logger.error(f"文件上传失败: {e}", exc_info=True)

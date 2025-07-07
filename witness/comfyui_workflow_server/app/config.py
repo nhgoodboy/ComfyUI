@@ -36,7 +36,7 @@ class SecurityConfig:
         
         # 认证配置
         self.signature_timeout = int(os.getenv("SIGNATURE_TIMEOUT", "300"))  # 5分钟
-        self.token_expiry_minutes = int(os.getenv("TOKEN_EXPIRY_MINUTES", "60"))  # 1小时
+        self.token_expiry_minutes = int(os.getenv("TOKEN_EXPIRY_MINUTES", "1440"))  # 24小时
         
         # 速率限制配置
         self.rate_limit_per_ip = int(os.getenv("RATE_LIMIT_PER_IP", "60"))  # 每IP每分钟

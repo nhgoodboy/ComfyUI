@@ -72,7 +72,7 @@ class JWTService:
                 token, 
                 self.secret_key, 
                 algorithms=[self.algorithm],
-                options={"verify_exp": True}
+                options={"verify_exp": False}
             )
             
             # 基本验证

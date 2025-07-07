@@ -136,4 +136,25 @@ class ErrorResponse(BaseModel):
 class Token(BaseModel):
     """JWT令牌模型"""
     access_token: str
-    token_type: str 
+    token_type: str
+
+class UserFileSchema(BaseModel):
+    id: str
+    user_id: str
+    filename: str
+    filepath: str
+    file_size: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FileUploadResponse(BaseModel):
+    file_id: str
+
+
+class GenericResponseModel(BaseModel):
+    message: str | None = None
+    data: dict | list | None = None 
