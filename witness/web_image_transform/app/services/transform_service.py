@@ -97,11 +97,12 @@ class TransformService:
                 })
 
                 if current_status == "completed":
+                    # 任务完成后，调用新的端点获取结果
                     result_data = await comfyui_client.get_task_result(task_id, token)
                     await manager.send_json(client_id, {
                         "status": "COMPLETED",
                         "message": "任务处理完成！",
-                        "result": result_data["result"]
+                        "result": result_data["data"]
                     })
                     break
                 elif current_status == "failed":

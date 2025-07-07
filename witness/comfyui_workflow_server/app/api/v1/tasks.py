@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from typing import List
 import logging
 from ...models.api_models import (
-    TaskStatusData, TaskResultResponse, ApiResponse, TransformRequest
+    TaskStatusData, TaskResultResponse, ApiResponse, TransformRequest, TaskResult, OutputImage
 )
 from ...models.user_models import APIUser
 from .auth import get_current_user
@@ -70,6 +70,55 @@ async def get_task(
     if not task:
         raise HTTPException(status_code=404, detail="任务未找到")
     return task
+
+@router.get("/{task_id}/result", response_model=TaskResultResponse, summary="获取任务结果")
+async def get_task_result(
+    task_id: str,
+    request: Request,
+    user: APIUser = Depends(get_current_user)
+):
+    """获取指定任务的结果。仅当任务成功完成后才可用。"""
+    user_task_service: UserTaskService = request.app.state.user_task_service
+    task = user_task_service.get_user_task(user.username, task_id)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="任务未找到")
+    
+    if task.status != "completed" or not task.result:
+        raise HTTPException(status_code=404, detail="任务结果尚不可用或任务未成功")
+        
+    # 安全地构建TaskResult对象
+    try:
+        raw_outputs = task.result.get('output', {})
+        output_images = []
+
+        for node_id, node_output in raw_outputs.items():
+            if 'images' in node_output:
+                for img_data in node_output['images']:
+                    # 这里需要根据ComfyUI的实际输出来调整
+                    # 我们假设img_data是一个包含filename, subfolder, type的字典
+                    full_url = f"/view?filename={img_data.get('filename')}&subfolder={img_data.get('subfolder')}&type={img_data.get('type')}"
+                    output_images.append(OutputImage(
+                        filename=img_data.get("filename", "unknown"),
+                        url=full_url,
+                        size=0 # 暂时无法获取
+                    ))
+
+        duration = task.completed_at - task.started_at if task.completed_at and task.started_at else 0
+
+        task_result_data = TaskResult(
+            output_images=output_images,
+            duration=duration,
+            style_applied=task.style_id
+        )
+    except Exception as e:
+        logger.error(f"构建任务结果失败: {task_id} - {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="无法解析任务结果")
+
+    return TaskResultResponse(
+        success=True,
+        data=task_result_data
+    )
 
 @router.delete("/{task_id}", response_model=ApiResponse, summary="取消正在进行中的任务")
 async def cancel_task(
