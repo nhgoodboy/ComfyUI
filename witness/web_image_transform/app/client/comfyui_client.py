@@ -120,20 +120,20 @@ class ComfyUIClient:
         response = await self._make_request(method, path, token=token)
         return response.json()
 
-    async def upload_file(self, file_content: bytes, filename: str, token: str) -> str:
+    async def upload_file(self, file_content: bytes, filename: str, token: str) -> Dict[str, Any]:
         """上传文件。"""
         path = "/api/v1/files/upload"
         method = "POST"
         files = {'file': (filename, file_content)}
         response = await self._make_request(method, path, files=files, token=token)
         upload_result = response.json()
-        return upload_result["file_id"]
+        return upload_result
 
     async def create_transform_task(self, style_id: str, image_id: str, token: str) -> Dict[str, Any]:
         """创建转换任务。"""
-        path = f"/api/v1/styles/{style_id}/transform"
+        path = "/api/v1/styles/transform"
         method = "POST"
-        body = {"image_id": image_id}
+        body = {"style_id": style_id, "image_url": image_id}
         response = await self._make_request(method, path, body=body, token=token)
         return response.json()
 

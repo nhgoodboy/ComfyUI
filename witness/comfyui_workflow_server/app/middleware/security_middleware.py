@@ -54,7 +54,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "/health",
             "/favicon.ico",
         }
-        self.excluded_path_prefixes = {"/static", "/ws", "/api/v1/auth"}
+        self.excluded_path_prefixes = {"/static", "/ws", "/api/v1/auth", "/uploads", "/outputs"}
         
         logger.info("统一安全中间件初始化完成")
     

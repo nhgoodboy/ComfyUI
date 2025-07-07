@@ -86,31 +86,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'PROCESSING':
                 const progress = parseFloat(data.progress || 0) * 100;
-                progressFill.style.width = `${progress}%`;
-                progressText.textContent = `${Math.round(progress)}%`;
-                taskInfo.textContent = data.message || '正在处理中...';
+            progressFill.style.width = `${progress}%`;
+            progressText.textContent = `${Math.round(progress)}%`;
+            taskInfo.textContent = data.message || '正在处理中...';
                 break;
             case 'COMPLETED':
                 progressFill.style.width = '100%';
                 progressText.textContent = '100%';
-                taskInfo.textContent = '处理完成！';
-                
+            taskInfo.textContent = '处理完成！';
+            
                 if (data.result && data.result.output_files && data.result.output_files.length > 0) {
-                    resultCard.style.display = 'block';
+            resultCard.style.display = 'block';
                     resultImage.src = data.result.output_files[0].url;
                     downloadLink.href = data.result.output_files[0].url;
                 }
-                
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-magic"></i> 再次转换';
+            
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-magic"></i> 再次转换';
                 break;
             case 'FAILED':
-                taskInfo.textContent = `错误: ${data.message}`;
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-magic"></i> 重新尝试';
+            taskInfo.textContent = `错误: ${data.message}`;
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-magic"></i> 重新尝试';
                 break;
             default:
-                taskInfo.textContent = data.message || '等待任务开始...';
+             taskInfo.textContent = data.message || '等待任务开始...';
         }
     }
 

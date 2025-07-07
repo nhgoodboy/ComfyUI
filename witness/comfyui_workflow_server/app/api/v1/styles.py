@@ -61,7 +61,7 @@ async def transform_image(
     user_task_service = req.app.state.user_task_service
     
     # 验证风格存在
-    style = style_service.get_style(request.style_id)
+    style = await style_service.get_style(request.style_id)
     if not style:
         raise HTTPException(status_code=404, detail="风格不存在")
     

@@ -12,7 +12,8 @@ from enum import Enum
 class TaskStatus(str, Enum):
     """任务状态枚举"""
     PENDING = "pending"
-    PROCESSING = "processing" 
+    PROCESSING = "processing"
+    RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
 

@@ -60,13 +60,14 @@ class TransformService:
             # 1. 为上传操作获取一个全新的令牌
             await manager.send_json(client_id, {"status": "UPLOADING", "message": "正在上传图片..."})
             token_for_upload = await comfyui_client.get_user_token(session_id)
-            upload_result = await comfyui_client.upload_file(file_content, filename, token_for_upload)
-            image_id = upload_result  # upload_result is already the file_id string
+            file_info = await comfyui_client.upload_file(file_content, filename, token_for_upload)
+            # 构造完整的图片URL
+            image_url = f"http://127.0.0.1:8000{file_info['url']}"
             await manager.send_json(client_id, {"status": "UPLOADED", "message": "图片上传成功，正在创建任务..."})
 
             # 2. 为创建任务操作获取一个全新的令牌
             token_for_task = await comfyui_client.get_user_token(session_id)
-            task_result = await comfyui_client.create_transform_task(style_id, image_id, token_for_task)
+            task_result = await comfyui_client.create_transform_task(style_id, image_url, token_for_task)
             task_id = task_result["task_id"]
             await manager.send_json(client_id, {"status": "QUEUED", "message": "任务已加入队列，等待处理。", "task_id": task_id})
 

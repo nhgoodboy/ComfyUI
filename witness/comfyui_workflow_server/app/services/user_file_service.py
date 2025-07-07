@@ -63,7 +63,7 @@ class UserFileService:
                 user_id=user_id,
                 filename=stored_filename,
                 original_name=filename,
-                url=f"/files/{user_id}/{stored_filename}",
+                url=f"/uploads/{user_id}/{stored_filename}",
                 size=len(file_content),
                 created_at=time.time()
             )
@@ -136,7 +136,7 @@ class UserFileService:
             return None
         
         # 判断是上传文件还是输出文件
-        if file_info.url.startswith("/files/"):
+        if file_info.url.startswith("/uploads/"):
             return self._get_user_upload_dir(user_id) / file_info.filename
         elif file_info.url.startswith("/outputs/"):
             return self._get_user_output_dir(user_id) / file_info.filename
