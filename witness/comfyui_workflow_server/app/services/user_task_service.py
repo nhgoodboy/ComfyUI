@@ -7,23 +7,27 @@
 import uuid
 import time
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from ..models.user_models import UserTaskData, UserStatsResponse
-from ..services.comfyui_service import ComfyUIService
+# from ..services.comfyui_service import ComfyUIService
 from ..core.style_registry import StyleRegistry
 from ..workflows.built_in.universal_style_transform import UniversalStyleTransformWorkflow
 import logging
+
+if TYPE_CHECKING:
+    from ..services.comfyui_service import ComfyUIService
 
 logger = logging.getLogger(__name__)
 
 class UserTaskService:
     """多用户任务服务"""
     
-    def __init__(self, comfyui_service: ComfyUIService, style_registry: StyleRegistry):
+    def __init__(self, comfyui_service: 'ComfyUIService', style_registry: StyleRegistry):
         self.comfyui_service = comfyui_service
         self.style_registry = style_registry
         self.user_tasks: Dict[str, Dict[str, UserTaskData]] = {}  # {user_id: {task_id: task_data}}
         self.task_to_user: Dict[str, str] = {}  # {task_id: user_id}
+        self.prompt_to_task: Dict[str, str] = {} # {prompt_id: task_id}
     
     async def create_task(self, user_id: str, style_id: str, input_image_path: str) -> str:
         """创建用户任务"""
@@ -93,47 +97,12 @@ class UserTaskService:
             
             # 提交工作流到ComfyUI
             prompt_id = await self.comfyui_service.submit_workflow(task_id, workflow)
+            task_data.prompt_id = prompt_id
+            self.prompt_to_task[prompt_id] = task_id
             
             logger.info(f"用户任务处理已提交: {user_id} - {task_id} - prompt_id: {prompt_id}")
 
-            # 开始轮询任务状态
-            while True:
-                await asyncio.sleep(1) # 每秒轮询一次
-                status_data = self.comfyui_service.get_prompt_status(prompt_id)
-                status = status_data.get("status")
-
-                if status == "running":
-                    progress_info = status_data.get("progress", {})
-                    value = progress_info.get("value", 0)
-                    max_value = progress_info.get("max", 1)
-                    if max_value > 0:
-                        # 计算实际进度百分比
-                        progress = (value / max_value) * 100
-                        self._update_task_progress(task_id, progress)
-
-                elif status == "completed":
-                    result = status_data.get("result", {})
-                    task_data.status = "completed"
-                    task_data.progress = 100.0
-                    task_data.completed_at = time.time()
-                    task_data.result = result
-                    logger.info(f"任务完成: {task_id}")
-                    break
-                
-                elif status == "failed":
-                    error_info = status_data.get("error", "未知错误")
-                    task_data.status = "failed"
-                    task_data.error_message = str(error_info)
-                    task_data.completed_at = time.time()
-                    logger.error(f"任务失败: {task_id} - {error_info}")
-                    break
-
-                # 超时检查
-                if task_data.started_at and time.time() - task_data.started_at > 3600: # 1小时超时
-                    task_data.status = "failed"
-                    task_data.error_message = "任务超时"
-                    logger.error(f"任务超时: {task_id}")
-                    break
+            # 移除旧的轮询逻辑 - 现在由ComfyUIService的事件回调驱动
             
         except Exception as e:
             logger.error(f"处理用户任务失败: {task_id} - {e}", exc_info=True)
@@ -146,6 +115,62 @@ class UserTaskService:
                     task_data.error_message = str(e)
                     task_data.completed_at = time.time()
     
+    def handle_progress_update(self, prompt_id: str, progress_data: Dict):
+        """处理来自ComfyUIService的进度更新事件"""
+        task_id = self.prompt_to_task.get(prompt_id)
+        if not task_id:
+            return
+
+        user_id = self.task_to_user.get(task_id)
+        if not user_id or user_id not in self.user_tasks or task_id not in self.user_tasks[user_id]:
+            return
+            
+        task_data = self.user_tasks[user_id][task_id]
+        
+        value = progress_data.get("value", 0)
+        max_value = progress_data.get("max", 1)
+        if max_value > 0:
+            progress = (value / max_value) * 100
+            task_data.progress = progress
+
+            # 更新预估剩余时间
+            if task_data.started_at and progress > 0:
+                elapsed = time.time() - task_data.started_at
+                if progress < 100:
+                    remaining = (elapsed / progress) * (100 - progress)
+                    task_data.estimated_remaining = int(remaining)
+                else:
+                    task_data.estimated_remaining = 0
+
+    def handle_completion_update(self, prompt_id: str, result_data: Dict):
+        """处理来自ComfyUIService的完成/失败事件"""
+        task_id = self.prompt_to_task.get(prompt_id)
+        if not task_id:
+            return
+
+        user_id = self.task_to_user.get(task_id)
+        if not user_id or user_id not in self.user_tasks or task_id not in self.user_tasks[user_id]:
+            return
+            
+        task_data = self.user_tasks[user_id][task_id]
+        status = result_data.get("status", "completed")
+
+        if status == "completed":
+            task_data.status = "completed"
+            task_data.progress = 100.0
+            task_data.result = result_data.get("result", {})
+            logger.info(f"任务完成: {task_id}")
+        else: # failed
+            task_data.status = "failed"
+            task_data.error_message = str(result_data.get("error", "未知错误"))
+            logger.error(f"任务失败: {task_id} - {task_data.error_message}")
+        
+        task_data.completed_at = time.time()
+        
+        # 清理映射
+        if prompt_id in self.prompt_to_task:
+            del self.prompt_to_task[prompt_id]
+
     def _update_task_progress(self, task_id: str, progress: float):
         """更新任务进度"""
         try:

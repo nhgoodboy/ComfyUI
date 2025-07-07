@@ -90,12 +90,6 @@ class TransformService:
                 current_status = status_data.get("status")
                 progress = status_data.get("progress", 0)
 
-                await manager.send_json(client_id, {
-                    "status": "PROCESSING",
-                    "message": f"任务处理中... ({current_status})",
-                    "progress": progress
-                })
-
                 if current_status == "completed":
                     # 任务完成后，调用新的端点获取结果
                     result_data = await comfyui_client.get_task_result(task_id, token)
@@ -112,7 +106,14 @@ class TransformService:
                         "details": status_data.get("error_details", "")
                     })
                     break
-            
+                else:
+                    # 只有当任务仍在进行中时，才发送PROCESSING状态
+                    await manager.send_json(client_id, {
+                        "status": "PROCESSING",
+                        "message": f"任务处理中... ({current_status})",
+                        "progress": progress
+                    })
+
             except Exception as e:
                 logger.error(f"Failed to monitor task {task_id}: {e}")
                 await manager.send_json(client_id, {"status": "FAILED", "message": "监控任务时发生错误。"})
@@ -121,4 +122,4 @@ class TransformService:
             await asyncio.sleep(3)  # 每3秒轮询一次
 
 # 全局服务实例
-transform_service = TransformService() 
+transform_service = TransformService()

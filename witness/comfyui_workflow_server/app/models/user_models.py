@@ -16,6 +16,7 @@ class UserContext(BaseModel):
 class UserTaskData(BaseModel):
     """用户任务数据"""
     task_id: str = Field(..., description="任务ID")
+    prompt_id: Optional[str] = None  # ComfyUI的prompt_id
     user_id: str = Field(..., description="用户ID")
     style_id: str = Field(..., description="风格ID")
     status: str = Field(..., description="任务状态")

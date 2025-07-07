@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from pathlib import Path
 import aiohttp
 import aiofiles
@@ -20,6 +20,9 @@ sys.path.insert(0, str(witness_path))
 from comfyui_client.client import ComfyUIClient
 from comfyui_client.websocket import ComfyUIWebSocketClient
 from ..config import get_settings
+
+if TYPE_CHECKING:
+    from ..services.user_task_service import UserTaskService
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,7 @@ class ComfyUIService:
         self.ws_client = None
         self._workflow_cache = {}
         self.is_initialized = False
+        self.user_task_service: Optional['UserTaskService'] = None
         
         # 连接状态管理
         self.connection_pool = None
@@ -125,10 +129,12 @@ class ComfyUIService:
 
             # 通过线程安全方式把协程投递到主事件循环
             def _safe_call(coro_func):
-                def _wrapper(prompt_id: str, payload: dict):
+                def _wrapper(*args, **kwargs):
                     try:
+                        # 移除 prompt_id, payload 的固定参数签名
+                        # 使用*args, **kwargs使其更通用
                         fut = asyncio.run_coroutine_threadsafe(
-                            coro_func(prompt_id, payload), self._loop
+                            coro_func(*args, **kwargs), self._loop
                         )
                         # 可选择忽略返回值
                     except Exception as e:
@@ -191,6 +197,11 @@ class ComfyUIService:
             self.last_health_check = current_time
             return False
     
+    def set_user_task_service(self, service: 'UserTaskService'):
+        """注入UserTaskService实例以处理回调"""
+        self.user_task_service = service
+        logger.info("UserTaskService已成功注入到ComfyUIService")
+
     def _get_sampler_node_ids(self, workflow: Dict[str, Any]) -> List[str]:
         """从工作流中提取所有采样器节点的ID"""
         sampler_nodes = []
@@ -241,156 +252,128 @@ class ComfyUIService:
             # 使用ComfyUI客户端上传图像
             result = await self.client.files.upload_image(
                 image_bytes=image_data,
-                filename=filename
+                filename=filename,
+                overwrite=True # 允许覆盖
             )
             if not isinstance(result, dict):
                 raise TypeError(f"上传图像后期望获得字典，但收到了 {type(result)}")
                 
             return result.get("name", filename)
         except Exception as e:
-            logger.error(f"上传图像失败: {e}")
+            logger.error(f"上传图像失败: {e}", exc_info=True)
             raise
-    
+
     async def load_workflow(self, workflow_name: str) -> Dict[str, Any]:
-        """加载工作流模板"""
+        """
+        从文件加载工作流模板, 并缓存。
+        同时提取并缓存采样器节点ID。
+        """
         if workflow_name in self._workflow_cache:
-            return self._workflow_cache[workflow_name]
-        
-        settings = get_settings()
-        storage_config = settings.storage
-        workflow_path = storage_config.workflows_dir / f"{workflow_name}.json"
+            return self._workflow_cache[workflow_name]["workflow"]
+            
+        workflow_path = Path(__file__).parent.parent / "workflows" / f"{workflow_name}.json"
         
         if not workflow_path.exists():
-            logger.error(f"工作流文件不存在: {workflow_path}")
-            raise FileNotFoundError(f"工作流文件不存在: {workflow_path}")
+            raise FileNotFoundError(f"工作流文件未找到: {workflow_path}")
+            
+        async with aiofiles.open(workflow_path, 'r', encoding='utf-8') as f:
+            workflow = json.loads(await f.read())
+            
+        sampler_node_ids = self._get_sampler_node_ids(workflow)
         
-        try:
-            async with aiofiles.open(workflow_path, 'r', encoding='utf-8') as f:
-                workflow = json.loads(await f.read())
-            self._workflow_cache[workflow_name] = workflow
-            return workflow
-        except Exception as e:
-            logger.error(f"加载工作流失败: {workflow_path}, {e}")
-            raise
-    
-# 废弃方法已删除：customize_workflow - 旧架构专用方法
-    
+        self._workflow_cache[workflow_name] = {
+            "workflow": workflow,
+            "sampler_node_ids": sampler_node_ids
+        }
+        
+        return workflow
+
     async def queue_prompt(self, workflow: Dict[str, Any]) -> str:
-        """将工作流加入队列"""
-        try:
-            result = await self.client.prompts.queue_prompt(prompt=workflow, client_id=self.client_id)
-            
-            if not isinstance(result, dict):
-                raise TypeError(f"排队请求后期望获得字典，但收到了 {type(result)}")
-                
-            prompt_id = result.get("prompt_id")
-            if not prompt_id:
-                raise ValueError(f"API响应中缺少 'prompt_id': {result}")
-            return prompt_id
-        except Exception as e:
-            logger.error(f"加入队列失败: {e}")
-            raise
-            
+        """
+        将工作流加入ComfyUI队列。
+        返回 prompt_id。
+        """
+        result = await self.client.prompts.create_prompt(prompt=workflow)
+        return result['prompt_id']
+
     async def get_result(self, prompt_id: str) -> Dict[str, Any]:
-        """获取任务结果"""
-        try:
-            history = await self.client.prompts.get_history(prompt_id)
-            if not isinstance(history, dict):
-                raise TypeError(f"获取历史记录后期望获得字典，但收到了 {type(history)}")
-
-            if prompt_id not in history:
-                return {"status": "pending", "prompt_id": prompt_id}
-            
-            return history[prompt_id]
-        except Exception as e:
-            logger.error(f"获取结果失败: {e}")
-            raise
-
+        """
+        从ComfyUI历史记录中获取结果。
+        注意：这是一个简化的实现，仅用于演示。
+        在生产环境中，应该使用更健壮的WebSocket消息处理。
+        """
+        history = await self.client.prompts.get_history(prompt_id)
+        if not history or prompt_id not in history:
+            return {}
+        
+        result = history[prompt_id]
+        
+        # 注意：这里我们不再需要轮询历史记录，因为WebSocket提供了更可靠的方式
+        return result
+    
     def get_prompt_status(self, prompt_id: str) -> Dict[str, Any]:
-        """获取prompt的状态，优先从结果缓存中获取"""
+        """从缓存中获取任务状态"""
         if prompt_id in self.prompt_results:
-            return {
-                "status": "completed",
-                "result": self.prompt_results[prompt_id]
-            }
+            return {"status": "completed", "result": self.prompt_results[prompt_id]}
         
         if prompt_id in self.prompt_progress:
-            return {
-                "status": "running",
-                "progress": self.prompt_progress[prompt_id]
-            }
-            
+            return {"status": "running", "progress": self.prompt_progress[prompt_id]}
+        
         return {"status": "pending"}
-
+    
     async def submit_workflow(self, task_id: str, workflow: Dict[str, Any]) -> str:
-        """提交工作流并启动后台轮询"""
-        try:
-            # 提交工作流
-            result = await self.client.prompts.queue_prompt(prompt=workflow, client_id=self.client_id)
-            prompt_id = result.get("prompt_id")
-            
-            if not prompt_id:
-                raise Exception("未获取到prompt_id")
-            
-            logger.info(f"任务 {task_id} 提交成功，prompt_id: {prompt_id}, client_id: {self.client_id}")
-            return prompt_id
-            
-        except Exception as e:
-            logger.error(f"提交工作流失败 {task_id}: {e}")
-            raise
-    
-# 废弃方法已删除：process_image - 旧架构专用方法
-    
+        """
+        提交工作流并开始监控
+        """
+        prompt_id = await self.queue_prompt(workflow)
+        logger.info(f"任务 {task_id} 已提交到ComfyUI, prompt_id: {prompt_id}")
+        return prompt_id
+
     async def _on_progress(self, prompt_id: str, progress_data: Dict[str, Any]):
-        """处理进度更新"""
-        try:
-            logger.debug(f"收到进度更新: {prompt_id}, 数据: {progress_data}")
-            self.prompt_progress[prompt_id] = progress_data
-            
-        except Exception as e:
-            logger.error(f"处理进度更新失败: {e}")
+        """处理进度更新事件"""
+        if self.user_task_service:
+            self.user_task_service.handle_progress_update(prompt_id, progress_data)
 
     async def _on_completion(self, prompt_id: str, result_data: Dict[str, Any]):
-        """处理完成事件"""
-        try:
-            logger.info(f"收到完成事件: {prompt_id}")
-            self.prompt_results[prompt_id] = result_data
-            # 清理进度缓存
-            if prompt_id in self.prompt_progress:
-                del self.prompt_progress[prompt_id]
-            
-        except Exception as e:
-            logger.error(f"处理完成事件失败: {e}")
+        """处理任务完成事件 (成功或失败)"""
+        if self.user_task_service:
+            self.user_task_service.handle_completion_update(prompt_id, result_data)
 
     async def _find_task_by_prompt_id(self, prompt_id: str) -> Optional[str]:
-        """根据prompt_id查找任务ID（暂时返回None，由新架构处理）"""
-        # 新架构中，这个映射由WorkflowManager维护
+        """根据prompt_id查找任务ID (此逻辑已移至UserTaskService)"""
+        # 这个函数现在是多余的，可以被移除，但为了安全暂时保留
+        if self.user_task_service and hasattr(self.user_task_service, 'prompt_to_task'):
+            return self.user_task_service.prompt_to_task.get(prompt_id)
         return None
 
     async def _poll_history(self, task_id: str, prompt_id: str):
-        """轮询ComfyUI历史记录（简化版本）"""
-        try:
-            logger.debug(f"开始轮询历史记录: {task_id}, {prompt_id}")
-            
-            # 在新架构中，这个功能被WorkflowManager的监控机制替代
-            # 这里只是占位符
-            
-        except Exception as e:
-            logger.error(f"轮询历史记录失败: {e}")
+        """
+        (已废弃) 轮询历史记录以获取结果。
+        此方法将被新的WebSocket事件驱动模型取代。
+        """
+        pass # 保留为空，不再使用
 
     async def _wait_until_view_ready(self, url: str, timeout: int = 10, interval: float = 0.5) -> bool:
-        """等待图像URL可访问"""
-        start = time.time()
-        async with aiohttp.ClientSession() as session:
-            while time.time() - start < timeout:
-                try:
-                    async with session.get(url) as resp:
-                        if resp.status == 200:
-                            return True
-                except Exception:
-                    pass
-                await asyncio.sleep(interval)
+        """等待直到/view端点返回有效的图像数据"""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            # 简单的检查，确保响应头看起来像一个图像
+                            if 'image' in response.headers.get('Content-Type', ''):
+                                return True
+            except aiohttp.ClientError:
+                pass  # 忽略连接错误，继续重试
+            await asyncio.sleep(interval)
         return False
+
+def get_comfyui_service() -> ComfyUIService:
+    """获取ComfyUI服务实例的依赖项"""
+    # 这个函数现在只是一个占位符，因为服务是在应用启动时创建和管理的
+    # 在FastAPI的Depends中，我们应该从request.app.state中获取
+    raise NotImplementedError("请从app.state获取ComfyUIService实例")
 
 # 全局服务实例（惰性初始化）
 _comfyui_service = None

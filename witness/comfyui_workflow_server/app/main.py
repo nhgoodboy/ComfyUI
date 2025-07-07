@@ -127,6 +127,10 @@ async def lifespan(app: FastAPI):
         app.state.crypto_utils = crypto_utils
         app.state.style_service = style_service
         app.state.settings = settings  # 将配置也挂载到state
+
+        # 注入依赖：将UserTaskService实例提供给ComfyUIService用于回调
+        comfyui_service.set_user_task_service(user_task_service)
+
         logger.info("服务挂载完成。")
         
         logger.info("应用启动流程成功完成。")
