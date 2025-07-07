@@ -71,5 +71,5 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = jwt_service.generate_token({"sub": user.username})
+    access_token = jwt_service.generate_token(claims={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"} 

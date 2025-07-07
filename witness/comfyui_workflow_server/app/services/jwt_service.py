@@ -28,34 +28,36 @@ class JWTService:
         
         logger.info("JWT令牌服务初始化完成")
     
-    def generate_token(self, user_id: str, extra_claims: Optional[Dict[str, Any]] = None) -> str:
-        """生成用户令牌"""
+    def generate_token(self, claims: Dict[str, Any]) -> str:
+        """
+        根据提供的声明（claims）生成一个JWT令牌。
+        核心声明 'sub' (subject) 必须存在。
+        """
         try:
+            if "sub" not in claims:
+                raise ValueError("核心声明 'sub' (subject) 必须在claims中提供")
+
             now = datetime.utcnow()
             expires_at = now + timedelta(minutes=self.token_expiry_minutes)
             
-            payload = {
-                "user_id": user_id,
+            payload = claims.copy() # 复制一份以避免修改原始字典
+            payload.update({
                 "iat": int(now.timestamp()),
                 "exp": int(expires_at.timestamp()),
-                "jti": self._generate_token_id(user_id, now)
-            }
-            
-            # 添加额外声明
-            if extra_claims:
-                payload.update(extra_claims)
+                "jti": self._generate_token_id(claims["sub"], now)
+            })
             
             token = jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
             
-            logger.info(f"生成令牌成功: {user_id}")
+            logger.info(f"生成令牌成功: sub={claims['sub']}")
             return token
             
         except Exception as e:
-            logger.error(f"生成令牌失败: {user_id} - {e}")
+            logger.error(f"生成令牌失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="令牌生成失败")
     
-    def verify_token(self, token: str) -> Dict[str, Any]:
-        """验证用户令牌"""
+    def decode_token(self, token: str) -> Dict[str, Any]:
+        """验证用户令牌并返回载荷"""
         if not token:
             raise HTTPException(status_code=401, detail="缺少访问令牌")
         
@@ -74,9 +76,9 @@ class JWTService:
             )
             
             # 基本验证
-            user_id = payload.get("user_id")
+            user_id = payload.get("sub")
             if not user_id:
-                raise HTTPException(status_code=401, detail="令牌格式无效")
+                raise HTTPException(status_code=401, detail="令牌格式无效（缺少sub声明）")
             
             # 检查令牌是否即将过期（提前5分钟警告）
             exp = payload.get("exp", 0)
@@ -98,8 +100,8 @@ class JWTService:
     
     def get_user_id_from_token(self, token: str) -> str:
         """从令牌中提取用户ID"""
-        payload = self.verify_token(token)
-        return payload["user_id"]
+        payload = self.decode_token(token)
+        return payload["sub"]
     
     def revoke_token(self, token: str) -> bool:
         """撤销令牌（加入黑名单）"""
@@ -116,7 +118,7 @@ class JWTService:
             token_id = payload.get("jti")
             if token_id:
                 self.blacklisted_tokens.add(token_id)
-                logger.info(f"令牌已撤销: {payload.get('user_id')}")
+                logger.info(f"令牌已撤销: sub={payload.get('sub')}")
                 return True
             
             return False
@@ -129,14 +131,14 @@ class JWTService:
         """刷新令牌"""
         try:
             # 验证旧令牌
-            payload = self.verify_token(old_token)
-            user_id = payload["user_id"]
+            payload = self.decode_token(old_token)
+            user_id = payload["sub"]
             
             # 撤销旧令牌
             self.revoke_token(old_token)
             
             # 生成新令牌
-            new_token = self.generate_token(user_id)
+            new_token = self.generate_token({"sub": user_id})
             
             logger.info(f"令牌刷新成功: {user_id}")
             return new_token
@@ -148,7 +150,7 @@ class JWTService:
     def validate_user_permissions(self, token: str, required_permissions: Optional[list] = None) -> bool:
         """验证用户权限"""
         try:
-            payload = self.verify_token(token)
+            payload = self.decode_token(token)
             
             if not required_permissions:
                 return True
@@ -211,10 +213,10 @@ class JWTService:
     def get_token_info(self, token: str) -> Dict[str, Any]:
         """获取令牌详细信息"""
         try:
-            payload = self.verify_token(token)
+            payload = self.decode_token(token)
             
             return {
-                "user_id": payload.get("user_id"),
+                "user_id": payload.get("sub"),
                 "issued_at": datetime.fromtimestamp(payload.get("iat", 0)),
                 "expires_at": datetime.fromtimestamp(payload.get("exp", 0)),
                 "token_id": payload.get("jti"),

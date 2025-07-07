@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 import httpx
 from httpx import Response
 import asyncio
+import logging
 
 from app.config import settings
 
@@ -47,7 +48,7 @@ class ComfyUIClient:
         }
         return headers
 
-    async def _make_request(self, method: str, path: str, data: Optional[Dict[str, str]] = None, body: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None, files: Optional[Dict] = None) -> Response:
+    async def _make_request(self, method: str, path: str, data: Optional[Dict[str, str]] = None, body: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None, files: Optional[Dict] = None, token: Optional[str] = None) -> Response:
         """通用请求方法。"""
         url = f"{self.base_url}{path}"
         
@@ -55,26 +56,36 @@ class ComfyUIClient:
         if body:
             body_bytes = json.dumps(body, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
 
-        if not headers:
-            # 传递 body_bytes 以计算哈希
-            headers = self._get_secure_headers(method, path, body=body_bytes)
-        
+        # 优先使用外部传入的headers，否则生成基础签名头
+        final_headers = headers if headers is not None else self._get_secure_headers(method, path, body=body_bytes)
+
+        # 如果提供了token，确保Authorization头存在
+        if token:
+            final_headers['Authorization'] = f"Bearer {token}"
+
         if files:
             # 文件上传时，签名时不包含文件内容，body_hash是空字符串的哈希
-            # 我们需要重新生成头部
+            # 我们需要重新生成签名头，但保留其他头部（如Authorization）
             upload_headers = self._get_secure_headers(method, path, body=b"")
-            upload_headers['Authorization'] = headers.get('Authorization', '')
+            # 合并其他重要的头
+            if 'Authorization' in final_headers:
+                upload_headers['Authorization'] = final_headers['Authorization']
+            
             upload_headers.pop('Content-Type', None) # httpx handles this for multipart
+            
+            # --- 决定性调试日志 ---
+            logging.warning(f"DEBUG: Uploading with headers: {upload_headers}")
+            
             response = await self.client.request(method, url, headers=upload_headers, files=files)
         elif data:
-            # 对于表单数据，签名时body部分为空
+            # 对于表单数据（如认证），签名时body部分为空，且不需要Bearer token
             form_headers = self._get_secure_headers(method, path, body=b"")
             form_headers['Content-Type'] = 'application/x-www-form-urlencoded'
             response = await self.client.request(method, url, headers=form_headers, data=data)
         elif body_bytes:
-            response = await self.client.request(method, url, headers=headers, content=body_bytes)
+            response = await self.client.request(method, url, headers=final_headers, content=body_bytes)
         else:
-            response = await self.client.request(method, url, headers=headers)
+            response = await self.client.request(method, url, headers=final_headers)
         
         response.raise_for_status()
         return response
@@ -98,23 +109,15 @@ class ComfyUIClient:
         """获取可用风格列表。"""
         path = "/api/v1/styles/"
         method = "GET"
-        headers = self._get_secure_headers(method, path)
-        headers['Authorization'] = f"Bearer {token}"
-        
-        response = await self._make_request(method, path, headers=headers)
+        response = await self._make_request(method, path, token=token)
         return response.json()
 
     async def upload_file(self, file_content: bytes, filename: str, token: str) -> Dict[str, Any]:
         """上传文件。"""
         path = "/api/v1/files/upload"
         method = "POST"
-        
-        headers = {} # headers 将在 make_request 中生成
-        headers['Authorization'] = f"Bearer {token}"
-        
         files = {'file': (filename, file_content)}
-        
-        response = await self._make_request(method, path, headers=headers, files=files)
+        response = await self._make_request(method, path, files=files, token=token)
         return response.json()
 
     async def create_transform_task(self, style_id: str, image_id: str, token: str) -> Dict[str, Any]:
@@ -122,33 +125,21 @@ class ComfyUIClient:
         path = f"/api/v1/styles/{style_id}/transform"
         method = "POST"
         body = {"image_id": image_id}
-        
-        # 预先创建 body_bytes 以生成签名
-        body_bytes = json.dumps(body, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
-        headers = self._get_secure_headers(method, path, body=body_bytes)
-        headers['Authorization'] = f"Bearer {token}"
-
-        response = await self._make_request(method, path, body=body, headers=headers)
+        response = await self._make_request(method, path, body=body, token=token)
         return response.json()
 
     async def get_task_status(self, task_id: str, token: str) -> Dict[str, Any]:
         """获取任务状态。"""
         path = f"/api/v1/tasks/{task_id}"
         method = "GET"
-        headers = self._get_secure_headers(method, path)
-        headers['Authorization'] = f"Bearer {token}"
-
-        response = await self._make_request(method, path, headers=headers)
+        response = await self._make_request(method, path, token=token)
         return response.json()
 
     async def get_task_result(self, task_id: str, token: str) -> Dict[str, Any]:
         """获取任务结果。"""
         path = f"/api/v1/tasks/{task_id}/result"
         method = "GET"
-        headers = self._get_secure_headers(method, path)
-        headers['Authorization'] = f"Bearer {token}"
-
-        response = await self._make_request(method, path, headers=headers)
+        response = await self._make_request(method, path, token=token)
         return response.json()
 
 # 全局客户端实例

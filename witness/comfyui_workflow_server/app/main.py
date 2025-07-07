@@ -77,6 +77,7 @@ async def lifespan(app: FastAPI):
             config_file=str(settings.style_config_path),
             comfyui_service=comfyui_service
         )
+        app.state.style_registry = style_registry
         logger.info("样式注册表初始化完成。")
 
         logger.debug("正在初始化用户文件服务...")
@@ -84,6 +85,7 @@ async def lifespan(app: FastAPI):
             base_upload_dir=settings.storage.uploads_dir,
             base_output_dir=settings.storage.outputs_dir
         )
+        app.state.user_file_service = user_file_service
         logger.info("用户文件服务初始化完成。")
         
         logger.debug("正在初始化用户任务服务...")
@@ -91,14 +93,19 @@ async def lifespan(app: FastAPI):
             comfyui_service=comfyui_service,
             style_registry=style_registry
         )
+        app.state.user_task_service = user_task_service
         logger.info("用户任务服务初始化完成。")
         
         logger.debug("正在初始化JWT服务...")
-        jwt_service = JWTService(secret_key=settings.security.jwt_secret_key)
+        jwt_service = init_jwt_service(
+            secret_key=settings.security.jwt_secret_key,
+            token_expiry_minutes=settings.security.token_expiry_minutes
+        )
         logger.info("JWT服务初始化完成。")
         
         logger.debug("正在初始化用户服务...")
-        user_service = UserService()
+        user_service = UserService(api_users=settings.security.api_users)
+        app.state.user_service = user_service
         logger.info("用户服务初始化完成。")
 
         logger.debug("正在初始化加密工具...")

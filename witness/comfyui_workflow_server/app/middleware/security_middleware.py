@@ -96,7 +96,13 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 raise HTTPException(status_code=401, detail="缺少签名或时间戳")
 
             # 验证签名
-            body_bytes = await request.body()
+            body_bytes = b""
+            content_type = request.headers.get("content-type", "")
+            
+            # 仅对非文件上传请求计算body hash
+            if "multipart/form-data" not in content_type:
+                body_bytes = await request.body()
+            
             body_hash = hashlib.sha256(body_bytes).hexdigest()
             
             is_valid_signature = crypto_utils.verify_signature(
@@ -112,13 +118,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 logger.warning(f"签名验证失败: {client_ip}")
                 raise HTTPException(status_code=401, detail="请求签名无效")
             
-            # 重新构造请求（因为body已被读取）
-            from fastapi import Request as FastAPIRequest
-            
-            async def receive():
-                return {"type": "http.request", "body": body_bytes}
-            
-            request._receive = receive
+            # 如果body被读取过，需要重新构造请求
+            if body_bytes:
+                async def receive():
+                    return {"type": "http.request", "body": body_bytes}
+                request._receive = receive
             
             # 第4层：速率限制检查
             if not self._check_rate_limit(client_ip, None):  # user_id在后续JWT中提取
