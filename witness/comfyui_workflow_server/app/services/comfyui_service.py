@@ -59,6 +59,10 @@ class ComfyUIService:
         self.last_health_check = 0
         self.health_check_interval = 30  # 30秒检查一次
         
+        # 任务状态缓存
+        self.prompt_progress: Dict[str, Dict] = {}  # prompt_id -> progress_data
+        self.prompt_results: Dict[str, Dict] = {}   # prompt_id -> result_data
+
         # 重试配置
         self.max_retries = 3
         self.retry_delay = 1.0
@@ -302,33 +306,22 @@ class ComfyUIService:
             logger.error(f"获取结果失败: {e}")
             raise
 
-    async def get_prompt_status(self, prompt_id: str) -> str:
-        """获取提示的状态 (running, completed, etc)"""
-        try:
-            queue_info = await self.client.prompts.get_queue()
-            if isinstance(queue_info, dict):
-                # 检查运行中的队列
-                for item in queue_info.get("queue_running", []):
-                    if item[1] == prompt_id:
-                        return "running"
-                
-                # 检查待处理的队列
-                for item in queue_info.get("queue_pending", []):
-                    if item[1] == prompt_id:
-                        return "pending"
-            else:
-                 raise TypeError(f"获取队列信息后期望获得字典，但收到了 {type(queue_info)}")
+    def get_prompt_status(self, prompt_id: str) -> Dict[str, Any]:
+        """获取prompt的状态，优先从结果缓存中获取"""
+        if prompt_id in self.prompt_results:
+            return {
+                "status": "completed",
+                "result": self.prompt_results[prompt_id]
+            }
+        
+        if prompt_id in self.prompt_progress:
+            return {
+                "status": "running",
+                "progress": self.prompt_progress[prompt_id]
+            }
+            
+        return {"status": "pending"}
 
-            # 检查历史记录
-            history = await self.client.prompts.get_history(prompt_id)
-            if isinstance(history, dict) and prompt_id in history:
-                return "completed"
-            
-            return "unknown"
-        except Exception as e:
-            logger.error(f"获取提示状态失败: {e}")
-            return "error"
-            
     async def submit_workflow(self, task_id: str, workflow: Dict[str, Any]) -> str:
         """提交工作流并启动后台轮询"""
         try:
@@ -352,9 +345,7 @@ class ComfyUIService:
         """处理进度更新"""
         try:
             logger.debug(f"收到进度更新: {prompt_id}, 数据: {progress_data}")
-            
-            # 这里可以添加进度处理逻辑
-            # 新架构中，进度通过WorkflowManager处理
+            self.prompt_progress[prompt_id] = progress_data
             
         except Exception as e:
             logger.error(f"处理进度更新失败: {e}")
@@ -363,9 +354,10 @@ class ComfyUIService:
         """处理完成事件"""
         try:
             logger.info(f"收到完成事件: {prompt_id}")
-            
-            # 这里可以添加完成处理逻辑
-            # 新架构中，完成事件通过WorkflowManager处理
+            self.prompt_results[prompt_id] = result_data
+            # 清理进度缓存
+            if prompt_id in self.prompt_progress:
+                del self.prompt_progress[prompt_id]
             
         except Exception as e:
             logger.error(f"处理完成事件失败: {e}")

@@ -70,7 +70,6 @@ class UserTaskService:
             # 更新任务状态
             task_data.status = "running"
             task_data.started_at = time.time()
-            task_data.progress = 10.0
             
             # 从注册表获取已创建的工作流处理器实例
             workflow_processor = self.style_registry.get_workflow(style_id)
@@ -95,23 +94,49 @@ class UserTaskService:
             # 提交工作流到ComfyUI
             prompt_id = await self.comfyui_service.submit_workflow(task_id, workflow)
             
-            # 轮询结果（submit_workflow内部处理或在这里等待）
-            # 假设submit_workflow是异步的，并通过回调更新状态
-            # 此处代码简化，因为comfyui_service会处理后续的状态更新
-            
-            # 等待任务完成的最终结果（在真实场景中，这部分可能由WebSocket回调驱动）
-            # 为了简化，我们假设submit_workflow完成后，状态已更新
-            
-            # 任务完成（或者由回调更新）
-            # task_data.status = "completed"
-            # task_data.progress = 100.0
-            # task_data.completed_at = time.time()
-            # task_data.estimated_remaining = 0
-            
             logger.info(f"用户任务处理已提交: {user_id} - {task_id} - prompt_id: {prompt_id}")
+
+            # 开始轮询任务状态
+            while True:
+                await asyncio.sleep(1) # 每秒轮询一次
+                status_data = self.comfyui_service.get_prompt_status(prompt_id)
+                status = status_data.get("status")
+
+                if status == "running":
+                    progress_info = status_data.get("progress", {})
+                    value = progress_info.get("value", 0)
+                    max_value = progress_info.get("max", 1)
+                    if max_value > 0:
+                        # 计算实际进度百分比
+                        progress = (value / max_value) * 100
+                        self._update_task_progress(task_id, progress)
+
+                elif status == "completed":
+                    result = status_data.get("result", {})
+                    task_data.status = "completed"
+                    task_data.progress = 100.0
+                    task_data.completed_at = time.time()
+                    task_data.result = result
+                    logger.info(f"任务完成: {task_id}")
+                    break
+                
+                elif status == "failed":
+                    error_info = status_data.get("error", "未知错误")
+                    task_data.status = "failed"
+                    task_data.error_message = str(error_info)
+                    task_data.completed_at = time.time()
+                    logger.error(f"任务失败: {task_id} - {error_info}")
+                    break
+
+                # 超时检查
+                if task_data.started_at and time.time() - task_data.started_at > 3600: # 1小时超时
+                    task_data.status = "failed"
+                    task_data.error_message = "任务超时"
+                    logger.error(f"任务超时: {task_id}")
+                    break
             
         except Exception as e:
-            logger.error(f"处理用户任务失败: {task_id} - {e}")
+            logger.error(f"处理用户任务失败: {task_id} - {e}", exc_info=True)
             # 更新任务错误状态
             if task_id in self.task_to_user:
                 user_id = self.task_to_user[task_id]

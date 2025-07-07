@@ -25,6 +25,7 @@ class UserTaskData(BaseModel):
     completed_at: Optional[float] = Field(None, description="完成时间戳")
     estimated_remaining: Optional[int] = Field(None, description="预估剩余时间(秒)")
     error_message: Optional[str] = Field(None, description="错误信息")
+    result: Optional[Dict[str, Any]] = Field(None, description="任务结果")
 
 class UserFileInfo(BaseModel):
     """用户文件信息"""
