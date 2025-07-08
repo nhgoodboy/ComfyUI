@@ -58,11 +58,10 @@ class ComfyUIWebSocketClient:
                     if prompt_id:
                         self.progress_callback(prompt_id, event_data)
                 
-                # 覆盖所有完成事件
-                elif event_type in ["execution_complete", "execution_cached", "executed"] and self.completion_callback:
+                # 严格只在 execution_complete 时视为任务成功
+                elif event_type == "execution_complete" and self.completion_callback:
                     prompt_id = event_data.get("prompt_id")
                     if prompt_id:
-                        # 确保向回调传递一个一致的状态
                         self.completion_callback(prompt_id, {"status": "completed", "result": event_data})
 
                 # 处理执行错误
@@ -72,7 +71,7 @@ class ComfyUIWebSocketClient:
                         self.completion_callback(prompt_id, {"status": "failed", "error": event_data})
 
                 else:
-                    self.logger.debug(f"收到未处理的事件: {event_type}")
+                    self.logger.debug(f"收到未处理的事件: {event_type} - {event_data.get('sid')}")
             else:
                 self.logger.debug(f"收到非JSON消息: {message}")
         except json.JSONDecodeError:
