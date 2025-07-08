@@ -106,12 +106,20 @@ class WorkflowServerPushListener:
     
     async def _handle_push_message(self, data: Dict[str, Any]):
         """处理推送消息"""
+        logger.info(f"收到workflow_server推送消息: {data}")
+        
         if data.get("type") == "task_update":
             task_id = data.get("task_id")
             update_data = data.get("data", {})
             
+            logger.info(f"处理任务更新: task_id={task_id}, data={update_data}")
+            
             if task_id:
                 await self.transform_service.handle_task_update(task_id, update_data)
+            else:
+                logger.warning("推送消息中缺少task_id")
+        else:
+            logger.warning(f"未知的推送消息类型: {data.get('type')}")
 
 
 class TransformService:

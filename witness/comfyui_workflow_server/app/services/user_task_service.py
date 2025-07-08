@@ -124,12 +124,16 @@ class UserTaskService:
     
     def handle_progress_update(self, prompt_id: str, progress_data: Dict):
         """处理来自ComfyUIService的进度更新事件"""
+        logger.info(f"收到进度更新: prompt_id={prompt_id}, data={progress_data}")
+        
         task_id = self.prompt_to_task.get(prompt_id)
         if not task_id:
+            logger.warning(f"未找到对应任务: prompt_id={prompt_id}")
             return
 
         user_id = self.task_to_user.get(task_id)
         if not user_id or user_id not in self.user_tasks or task_id not in self.user_tasks[user_id]:
+            logger.warning(f"任务数据异常: task_id={task_id}, user_id={user_id}")
             return
             
         task_data = self.user_tasks[user_id][task_id]
@@ -139,6 +143,7 @@ class UserTaskService:
         if max_value > 0:
             progress = (value / max_value) * 100
             task_data.progress = progress
+            logger.info(f"任务进度更新: task_id={task_id}, progress={progress:.1f}%")
 
             # 更新预估剩余时间
             if task_data.started_at and progress > 0:
@@ -151,11 +156,14 @@ class UserTaskService:
 
             # 推送进度更新到外部客户端
             if push_manager:
+                logger.info(f"推送进度更新到WebSocket: task_id={task_id}")
                 asyncio.create_task(push_manager.push_task_update(task_id, {
                     "status": "running",
                     "progress": progress,
                     "estimated_remaining": task_data.estimated_remaining
                 }))
+            else:
+                logger.warning("WebSocket推送管理器不可用")
 
     def handle_completion_update(self, prompt_id: str, result_data: Dict):
         """处理来自ComfyUIService的完成/失败事件"""

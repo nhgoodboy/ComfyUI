@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, List
 import logging.config
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +23,7 @@ import uvicorn
 from .config import get_settings, validate_config, AppConfig
 
 # 导入API路由
-from .api.v1 import styles, tasks, files, auth
+from .api.v1 import styles, tasks, files, auth, websocket_push
 
 # 导入安全中间件
 from .middleware.security_middleware import SecurityMiddleware
@@ -191,6 +191,26 @@ app.include_router(styles.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(files.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(websocket_push.router, prefix="/api/v1")
+
+# 直接在主应用中注册 WebSocket 端点，绕过安全中间件
+@app.websocket("/api/v1/ws/push/{client_id}")
+async def websocket_push_direct(websocket: WebSocket, client_id: str):
+    """
+    直接 WebSocket 推送端点（绕过安全中间件）
+    """
+    from .api.v1.websocket_push import push_manager
+    await push_manager.connect(websocket, client_id)
+    try:
+        while True:
+            try:
+                await websocket.receive_text()
+            except:
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        push_manager.disconnect(client_id)
 
 # 添加请求日志中间件
 @app.middleware("http")

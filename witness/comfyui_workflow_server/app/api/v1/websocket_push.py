@@ -34,11 +34,14 @@ class PushConnectionManager:
             "data": update_data
         }
         
+        logger.info(f"准备推送任务更新: task_id={task_id}, 连接数={len(self.active_connections)}")
+        logger.info(f"推送消息内容: {message}")
+        
         disconnected_clients = []
         for client_id, websocket in self.active_connections.items():
             try:
                 await websocket.send_json(message)
-                logger.debug(f"推送任务更新到客户端 {client_id}: {task_id}")
+                logger.info(f"成功推送任务更新到客户端 {client_id}: {task_id}")
             except Exception as e:
                 logger.warning(f"推送消息失败，客户端 {client_id}: {e}")
                 disconnected_clients.append(client_id)
@@ -46,6 +49,9 @@ class PushConnectionManager:
         # 清理断开的连接
         for client_id in disconnected_clients:
             self.disconnect(client_id)
+            
+        if not self.active_connections:
+            logger.warning("没有活跃的WebSocket连接来推送消息")
 
 # 全局推送管理器
 push_manager = PushConnectionManager()

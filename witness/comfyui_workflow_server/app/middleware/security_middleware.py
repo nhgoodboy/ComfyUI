@@ -54,7 +54,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "/health",
             "/favicon.ico",
         }
-        self.excluded_path_prefixes = {"/static", "/ws", "/api/v1/auth", "/uploads", "/outputs"}
+        self.excluded_path_prefixes = {"/static", "/ws", "/api/v1/auth", "/api/v1/ws", "/uploads", "/outputs"}
         
         logger.info("统一安全中间件初始化完成")
     
@@ -73,7 +73,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             # 检查排除路径前缀
             for prefix in self.excluded_path_prefixes:
                 if request.url.path.startswith(prefix):
+                    logger.info(f"路径排除: {request.url.path} 匹配前缀 {prefix}")
                     return await call_next(request)
+            
+            # 调试日志：记录未被排除的路径
+            logger.info(f"安全检查路径: {request.url.path}")
+            logger.debug(f"排除的前缀: {self.excluded_path_prefixes}")
             
             client_ip = self._get_client_ip(request)
             

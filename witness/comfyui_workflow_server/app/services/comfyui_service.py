@@ -333,13 +333,19 @@ class ComfyUIService:
 
     async def _on_progress(self, prompt_id: str, progress_data: Dict[str, Any]):
         """处理进度更新事件"""
+        logger.info(f"ComfyUIService收到进度事件: prompt_id={prompt_id}, data={progress_data}")
         if self.user_task_service:
             self.user_task_service.handle_progress_update(prompt_id, progress_data)
+        else:
+            logger.warning("UserTaskService未注入，无法处理进度更新")
 
     async def _on_completion(self, prompt_id: str, result_data: Dict[str, Any]):
         """处理任务完成事件 (成功或失败)"""
+        logger.info(f"ComfyUIService收到完成事件: prompt_id={prompt_id}, data={result_data}")
         if self.user_task_service:
             self.user_task_service.handle_completion_update(prompt_id, result_data)
+        else:
+            logger.warning("UserTaskService未注入，无法处理完成更新")
 
     async def _find_task_by_prompt_id(self, prompt_id: str) -> Optional[str]:
         """根据prompt_id查找任务ID (此逻辑已移至UserTaskService)"""
