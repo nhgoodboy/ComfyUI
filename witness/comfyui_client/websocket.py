@@ -52,15 +52,25 @@ class ComfyUIWebSocketClient:
                 event_type = data.get("type")
                 event_data = data.get("data", {})
                 
-                if event_type == "progress" and self.progress_callback:
+                # 正确处理进度更新事件 (当 node is None 时是全局进度)
+                if event_type == "executing" and event_data.get("node") is None and self.progress_callback:
                     prompt_id = event_data.get("prompt_id")
                     if prompt_id:
                         self.progress_callback(prompt_id, event_data)
                 
-                elif event_type == "executed" and self.completion_callback:
+                # 覆盖所有完成事件
+                elif event_type in ["execution_complete", "execution_cached", "executed"] and self.completion_callback:
                     prompt_id = event_data.get("prompt_id")
                     if prompt_id:
-                        self.completion_callback(prompt_id, event_data)
+                        # 确保向回调传递一个一致的状态
+                        self.completion_callback(prompt_id, {"status": "completed", "result": event_data})
+
+                # 处理执行错误
+                elif event_type == "execution_error" and self.completion_callback:
+                    prompt_id = event_data.get("prompt_id")
+                    if prompt_id:
+                        self.completion_callback(prompt_id, {"status": "failed", "error": event_data})
+
                 else:
                     self.logger.debug(f"收到未处理的事件: {event_type}")
             else:

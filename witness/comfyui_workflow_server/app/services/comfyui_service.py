@@ -293,7 +293,9 @@ class ComfyUIService:
         将工作流加入ComfyUI队列。
         返回 prompt_id。
         """
-        result = await self.client.prompts.create_prompt(prompt=workflow)
+        result = await self.client.prompts.queue_prompt(prompt=workflow)
+        if not isinstance(result, dict) or "prompt_id" not in result:
+            raise ValueError(f"从ComfyUI获取prompt_id失败，API响应: {result}")
         return result['prompt_id']
 
     async def get_result(self, prompt_id: str) -> Dict[str, Any]:
@@ -303,10 +305,10 @@ class ComfyUIService:
         在生产环境中，应该使用更健壮的WebSocket消息处理。
         """
         history = await self.client.prompts.get_history(prompt_id)
-        if not history or prompt_id not in history:
+        if not isinstance(history, dict) or prompt_id not in history:
             return {}
         
-        result = history[prompt_id]
+        result = history.get(prompt_id, {})
         
         # 注意：这里我们不再需要轮询历史记录，因为WebSocket提供了更可靠的方式
         return result
@@ -367,23 +369,4 @@ class ComfyUIService:
             except aiohttp.ClientError:
                 pass  # 忽略连接错误，继续重试
             await asyncio.sleep(interval)
-        return False
-
-def get_comfyui_service() -> ComfyUIService:
-    """获取ComfyUI服务实例的依赖项"""
-    # 这个函数现在只是一个占位符，因为服务是在应用启动时创建和管理的
-    # 在FastAPI的Depends中，我们应该从request.app.state中获取
-    raise NotImplementedError("请从app.state获取ComfyUIService实例")
-
-# 全局服务实例（惰性初始化）
-_comfyui_service = None
-
-def get_comfyui_service() -> ComfyUIService:
-    """获取ComfyUI服务实例，惰性初始化"""
-    global _comfyui_service
-    if _comfyui_service is None:
-        _comfyui_service = ComfyUIService()
-    return _comfyui_service
-
-# 向后兼容
-comfyui_service = None 
+        return False 
