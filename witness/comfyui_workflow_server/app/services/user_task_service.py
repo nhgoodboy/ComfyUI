@@ -171,26 +171,6 @@ class UserTaskService:
         if prompt_id in self.prompt_to_task:
             del self.prompt_to_task[prompt_id]
 
-    def _update_task_progress(self, task_id: str, progress: float):
-        """更新任务进度"""
-        try:
-            if task_id in self.task_to_user:
-                user_id = self.task_to_user[task_id]
-                if user_id in self.user_tasks and task_id in self.user_tasks[user_id]:
-                    task_data = self.user_tasks[user_id][task_id]
-                    task_data.progress = progress
-                    
-                    # 更新预估剩余时间
-                    if task_data.started_at and progress > 0:
-                        elapsed = time.time() - task_data.started_at
-                        if progress < 100:
-                            remaining = (elapsed / progress) * (100 - progress)
-                            task_data.estimated_remaining = int(remaining)
-                        else:
-                            task_data.estimated_remaining = 0
-        except Exception as e:
-            logger.error(f"更新任务进度失败: {task_id} - {e}")
-    
     def get_user_task(self, user_id: str, task_id: str) -> Optional[UserTaskData]:
         """获取用户任务"""
         if user_id not in self.user_tasks:

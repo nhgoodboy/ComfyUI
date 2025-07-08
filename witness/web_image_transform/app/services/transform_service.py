@@ -113,7 +113,7 @@ class TransformService:
                         "message": f"任务处理中... ({current_status})",
                         "progress": progress
                     })
-
+            
             except Exception as e:
                 logger.error(f"Failed to monitor task {task_id}: {e}")
                 await manager.send_json(client_id, {"status": "FAILED", "message": "监控任务时发生错误。"})
@@ -122,4 +122,4 @@ class TransformService:
             await asyncio.sleep(3)  # 每3秒轮询一次
 
 # 全局服务实例
-transform_service = TransformService()
+transform_service = TransformService() 
