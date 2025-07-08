@@ -52,11 +52,79 @@ class ComfyUIWebSocketClient:
                 event_type = data.get("type")
                 event_data = data.get("data", {})
                 
-                # 正确处理进度更新事件 (当 node is None 时是全局进度)
-                if event_type == "executing" and event_data.get("node") is None and self.progress_callback:
+                # 调试日志：记录收到的WebSocket消息
+                self.logger.debug(f"收到WebSocket消息: type={event_type}, data={event_data}")
+                
+                # 处理真实的进度更新事件
+                if event_type == "progress" and self.progress_callback:
                     prompt_id = event_data.get("prompt_id")
                     if prompt_id:
                         self.progress_callback(prompt_id, event_data)
+                
+                # 处理执行状态变化 (更智能的进度估算)
+                elif event_type == "executing" and self.progress_callback:
+                    prompt_id = event_data.get("prompt_id")
+                    node_id = event_data.get("node")
+                    if prompt_id:
+                        # 使用简单但有效的进度估算
+                        if node_id is None:
+                            # 执行完成事件，设置进度为100%
+                            progress_data = {"value": 100, "max": 100, "node": None, "prompt_id": prompt_id}
+                            self.logger.info(f"任务完成: {prompt_id}")
+                            
+                            # 清理进度状态
+                            if hasattr(self, '_prompt_progress') and prompt_id in self._prompt_progress:
+                                del self._prompt_progress[prompt_id]
+                        else:
+                            # 节点开始执行，基于节点类型提供更合理的进度估算
+                            if not hasattr(self, '_prompt_progress'):
+                                self._prompt_progress = {}
+                            
+                            if prompt_id not in self._prompt_progress:
+                                self._prompt_progress[prompt_id] = {
+                                    "executed_nodes": set(),  # 使用集合避免重复计数
+                                    "total_estimated": 20,    # 增加估算的总节点数
+                                    "start_time": __import__('time').time(),
+                                    "initial_sent": False     # 是否已发送初始0%进度
+                                }
+                                
+                                # 发送初始0%进度
+                                initial_progress_data = {"value": 0, "max": 100, "node": "start", "prompt_id": prompt_id}
+                                self.logger.info(f"任务开始: {prompt_id}, 初始进度: 0%")
+                                self.progress_callback(prompt_id, initial_progress_data)
+                                self._prompt_progress[prompt_id]["initial_sent"] = True
+                            
+                            # 记录已执行的节点（避免重复计数）
+                            progress_state = self._prompt_progress[prompt_id]
+                            progress_state["executed_nodes"].add(node_id)
+                            
+                            executed = len(progress_state["executed_nodes"])
+                            total = progress_state["total_estimated"]
+                            
+                            # 更保守的进度计算，避免过快到达90%
+                            if executed <= 3:
+                                # 前3个节点：10%-30%
+                                progress_percent = 10 + (executed - 1) * 10
+                            elif executed <= 10:
+                                # 第4-10个节点：30%-70%
+                                progress_percent = 30 + (executed - 3) * 5
+                            else:
+                                # 超过10个节点：逐渐增加到85%
+                                progress_percent = min(85, 70 + (executed - 10) * 2)
+                            
+                            progress_data = {"value": progress_percent, "max": 100, "node": node_id, "prompt_id": prompt_id}
+                            self.logger.info(f"节点执行: {node_id}, 进度: {progress_percent:.1f}% (节点数: {executed})")
+                        self.progress_callback(prompt_id, progress_data)
+                
+                # 处理采样器进度事件 (ComfyUI的采样器会发送此类事件)
+                elif event_type == "sampling" and self.progress_callback:
+                    prompt_id = event_data.get("prompt_id")
+                    if prompt_id:
+                        # 采样器进度通常包含 step/total_steps
+                        step = event_data.get("step", 0)
+                        total_steps = event_data.get("total_steps", 1)
+                        progress_data = {"value": step, "max": total_steps, "prompt_id": prompt_id}
+                        self.progress_callback(prompt_id, progress_data)
                 
                 # 严格只在 execution_complete 时视为任务成功
                 elif event_type == "execution_complete" and self.completion_callback:

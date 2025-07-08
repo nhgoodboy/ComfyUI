@@ -112,16 +112,21 @@ class ComfyUIService:
             logger.info("ComfyUI HTTP连接成功")
             
             # 初始化并启动WebSocket客户端
+            logger.info(f"初始化WebSocket客户端连接到: {self.server_address}:{self.port}, client_id: {self.client_id}")
             self.ws_client = ComfyUIWebSocketClient(host=self.server_address, port=self.port, client_id=self.client_id)
             self.ws_client.run_forever() # 在后台线程中运行
             
             # 等待WebSocket连接成功
-            for _ in range(10): # 等待最多10秒
+            logger.info("等待WebSocket连接...")
+            for i in range(10): # 等待最多10秒
                 if self.ws_client.is_connected:
+                    logger.info(f"WebSocket连接成功！用时{i+1}秒")
                     break
                 await asyncio.sleep(1)
+                logger.debug(f"WebSocket连接尝试 {i+1}/10...")
 
             if not self.ws_client.is_connected:
+                logger.error(f"WebSocket连接失败: ws://{self.server_address}:{self.port}/ws?clientId={self.client_id}")
                 raise Exception("WebSocket连接超时")
 
             # 记录当前事件循环, 供线程中的回调使用
