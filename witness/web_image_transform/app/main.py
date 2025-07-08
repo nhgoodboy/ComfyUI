@@ -8,6 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 from pathlib import Path
 import time
+import uuid
 
 from .config import settings
 from app.api.transform_api import router as transform_router
@@ -61,6 +62,10 @@ app.include_router(transform_router)
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """主页"""
+    # 确保每个访问者都有 session_id
+    if "session_id" not in request.session:
+        request.session["session_id"] = str(uuid.uuid4())
+    
     websocket_host = f"{settings.PUBLIC_HOST}:{settings.APP_PORT}"
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -128,11 +133,20 @@ async def startup_event():
     if settings.SESSION_SECRET_KEY == "your-web-app-session-secret-key":
         print("\n⚠️ 警告: 正在使用默认的 SESSION_SECRET_KEY。")
         print("为了安全，请在 .env 文件中设置一个随机的密钥。\n")
+    
+    # 启动推送监听器
+    from app.services.transform_service import transform_service
+    await transform_service.start_push_listener()
+    print("✅ 已启动 workflow_server 推送监听器")
 
 # 应用关闭事件
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭事件。"""
+    # 停止推送监听器
+    from app.services.transform_service import transform_service
+    await transform_service.stop_push_listener()
+    print("🔌 已停止 workflow_server 推送监听器")
     print("Web Image Transform 应用关闭。")
 
 # 异常处理

@@ -19,6 +19,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# 导入推送管理器
+try:
+    from ..api.v1.websocket_push import push_manager
+except ImportError:
+    push_manager = None
+    logger.warning("WebSocket 推送管理器不可用")
+
 class UserTaskService:
     """多用户任务服务"""
     
@@ -142,6 +149,14 @@ class UserTaskService:
                 else:
                     task_data.estimated_remaining = 0
 
+            # 推送进度更新到外部客户端
+            if push_manager:
+                asyncio.create_task(push_manager.push_task_update(task_id, {
+                    "status": "running",
+                    "progress": progress,
+                    "estimated_remaining": task_data.estimated_remaining
+                }))
+
     def handle_completion_update(self, prompt_id: str, result_data: Dict):
         """处理来自ComfyUIService的完成/失败事件"""
         task_id = self.prompt_to_task.get(prompt_id)
@@ -160,10 +175,25 @@ class UserTaskService:
             task_data.progress = 100.0
             task_data.result = result_data.get("result", {})
             logger.info(f"任务完成: {task_id}")
+            
+            # 推送完成状态到外部客户端
+            if push_manager:
+                asyncio.create_task(push_manager.push_task_update(task_id, {
+                    "status": "completed",
+                    "progress": 100.0,
+                    "result": task_data.result
+                }))
         else: # failed
             task_data.status = "failed"
             task_data.error_message = str(result_data.get("error", "未知错误"))
             logger.error(f"任务失败: {task_id} - {task_data.error_message}")
+            
+            # 推送失败状态到外部客户端
+            if push_manager:
+                asyncio.create_task(push_manager.push_task_update(task_id, {
+                    "status": "failed",
+                    "error_message": task_data.error_message
+                }))
         
         task_data.completed_at = time.time()
         

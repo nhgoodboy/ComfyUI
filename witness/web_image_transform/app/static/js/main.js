@@ -16,6 +16,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadLink = document.getElementById('download-link');
 
     let socket;
+    let reconnectInterval;
+    let maxReconnectAttempts = 5;
+    let reconnectAttempts = 0;
 
     // 1. 加载风格
     async function loadStyles() {
@@ -49,27 +52,61 @@ document.addEventListener('DOMContentLoaded', () => {
         const wsHost = window.WEBSOCKET_HOST || window.location.host;
         const wsUrl = `${wsProtocol}//${wsHost}/ws/${clientId}`;
         
-        console.log(`Attempting to connect WebSocket to: ${wsUrl}`);
-        socket = new WebSocket(wsUrl);
+        console.log(`尝试连接 WebSocket: ${wsUrl}`);
+        
+        try {
+            socket = new WebSocket(wsUrl);
 
-        socket.onopen = () => {
-            console.log('WebSocket connection established.');
-        };
+            socket.onopen = () => {
+                console.log('WebSocket 连接成功');
+                reconnectAttempts = 0; // 重置重连计数
+                if (reconnectInterval) {
+                    clearInterval(reconnectInterval);
+                    reconnectInterval = null;
+                }
+            };
 
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            console.log('WebSocket message received:', data);
-            updateStatus(data);
-        };
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('收到 WebSocket 消息:', data);
+                updateStatus(data);
+            };
 
-        socket.onclose = () => {
-            console.log('WebSocket connection closed.');
-            // Optional: try to reconnect
-        };
+            socket.onclose = (event) => {
+                console.log('WebSocket 连接关闭:', event.code, event.reason);
+                attemptReconnect();
+            };
 
-        socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
+            socket.onerror = (error) => {
+                console.error('WebSocket 错误:', error);
+            };
+        } catch (error) {
+            console.error('WebSocket 连接失败:', error);
+            attemptReconnect();
+        }
+    }
+
+    // 重连机制
+    function attemptReconnect() {
+        if (reconnectAttempts >= maxReconnectAttempts) {
+            console.log('达到最大重连次数，停止重连');
+            return;
+        }
+
+        if (reconnectInterval) {
+            return; // 已经在重连中
+        }
+
+        reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // 指数退避，最大30秒
+        
+        console.log(`${delay/1000}秒后尝试第 ${reconnectAttempts} 次重连...`);
+        
+        reconnectInterval = setTimeout(() => {
+            console.log(`正在进行第 ${reconnectAttempts} 次重连...`);
+            setupWebSocket();
+            reconnectInterval = null;
+        }, delay);
     }
 
     // 3. 更新状态
@@ -86,34 +123,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'PROCESSING':
                 const progress = parseFloat(data.progress || 0);
-            progressFill.style.width = `${progress}%`;
-            progressText.textContent = `${Math.round(progress)}%`;
-            taskInfo.textContent = data.message || '正在处理中...';
+                progressFill.style.width = `${progress}%`;
+                progressText.textContent = `${Math.round(progress)}%`;
+                taskInfo.textContent = data.message || '正在处理中...';
                 break;
             case 'COMPLETED':
                 progressFill.style.width = '100%';
                 progressText.textContent = '100%';
-            taskInfo.textContent = '处理完成！';
+                taskInfo.textContent = '处理完成！';
             
                 if (data.result && data.result.output_files && data.result.output_files.length > 0) {
-            resultCard.style.display = 'block';
+                    resultCard.style.display = 'block';
                     resultImage.src = data.result.output_files[0].url;
                     downloadLink.href = data.result.output_files[0].url;
                 }
             
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-magic"></i> 再次转换';
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-magic"></i> 再次转换';
                 break;
             case 'FAILED':
-            taskInfo.textContent = `错误: ${data.message}`;
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-magic"></i> 重新尝试';
+                taskInfo.textContent = `错误: ${data.message}`;
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-magic"></i> 重新尝试';
                 break;
             default:
-             taskInfo.textContent = data.message || '等待任务开始...';
+                taskInfo.textContent = data.message || '等待任务开始...';
         }
     }
-
 
     // 4. 处理文件选择
     imageInput.addEventListener('change', () => {
@@ -133,6 +169,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!imageInput.files[0] || !styleSelect.value) {
             alert('请上传图片并选择风格。');
             return;
+        }
+
+        // 检查 WebSocket 连接状态
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            console.warn('WebSocket 未连接，尝试重新建立连接...');
+            setupWebSocket();
+            // 给连接一些时间建立
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                alert('WebSocket 连接失败，请刷新页面重试。');
+                return;
+            }
         }
 
         submitBtn.disabled = true;
@@ -177,4 +226,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // 初始化
     loadStyles();
     setupWebSocket();
+    
+    // 页面卸载时清理
+    window.addEventListener('beforeunload', () => {
+        if (socket) {
+            socket.close();
+        }
+        if (reconnectInterval) {
+            clearTimeout(reconnectInterval);
+        }
+    });
 }); 

@@ -7,13 +7,17 @@ from app.services.transform_service import transform_service, manager
 # 创建API路由
 router = APIRouter()
 
-
+def get_or_create_session_id(request: Request) -> str:
+    """获取或创建 session_id"""
+    if "session_id" not in request.session:
+        request.session["session_id"] = str(uuid.uuid4())
+    return request.session["session_id"]
 
 @router.get("/api/styles")
 async def get_styles(request: Request):
     """获取可用风格列表。"""
     try:
-        session_id = request.session["session_id"]
+        session_id = get_or_create_session_id(request)
         styles = await transform_service.get_styles(session_id)
         return JSONResponse(content=styles)
     except Exception as e:
@@ -28,7 +32,7 @@ async def create_transform(
 ):
     """接收转换请求，启动处理流程。"""
     try:
-        session_id = request.session["session_id"]
+        session_id = get_or_create_session_id(request)
         contents = await image.read()
         
         # 非阻塞地启动后台任务
