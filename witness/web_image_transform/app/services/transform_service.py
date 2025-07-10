@@ -161,12 +161,12 @@ class TransformService:
             user_id = session_id
             
             # 1. 上传文件
-            await manager.send_json(client_id, {"status": "UPLOADING", "message": "正在上传图片..."})
+            await manager.send_json(client_id, {"status": "uploading", "message": "正在上传图片..."})
             file_info = await comfyui_client.upload_file(user_id, file_content, filename)
             
             # 构造完整的图片URL
             image_url = f"{settings.COMFYUI_WORKFLOW_SERVER_URL}{file_info['url']}"
-            await manager.send_json(client_id, {"status": "UPLOADED", "message": "图片上传成功，正在创建任务..."})
+            await manager.send_json(client_id, {"status": "uploaded", "message": "图片上传成功，正在创建任务..."})
 
             # 2. 创建任务
             task_result = await comfyui_client.create_task(user_id, style_id, image_url)
@@ -176,7 +176,7 @@ class TransformService:
             self.task_to_client[task_id] = client_id
             
             await manager.send_json(client_id, {
-                "status": "QUEUED", 
+                "status": "queued", 
                 "message": "任务已加入队列，等待处理。", 
                 "task_id": task_id
             })
@@ -186,7 +186,7 @@ class TransformService:
             return {"task_id": task_id}
         except Exception as e:
             logger.error(f"Transform process failed for session {session_id}: {e}", exc_info=True)
-            await manager.send_json(client_id, {"status": "FAILED", "message": str(e)})
+            await manager.send_json(client_id, {"status": "failed", "message": str(e)})
             raise
 
     def _cleanup_task(self, task_id: str):
@@ -214,29 +214,35 @@ class TransformService:
             logger.info(f"转发任务更新到客户端: task_id={task_id}, client_id={client_id}, status={status}")
 
             if status == "completed":
-                # 任务完成，获取结果
+                # 任务完成，转发完整的结果数据
                 try:
-                    # 这里需要获取user_id，我们可以从任务映射中获取session_id
-                    # 但为了简化，我们可以使用一个更简单的方法
-                    await manager.send_json(client_id, {
-                        "status": "COMPLETED",
+                    # 转发完整的任务数据，包括result信息
+                    response_data = {
+                        "status": "completed",
                         "message": "图像转换完成！",
                         "task_id": task_id,
                         "progress": 100
-                    })
+                    }
+                    
+                    # 如果有结果数据，添加到响应中
+                    if "result" in update_data:
+                        response_data["result"] = update_data["result"]
+                        logger.info(f"转发任务结果: task_id={task_id}, output_files_count={len(update_data['result'].get('output_files', []))}")
+                    
+                    await manager.send_json(client_id, response_data)
                     self._cleanup_task(task_id)
                 except Exception as e:
-                    logger.error(f"获取任务结果失败: {e}")
+                    logger.error(f"转发任务完成消息失败: {e}")
                     await manager.send_json(client_id, {
-                        "status": "FAILED",
-                        "message": f"获取结果失败: {str(e)}",
+                        "status": "failed",
+                        "message": f"处理结果失败: {str(e)}",
                         "task_id": task_id
                     })
                     self._cleanup_task(task_id)
             elif status == "failed":
                 error_msg = update_data.get("error_message", "转换失败")
                 await manager.send_json(client_id, {
-                    "status": "FAILED",
+                    "status": "failed",
                     "message": error_msg,
                     "task_id": task_id
                 })
@@ -244,7 +250,7 @@ class TransformService:
             else:
                 # 进行中的状态
                 await manager.send_json(client_id, {
-                    "status": status.upper(),
+                    "status": status,  # 保持原始状态值（小写）
                     "message": message or f"任务状态: {status}",
                     "task_id": task_id,
                     "progress": progress

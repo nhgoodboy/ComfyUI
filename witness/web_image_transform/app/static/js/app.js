@@ -37,22 +37,26 @@ class ImageTransformApp {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/${this.clientId}`;
         
-        console.log('连接WebSocket:', wsUrl);
+        console.log('初始化WebSocket连接');
+        console.log('客户端ID:', this.clientId);
+        console.log('WebSocket URL:', wsUrl);
         
         this.websocket = new WebSocket(wsUrl);
         
         this.websocket.onopen = () => {
             console.log('WebSocket连接已建立');
+            console.log('WebSocket readyState:', this.websocket.readyState);
             this.showMessage('实时连接已建立', 'success');
         };
         
         this.websocket.onmessage = (event) => {
             try {
+                console.log('WebSocket原始消息:', event.data);
                 const data = JSON.parse(event.data);
-                console.log('收到WebSocket消息:', data);
+                console.log('WebSocket解析后消息:', data);
                 this.handleWebSocketMessage(data);
             } catch (error) {
-                console.error('解析WebSocket消息失败:', error);
+                console.error('解析WebSocket消息失败:', error, 'raw data:', event.data);
             }
         };
         
@@ -420,6 +424,8 @@ class ImageTransformApp {
                 return 'info';
             case 'pending':
             case 'queued':
+            case 'uploading':
+            case 'uploaded':
                 return 'warning';
             default:
                 return 'info';
