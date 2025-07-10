@@ -18,8 +18,8 @@ from .websocket_push import router as websocket_router
 # 创建 v1 API 路由
 v1_router = APIRouter()
 
-# 包含各个子路由（注意tasks和files都使用/users前缀）
+# 包含各个子路由（注意路由内部已经定义了各自的前缀）
 v1_router.include_router(files_router)  # files路由内部已经有/users前缀
-v1_router.include_router(tasks_router)  # tasks路由内部已经有/users前缀
-v1_router.include_router(styles_router, prefix="/styles", tags=["风格"])  # styles保持独立
+v1_router.include_router(tasks_router)  # tasks路由内部已经有/users前缀  
+v1_router.include_router(styles_router)  # styles路由内部已经有/styles前缀
 v1_router.include_router(websocket_router, prefix="/ws", tags=["WebSocket推送"]) 

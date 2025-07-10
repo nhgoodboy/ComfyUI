@@ -92,6 +92,9 @@ class AppConfig:
         self.debug = os.getenv("DEBUG", "false").lower() == "true"
         self.environment = os.getenv("ENVIRONMENT", "development")
         
+        # 服务器配置
+        self.workers = int(os.getenv("WORKERS", "1"))
+        
         # 服务配置
         self.comfyui = ComfyUIConfig()
         self.storage = StorageConfig()

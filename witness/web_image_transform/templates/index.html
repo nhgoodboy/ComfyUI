@@ -8,10 +8,10 @@
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
     <script>
-        window.WEBSOCKET_HOST = "{{ websocket_host }}";
+        window.CLIENT_ID = "{{ client_id }}";
     </script>
 </head>
-<body>
+<body data-client-id="{{ client_id }}">
     <div class="container">
         <header class="header">
             <div class="header-content">
@@ -85,6 +85,6 @@
             </div>
         </footer>
     </div>
-    <script src="/static/js/main.js"></script>
+    <script src="/static/js/app.js"></script>
 </body>
 </html> 

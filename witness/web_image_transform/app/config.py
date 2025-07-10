@@ -10,11 +10,8 @@ class Settings(BaseSettings):
     # .env 文件路径和编码配置
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding='utf-8')
 
-    # ComfyUI工作流服务器连接配置
+    # ComfyUI工作流服务器连接配置（简化版）
     COMFYUI_WORKFLOW_SERVER_URL: str = "http://127.0.0.1:8000"
-    API_KEY: str = "your-secret-api-key-here"
-    API_USERNAME: str = "default_user"
-    API_SECRET_KEY: str = "your-64-char-api-secret-key-change-in-production"
 
     # Web应用自身配置
     APP_HOST: str = "0.0.0.0"
@@ -26,13 +23,7 @@ class Settings(BaseSettings):
 
     # 应用基本配置
     APP_NAME: str = Field(default="Web Image Transform", description="应用名称")
-    APP_VERSION: str = Field(default="1.0.0", description="应用版本")
-    
-    # 风格变换API配置
-    STYLE_API_BASE_URL: str = Field(
-        default="http://localhost:8000",
-        description="风格变换API服务地址"
-    )
+    APP_VERSION: str = Field(default="2.0.0", description="应用版本")
     
     # 文件配置
     UPLOAD_DIR: str = Field(default="uploads", description="上传文件目录")

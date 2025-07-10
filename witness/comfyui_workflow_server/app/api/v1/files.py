@@ -10,7 +10,7 @@ from typing import List
 import uuid
 import time
 import logging
-from pathlib import Path
+from pathlib import Path as PathLib
 from ...models.api_models import UploadFileResponse, ApiResponse, UserFilesResponse, UserFileInfo
 from ...models.user_models import UserContext
 from ...services.user_file_service import UserFileService
@@ -46,7 +46,7 @@ async def upload_file(
     if file.filename is None:
         raise HTTPException(status_code=400, detail="缺少文件名")
 
-    file_extension = Path(file.filename).suffix.lower()
+    file_extension = PathLib(file.filename).suffix.lower()
     if file_extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,

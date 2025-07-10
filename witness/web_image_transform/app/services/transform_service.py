@@ -6,6 +6,7 @@ from typing import Dict, Any
 from starlette.websockets import WebSocket
 
 from app.client.comfyui_client import comfyui_client
+from app.config import settings
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)
@@ -75,7 +76,7 @@ class WorkflowServerPushListener:
         while self.is_running:
             try:
                 # 连接到 workflow_server 的推送端点
-                ws_url = "ws://127.0.0.1:8000/api/v1/ws/push/web_image_transform"
+                ws_url = f"ws://{settings.COMFYUI_WORKFLOW_SERVER_URL.replace('http://', '').replace('https://', '')}/api/v1/ws/push/web_image_transform"
                 logger.info(f"连接到 workflow_server 推送端点: {ws_url}")
                 
                 async with websockets.connect(ws_url) as websocket:
@@ -138,14 +139,12 @@ class TransformService:
         await self.push_listener.stop()
 
     async def get_styles(self, session_id: str) -> Any:
-        """获取可用的风格列表。"""
+        """获取可用的风格列表（简化版，无需认证）。"""
         try:
-            # 每个会话都是一个独立用户，为其获取令牌
-            token = await comfyui_client.get_user_token(session_id)
-            styles = await comfyui_client.list_styles(token)
+            styles = await comfyui_client.list_styles()
             return styles
         except Exception as e:
-            logger.error(f"Failed to get styles for session {session_id}: {e}")
+            logger.error(f"Failed to get styles: {e}")
             raise
 
     async def process_transform(
@@ -156,19 +155,21 @@ class TransformService:
         file_content: bytes,
         filename: str,
     ):
-        """处理完整的图像转换流程。"""
+        """处理完整的图像转换流程（简化版）。"""
         try:
-            # 1. 为上传操作获取一个全新的令牌
+            # 使用session_id作为user_id
+            user_id = session_id
+            
+            # 1. 上传文件
             await manager.send_json(client_id, {"status": "UPLOADING", "message": "正在上传图片..."})
-            token_for_upload = await comfyui_client.get_user_token(session_id)
-            file_info = await comfyui_client.upload_file(file_content, filename, token_for_upload)
+            file_info = await comfyui_client.upload_file(user_id, file_content, filename)
+            
             # 构造完整的图片URL
-            image_url = f"http://127.0.0.1:8000{file_info['url']}"
+            image_url = f"{settings.COMFYUI_WORKFLOW_SERVER_URL}{file_info['url']}"
             await manager.send_json(client_id, {"status": "UPLOADED", "message": "图片上传成功，正在创建任务..."})
 
-            # 2. 为创建任务操作获取一个全新的令牌
-            token_for_task = await comfyui_client.get_user_token(session_id)
-            task_result = await comfyui_client.create_transform_task(style_id, image_url, token_for_task)
+            # 2. 创建任务
+            task_result = await comfyui_client.create_task(user_id, style_id, image_url)
             task_id = task_result["task_id"]
             
             # 保存任务到客户端的映射
@@ -188,8 +189,6 @@ class TransformService:
             await manager.send_json(client_id, {"status": "FAILED", "message": str(e)})
             raise
 
-
-
     def _cleanup_task(self, task_id: str):
         """清理任务映射"""
         if task_id in self.task_to_client:
@@ -199,71 +198,60 @@ class TransformService:
         """处理来自workflow_server的任务更新推送"""
         client_id = self.task_to_client.get(task_id)
         if not client_id:
-            logger.warning(f"收到任务更新但找不到对应的客户端: {task_id}")
+            logger.warning(f"收到未知任务的更新: {task_id}")
             return
-            
-        if not manager.is_connected(client_id):
-            logger.warning(f"客户端已断开连接，清理任务: {task_id}")
-            self._cleanup_task(task_id)
-            return
-            
-        # 根据更新类型发送相应的消息
-        status = update_data.get("status")
-        if status == "completed":
-            await manager.send_json(client_id, {
-                "status": "COMPLETED",
-                "message": "任务处理完成！",
-                "result": update_data.get("result", {})
-            })
-            self._cleanup_task(task_id)
-        elif status == "failed":
-            error_message = update_data.get("error_message", "")
-            await manager.send_json(client_id, {
-                "status": "FAILED",
-                "message": "任务处理失败。",
-                "details": error_message
-            })
-            self._cleanup_task(task_id)
-        elif status == "running":
-            progress = update_data.get("progress", 0)
-            message = update_data.get("message", f"任务处理中... ({progress:.1f}%)")
-            
-            # 构建响应消息
-            response_data = {
-                "status": "PROCESSING",
-                "message": message,
-                "progress": progress
-            }
-            
-            # 添加详细进度信息（如果可用）
-            current_step = update_data.get("current_step")
-            total_steps = update_data.get("total_steps")
-            if current_step is not None and total_steps is not None:
-                response_data.update({
-                    "current_step": current_step,
-                    "total_steps": total_steps
-                })
-            
-            # 添加预估剩余时间（如果可用）
-            estimated_remaining = update_data.get("estimated_remaining")
-            if estimated_remaining is not None:
-                response_data["estimated_remaining"] = estimated_remaining
-            
-            # 添加当前处理节点信息（如果可用）
-            current_node = update_data.get("current_node")
-            if current_node:
-                response_data["current_node"] = current_node
-            
-            await manager.send_json(client_id, response_data)
-            logger.debug(f"任务 {task_id} 进度更新: {progress}% - {message}")
-        else:
-            # 处理其他状态（如interrupted等）
-            logger.warning(f"收到未知状态的任务更新: {task_id} - {status}")
-            await manager.send_json(client_id, {
-                "status": "UNKNOWN",
-                "message": f"任务状态: {status}",
-                "details": update_data
-            })
 
-# 全局服务实例
+        if not manager.is_connected(client_id):
+            logger.warning(f"客户端 {client_id} 已断开连接，清理任务映射")
+            self._cleanup_task(task_id)
+            return
+
+        try:
+            status = update_data.get("status", "unknown")
+            progress = update_data.get("progress", 0)
+            message = update_data.get("message", "")
+
+            logger.info(f"转发任务更新到客户端: task_id={task_id}, client_id={client_id}, status={status}")
+
+            if status == "completed":
+                # 任务完成，获取结果
+                try:
+                    # 这里需要获取user_id，我们可以从任务映射中获取session_id
+                    # 但为了简化，我们可以使用一个更简单的方法
+                    await manager.send_json(client_id, {
+                        "status": "COMPLETED",
+                        "message": "图像转换完成！",
+                        "task_id": task_id,
+                        "progress": 100
+                    })
+                    self._cleanup_task(task_id)
+                except Exception as e:
+                    logger.error(f"获取任务结果失败: {e}")
+                    await manager.send_json(client_id, {
+                        "status": "FAILED",
+                        "message": f"获取结果失败: {str(e)}",
+                        "task_id": task_id
+                    })
+                    self._cleanup_task(task_id)
+            elif status == "failed":
+                error_msg = update_data.get("error_message", "转换失败")
+                await manager.send_json(client_id, {
+                    "status": "FAILED",
+                    "message": error_msg,
+                    "task_id": task_id
+                })
+                self._cleanup_task(task_id)
+            else:
+                # 进行中的状态
+                await manager.send_json(client_id, {
+                    "status": status.upper(),
+                    "message": message or f"任务状态: {status}",
+                    "task_id": task_id,
+                    "progress": progress
+                })
+
+        except Exception as e:
+            logger.error(f"处理任务更新失败: task_id={task_id}, error={e}")
+
+# 创建全局服务实例
 transform_service = TransformService() 

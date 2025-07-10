@@ -11,9 +11,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, List
 import logging.config
+import time
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
