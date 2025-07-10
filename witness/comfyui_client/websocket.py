@@ -45,6 +45,7 @@ class ComfyUIWebSocketClient:
     def on_message(self, ws, message):
         """
         处理传入消息。根据消息类型调用相应的回调。
+        基于 ComfyUI 源码的真实消息格式。
         """
         try:
             data = json.loads(message)
@@ -53,99 +54,233 @@ class ComfyUIWebSocketClient:
                 event_data = data.get("data", {})
                 
                 # 调试日志：记录收到的WebSocket消息
-                self.logger.debug(f"收到WebSocket消息: type={event_type}, data={event_data}")
+                if self.debug:
+                    self.logger.debug(f"收到WebSocket消息: type={event_type}, data={event_data}")
                 
-                # 处理真实的进度更新事件
+                # 处理真实的进度更新事件（ComfyUI 发送的采样器进度）
                 if event_type == "progress" and self.progress_callback:
+                    # ComfyUI 格式: {"value": value, "max": total, "prompt_id": prompt_id, "node": node_id}
                     prompt_id = event_data.get("prompt_id")
                     if prompt_id:
-                        self.progress_callback(prompt_id, event_data)
-                
-                # 处理执行状态变化 (更智能的进度估算)
-                elif event_type == "executing" and self.progress_callback:
-                    prompt_id = event_data.get("prompt_id")
-                    node_id = event_data.get("node")
-                    if prompt_id:
-                        # 使用简单但有效的进度估算
-                        if node_id is None:
-                            # 执行完成事件，设置进度为100%
-                            progress_data = {"value": 100, "max": 100, "node": None, "prompt_id": prompt_id}
-                            self.logger.info(f"任务完成: {prompt_id}")
-                            
-                            # 清理进度状态
-                            if hasattr(self, '_prompt_progress') and prompt_id in self._prompt_progress:
-                                del self._prompt_progress[prompt_id]
+                        current_value = event_data.get("value", 0)
+                        max_value = event_data.get("max", 100)
+                        node_id = event_data.get("node")
+                        
+                        # 计算百分比进度
+                        if max_value > 0:
+                            progress_percent = min(100, (current_value / max_value) * 100)
                         else:
-                            # 节点开始执行，基于节点类型提供更合理的进度估算
-                            if not hasattr(self, '_prompt_progress'):
-                                self._prompt_progress = {}
+                            progress_percent = 0
+                        
+                        # 检查是否是主要采样进度 vs 快速预处理进度
+                        # 采样器通常有多步骤 (max_value > 1)，而预处理节点通常只有1步
+                        is_main_sampling = max_value > 1
+                        
+                        # 跟踪采样状态
+                        if not hasattr(self, '_sampling_status'):
+                            self._sampling_status = {}
+                        
+                        if prompt_id not in self._sampling_status:
+                            self._sampling_status[prompt_id] = {
+                                'in_main_sampling': False,
+                                'last_progress': 0
+                            }
+                        
+                        status = self._sampling_status[prompt_id]
+                        
+                        if is_main_sampling:
+                            # 这是主要采样节点，开始主要采样阶段
+                            if not status['in_main_sampling']:
+                                status['in_main_sampling'] = True
+                                status['last_progress'] = 0
+                                self.logger.info(f"开始主要采样阶段: {prompt_id} - 节点: {node_id}")
                             
-                            if prompt_id not in self._prompt_progress:
-                                self._prompt_progress[prompt_id] = {
-                                    "executed_nodes": set(),  # 使用集合避免重复计数
-                                    "total_estimated": 20,    # 增加估算的总节点数
-                                    "start_time": __import__('time').time(),
-                                    "initial_sent": False     # 是否已发送初始0%进度
+                            # 更新并发送主要采样进度
+                            status['last_progress'] = progress_percent
+                            
+                            progress_data = {
+                                "value": progress_percent,
+                                "max": 100,
+                                "current_step": current_value,
+                                "total_steps": max_value,
+                                "node": node_id,
+                                "prompt_id": prompt_id
+                            }
+                            
+                            self.logger.info(f"采样器进度更新 {prompt_id}: {current_value}/{max_value} ({progress_percent:.1f}%) - 节点: {node_id}")
+                            self.progress_callback(prompt_id, progress_data)
+                            
+                        else:
+                            # 这是预处理节点（max_value <= 1），检查是否应该忽略
+                            if status['in_main_sampling']:
+                                # 已经在主要采样阶段，忽略预处理节点的进度
+                                if self.debug:
+                                    self.logger.debug(f"忽略预处理节点进度 {prompt_id}: 节点{node_id} ({progress_percent:.1f}%) - 已在主要采样阶段")
+                            else:
+                                # 还没开始主要采样，可以显示预处理进度，但限制在低值
+                                # 预处理阶段进度不超过10%
+                                limited_progress = min(10, progress_percent * 0.1)
+                                
+                                progress_data = {
+                                    "value": limited_progress,
+                                    "max": 100,
+                                    "current_step": current_value,
+                                    "total_steps": max_value,
+                                    "node": node_id,
+                                    "prompt_id": prompt_id,
+                                    "phase": "preprocessing"
                                 }
                                 
-                                # 发送初始0%进度
-                                initial_progress_data = {"value": 0, "max": 100, "node": "start", "prompt_id": prompt_id}
-                                self.logger.info(f"任务开始: {prompt_id}, 初始进度: 0%")
-                                self.progress_callback(prompt_id, initial_progress_data)
-                                self._prompt_progress[prompt_id]["initial_sent"] = True
-                            
-                            # 记录已执行的节点（避免重复计数）
-                            progress_state = self._prompt_progress[prompt_id]
-                            progress_state["executed_nodes"].add(node_id)
-                            
-                            executed = len(progress_state["executed_nodes"])
-                            total = progress_state["total_estimated"]
-                            
-                            # 更保守的进度计算，避免过快到达90%
-                            if executed <= 3:
-                                # 前3个节点：10%-30%
-                                progress_percent = 10 + (executed - 1) * 10
-                            elif executed <= 10:
-                                # 第4-10个节点：30%-70%
-                                progress_percent = 30 + (executed - 3) * 5
-                            else:
-                                # 超过10个节点：逐渐增加到85%
-                                progress_percent = min(85, 70 + (executed - 10) * 2)
-                            
-                            progress_data = {"value": progress_percent, "max": 100, "node": node_id, "prompt_id": prompt_id}
-                            self.logger.info(f"节点执行: {node_id}, 进度: {progress_percent:.1f}% (节点数: {executed})")
-                        self.progress_callback(prompt_id, progress_data)
+                                if self.debug:
+                                    self.logger.debug(f"预处理进度 {prompt_id}: {current_value}/{max_value} ({limited_progress:.1f}%) - 节点: {node_id}")
+                                self.progress_callback(prompt_id, progress_data)
                 
-                # 处理采样器进度事件 (ComfyUI的采样器会发送此类事件)
-                elif event_type == "sampling" and self.progress_callback:
+                # 处理执行开始事件
+                elif event_type == "execution_start" and self.progress_callback:
                     prompt_id = event_data.get("prompt_id")
                     if prompt_id:
-                        # 采样器进度通常包含 step/total_steps
-                        step = event_data.get("step", 0)
-                        total_steps = event_data.get("total_steps", 1)
-                        progress_data = {"value": step, "max": total_steps, "prompt_id": prompt_id}
-                        self.progress_callback(prompt_id, progress_data)
+                        start_data = {
+                            "value": 0,
+                            "max": 100,
+                            "status": "started",
+                            "prompt_id": prompt_id
+                        }
+                        self.logger.info(f"工作流执行开始: {prompt_id}")
+                        self.progress_callback(prompt_id, start_data)
                 
-                # 严格只在 execution_complete 时视为任务成功
-                elif event_type == "execution_complete" and self.completion_callback:
+                # 处理节点开始执行事件
+                elif event_type == "executing" and self.progress_callback:
+                    # ComfyUI 格式: {"node": unique_id, "display_node": display_node_id, "prompt_id": prompt_id}
                     prompt_id = event_data.get("prompt_id")
+                    node_id = event_data.get("node")
+                    display_node = event_data.get("display_node")
+                    
                     if prompt_id:
-                        self.completion_callback(prompt_id, {"status": "completed", "result": event_data})
-
+                        if node_id is None:
+                            # 这通常表示队列处理或准备阶段，不是执行完成
+                            # 不发送进度更新，避免错误的100%跳跃
+                            if self.debug:
+                                self.logger.debug(f"队列处理或准备阶段: {prompt_id}")
+                        else:
+                            # 节点开始执行 - 如果这是第一个节点，发送开始事件
+                            if not hasattr(self, '_started_prompts'):
+                                self._started_prompts = set()
+                            
+                            if prompt_id not in self._started_prompts:
+                                # 第一个节点开始执行，发送任务开始事件
+                                start_data = {
+                                    "value": 0,
+                                    "max": 100,
+                                    "status": "started",
+                                    "prompt_id": prompt_id,
+                                    "first_node": node_id
+                                }
+                                self.logger.info(f"任务开始执行 (第一个节点): {prompt_id} - 节点: {node_id}")
+                                self.progress_callback(prompt_id, start_data)
+                                self._started_prompts.add(prompt_id)
+                                
+                            # 发送节点状态通知（仅调试模式）
+                            if self.debug:
+                                status_data = {
+                                    "status": "executing_node",
+                                    "node": node_id,
+                                    "display_node": display_node,
+                                    "prompt_id": prompt_id
+                                }
+                                self.logger.info(f"节点开始执行: {node_id} (显示节点: {display_node}, 工作流: {prompt_id})")
+                                self.progress_callback(prompt_id, status_data)
+                
+                # 处理节点执行完成事件（包含输出数据）
+                elif event_type == "executed":
+                    # ComfyUI 格式: {"node": unique_id, "display_node": display_node_id, "output": output_ui, "prompt_id": prompt_id}
+                    prompt_id = event_data.get("prompt_id")
+                    node_id = event_data.get("node")
+                    display_node = event_data.get("display_node")
+                    output_data = event_data.get("output", {})
+                    
+                    if prompt_id and self.debug:
+                        self.logger.info(f"节点执行完成: {node_id} (显示节点: {display_node}, 工作流: {prompt_id})")
+                        if output_data:
+                            self.logger.debug(f"节点输出数据: {list(output_data.keys())}")
+                
+                # 处理缓存执行事件
+                elif event_type == "execution_cached":
+                    prompt_id = event_data.get("prompt_id")
+                    cached_nodes = event_data.get("nodes", [])
+                    if self.debug:
+                        self.logger.debug(f"缓存执行节点 (工作流: {prompt_id}): {cached_nodes}")
+                
+                # 处理执行中断事件
+                elif event_type == "execution_interrupted":
+                    prompt_id = event_data.get("prompt_id")
+                    node_id = event_data.get("node_id")
+                    if prompt_id and self.completion_callback:
+                        self.logger.warning(f"工作流执行被中断: {prompt_id} (节点: {node_id})")
+                        # 清理已开始的提示记录和采样状态
+                        if hasattr(self, '_started_prompts') and prompt_id in self._started_prompts:
+                            self._started_prompts.remove(prompt_id)
+                        if hasattr(self, '_sampling_status') and prompt_id in self._sampling_status:
+                            del self._sampling_status[prompt_id]
+                        self.completion_callback(prompt_id, {"status": "interrupted", "node_id": node_id})
+                
                 # 处理执行错误
                 elif event_type == "execution_error" and self.completion_callback:
                     prompt_id = event_data.get("prompt_id")
+                    node_id = event_data.get("node_id")
+                    exception_message = event_data.get("exception_message", "")
+                    exception_type = event_data.get("exception_type", "")
                     if prompt_id:
-                        self.completion_callback(prompt_id, {"status": "failed", "error": event_data})
+                        self.logger.error(f"工作流执行错误: {prompt_id} - 节点: {node_id}, 错误: {exception_message}")
+                        # 清理已开始的提示记录和采样状态
+                        if hasattr(self, '_started_prompts') and prompt_id in self._started_prompts:
+                            self._started_prompts.remove(prompt_id)
+                        if hasattr(self, '_sampling_status') and prompt_id in self._sampling_status:
+                            del self._sampling_status[prompt_id]
+                        self.completion_callback(prompt_id, {
+                            "status": "failed", 
+                            "error": event_data,
+                            "node_id": node_id,
+                            "exception_message": exception_message,
+                            "exception_type": exception_type
+                        })
+                
+                # 处理工作流完成事件
+                elif event_type == "execution_success" and self.completion_callback:
+                    prompt_id = event_data.get("prompt_id")
+                    if prompt_id:
+                        self.logger.info(f"工作流执行成功完成: {prompt_id}")
+                        # 清理已开始的提示记录和采样状态
+                        if hasattr(self, '_started_prompts') and prompt_id in self._started_prompts:
+                            self._started_prompts.remove(prompt_id)
+                        if hasattr(self, '_sampling_status') and prompt_id in self._sampling_status:
+                            del self._sampling_status[prompt_id]
+                        self.completion_callback(prompt_id, {"status": "completed", "result": event_data})
 
+                # 处理状态更新事件（连接时发送的初始状态）
+                elif event_type == "status":
+                    sid = event_data.get("sid")
+                    status = event_data.get("status", {})
+                    if self.debug:
+                        exec_info = status.get("exec_info", {})
+                        queue_remaining = exec_info.get("queue_remaining", 0)
+                        self.logger.debug(f"状态更新 (SID: {sid}): 队列剩余 {queue_remaining} 个任务")
+
+                # 处理其他事件类型
                 else:
-                    self.logger.debug(f"收到未处理的事件: {event_type} - {event_data.get('sid')}")
+                    if self.debug:
+                        self.logger.debug(f"收到未处理的事件: {event_type}")
+                        
             else:
-                self.logger.debug(f"收到非JSON消息: {message}")
+                if self.debug:
+                    self.logger.debug(f"收到非JSON字典消息: {message}")
+                    
         except json.JSONDecodeError:
             self.logger.warning(f"无法解析JSON消息: {message}")
         except Exception as e:
             self.logger.error(f"处理消息时出错: {e}")
+            if self.debug:
+                import traceback
+                self.logger.error(f"错误详情: {traceback.format_exc()}")
 
     def on_error(self, ws, error):
         """

@@ -125,7 +125,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 const progress = parseFloat(data.progress || 0);
                 progressFill.style.width = `${progress}%`;
                 progressText.textContent = `${Math.round(progress)}%`;
-                taskInfo.textContent = data.message || '正在处理中...';
+                
+                // 构建详细的状态信息
+                let statusMessage = data.message || '正在处理中...';
+                
+                // 添加详细进度信息
+                if (data.current_step !== undefined && data.total_steps !== undefined) {
+                    statusMessage += ` (步骤 ${data.current_step}/${data.total_steps})`;
+                }
+                
+                // 添加预估剩余时间
+                if (data.estimated_remaining && data.estimated_remaining > 0) {
+                    const minutes = Math.floor(data.estimated_remaining / 60);
+                    const seconds = data.estimated_remaining % 60;
+                    if (minutes > 0) {
+                        statusMessage += ` - 预计剩余: ${minutes}分${seconds}秒`;
+                    } else {
+                        statusMessage += ` - 预计剩余: ${seconds}秒`;
+                    }
+                }
+                
+                // 添加当前处理节点信息（仅调试时显示）
+                if (data.current_node && window.location.search.includes('debug=1')) {
+                    statusMessage += ` [节点: ${data.current_node}]`;
+                }
+                
+                taskInfo.textContent = statusMessage;
+                
+                // 添加调试信息到控制台
+                if (data.current_step !== undefined && data.total_steps !== undefined) {
+                    console.log(`进度详情: ${data.current_step}/${data.total_steps} (${progress.toFixed(1)}%)`);
+                }
                 break;
             case 'COMPLETED':
                 progressFill.style.width = '100%';
@@ -142,12 +172,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 submitBtn.innerHTML = '<i class="fas fa-magic"></i> 再次转换';
                 break;
             case 'FAILED':
-                taskInfo.textContent = `错误: ${data.message}`;
+                progressFill.style.width = '0%';
+                progressText.textContent = '失败';
+                taskInfo.textContent = `错误: ${data.message || data.details || '处理失败'}`;
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="fas fa-magic"></i> 重新尝试';
                 break;
+            case 'UNKNOWN':
+                taskInfo.textContent = data.message || '未知状态';
+                console.warn('收到未知状态:', data);
+                break;
             default:
                 taskInfo.textContent = data.message || '等待任务开始...';
+                console.log('收到状态更新:', data.status, data);
         }
     }
 

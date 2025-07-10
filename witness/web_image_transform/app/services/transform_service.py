@@ -217,20 +217,53 @@ class TransformService:
             })
             self._cleanup_task(task_id)
         elif status == "failed":
+            error_message = update_data.get("error_message", "")
             await manager.send_json(client_id, {
                 "status": "FAILED",
                 "message": "任务处理失败。",
-                "details": update_data.get("error_message", "")
+                "details": error_message
             })
             self._cleanup_task(task_id)
         elif status == "running":
             progress = update_data.get("progress", 0)
-            await manager.send_json(client_id, {
+            message = update_data.get("message", f"任务处理中... ({progress:.1f}%)")
+            
+            # 构建响应消息
+            response_data = {
                 "status": "PROCESSING",
-                "message": f"任务处理中... ({status})",
+                "message": message,
                 "progress": progress
+            }
+            
+            # 添加详细进度信息（如果可用）
+            current_step = update_data.get("current_step")
+            total_steps = update_data.get("total_steps")
+            if current_step is not None and total_steps is not None:
+                response_data.update({
+                    "current_step": current_step,
+                    "total_steps": total_steps
+                })
+            
+            # 添加预估剩余时间（如果可用）
+            estimated_remaining = update_data.get("estimated_remaining")
+            if estimated_remaining is not None:
+                response_data["estimated_remaining"] = estimated_remaining
+            
+            # 添加当前处理节点信息（如果可用）
+            current_node = update_data.get("current_node")
+            if current_node:
+                response_data["current_node"] = current_node
+            
+            await manager.send_json(client_id, response_data)
+            logger.debug(f"任务 {task_id} 进度更新: {progress}% - {message}")
+        else:
+            # 处理其他状态（如interrupted等）
+            logger.warning(f"收到未知状态的任务更新: {task_id} - {status}")
+            await manager.send_json(client_id, {
+                "status": "UNKNOWN",
+                "message": f"任务状态: {status}",
+                "details": update_data
             })
-            logger.debug(f"任务 {task_id} 进度更新: {progress}%")
 
 # 全局服务实例
 transform_service = TransformService() 

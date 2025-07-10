@@ -138,12 +138,42 @@ class UserTaskService:
             
         task_data = self.user_tasks[user_id][task_id]
         
-        value = progress_data.get("value", 0)
-        max_value = progress_data.get("max", 1)
-        if max_value > 0:
-            progress = (value / max_value) * 100
+        # 检查是否是状态更新而非进度更新
+        status = progress_data.get("status")
+        if status == "started":
+            # 工作流开始执行
+            logger.info(f"任务开始执行: task_id={task_id}")
+            if push_manager:
+                asyncio.create_task(push_manager.push_task_update(task_id, {
+                    "status": "running",
+                    "progress": 0,
+                    "message": "工作流开始执行",
+                    "current_step": 0,
+                    "total_steps": None
+                }))
+            return
+        elif status in ["executing_node"]:
+            # 节点开始执行（仅调试模式下发送）
+            node_id = progress_data.get("node")
+            if node_id:
+                logger.debug(f"节点开始执行: task_id={task_id}, node_id={node_id}")
+            return
+        
+        # 处理真实的进度数据
+        value = progress_data.get("value")
+        if value is not None:
+            # 检查是否包含详细的步骤信息
+            current_step = progress_data.get("current_step")
+            total_steps = progress_data.get("total_steps")
+            node_id = progress_data.get("node")
+            
+            progress = value  # 已经是百分比
             task_data.progress = progress
+            
             logger.info(f"任务进度更新: task_id={task_id}, progress={progress:.1f}%")
+            
+            if current_step is not None and total_steps is not None:
+                logger.info(f"详细进度: {current_step}/{total_steps} (节点: {node_id})")
 
             # 更新预估剩余时间
             if task_data.started_at and progress > 0:
@@ -154,43 +184,103 @@ class UserTaskService:
                 else:
                     task_data.estimated_remaining = 0
 
+            # 构建推送消息
+            push_data = {
+                "status": "running",
+                "progress": progress,
+                "estimated_remaining": task_data.estimated_remaining
+            }
+            
+            # 添加详细进度信息（如果可用）
+            if current_step is not None and total_steps is not None:
+                push_data.update({
+                    "current_step": current_step,
+                    "total_steps": total_steps,
+                    "message": f"处理中... 步骤 {current_step}/{total_steps} ({progress:.1f}%)"
+                })
+                if node_id:
+                    push_data["current_node"] = node_id
+            else:
+                push_data["message"] = f"处理中... ({progress:.1f}%)"
+
             # 推送进度更新到外部客户端
             if push_manager:
                 logger.info(f"推送进度更新到WebSocket: task_id={task_id}")
-                asyncio.create_task(push_manager.push_task_update(task_id, {
-                    "status": "running",
-                    "progress": progress,
-                    "estimated_remaining": task_data.estimated_remaining
-                }))
+                asyncio.create_task(push_manager.push_task_update(task_id, push_data))
             else:
                 logger.warning("WebSocket推送管理器不可用")
 
-    def handle_completion_update(self, prompt_id: str, result_data: Dict):
+    async def handle_completion_update(self, prompt_id: str, result_data: Dict):
         """处理来自ComfyUIService的完成/失败事件"""
         task_id = self.prompt_to_task.get(prompt_id)
         if not task_id:
+            logger.warning(f"完成事件: 未找到对应任务: prompt_id={prompt_id}")
             return
 
         user_id = self.task_to_user.get(task_id)
         if not user_id or user_id not in self.user_tasks or task_id not in self.user_tasks[user_id]:
+            logger.warning(f"完成事件: 任务数据异常: task_id={task_id}, user_id={user_id}")
             return
             
         task_data = self.user_tasks[user_id][task_id]
         status = result_data.get("status", "completed")
 
         if status == "completed":
-            task_data.status = "completed"
-            task_data.progress = 100.0
-            task_data.result = result_data.get("result", {})
-            logger.info(f"任务完成: {task_id}")
+            # 任务完成，需要获取实际结果
+            logger.info(f"任务完成，开始获取结果: task_id={task_id}, prompt_id={prompt_id}")
             
-            # 推送完成状态到外部客户端
-            if push_manager:
-                asyncio.create_task(push_manager.push_task_update(task_id, {
-                    "status": "completed",
-                    "progress": 100.0,
-                    "result": task_data.result
-                }))
+            try:
+                # 从ComfyUI历史记录中获取结果
+                comfyui_result = await self.comfyui_service.get_result(prompt_id)
+                logger.info(f"从ComfyUI获取结果: {list(comfyui_result.keys()) if comfyui_result else 'empty'}")
+                
+                # 处理输出文件
+                output_files = []
+                if comfyui_result and "outputs" in comfyui_result:
+                    for node_id, node_output in comfyui_result["outputs"].items():
+                        if "images" in node_output:
+                            for img_info in node_output["images"]:
+                                filename = img_info.get("filename", "")
+                                if filename:
+                                    # 构建完整的图像URL
+                                    image_url = f"http://127.0.0.1:8188/view?filename={filename}&type=output"
+                                    output_files.append({
+                                        "filename": filename,
+                                        "url": image_url,
+                                        "type": "image"
+                                    })
+                                    logger.info(f"添加输出文件: {filename}")
+                
+                # 设置任务结果
+                task_result = {
+                    "output_files": output_files,
+                    "comfyui_result": comfyui_result
+                }
+                
+                task_data.status = "completed"
+                task_data.progress = 100.0
+                task_data.result = task_result
+                logger.info(f"任务完成: {task_id}, 输出文件数量: {len(output_files)}")
+                
+                # 推送完成状态到外部客户端
+                if push_manager:
+                    asyncio.create_task(push_manager.push_task_update(task_id, {
+                        "status": "completed",
+                        "progress": 100.0,
+                        "result": task_result
+                    }))
+                    
+            except Exception as e:
+                logger.error(f"获取任务结果失败: {task_id} - {e}", exc_info=True)
+                # 将任务标记为失败
+                task_data.status = "failed"
+                task_data.error_message = f"获取结果失败: {str(e)}"
+                
+                if push_manager:
+                    asyncio.create_task(push_manager.push_task_update(task_id, {
+                        "status": "failed",
+                        "error_message": task_data.error_message
+                    }))
         else: # failed
             task_data.status = "failed"
             task_data.error_message = str(result_data.get("error", "未知错误"))
