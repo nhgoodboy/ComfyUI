@@ -241,20 +241,35 @@ class UserTaskService:
                         if "images" in node_output:
                             for img_info in node_output["images"]:
                                 filename = img_info.get("filename", "")
+                                img_type = img_info.get("type", "output")  # 获取图像类型
+                                subfolder = img_info.get("subfolder", "")
+                                
                                 if filename:
-                                    # 构建完整的图像URL
-                                    image_url = f"http://127.0.0.1:8188/view?filename={filename}&type=output"
+                                    # 构建完整的图像URL，使用正确的type参数
+                                    image_url = f"http://127.0.0.1:8188/view?filename={filename}&type={img_type}"
+                                    if subfolder:
+                                        image_url += f"&subfolder={subfolder}"
+                                    
+                                    # 优先选择最终输出图像（type=output），而不是临时预览图像
+                                    priority = 1 if img_type == "output" else 0
+                                    
                                     output_files.append({
                                         "filename": filename,
                                         "url": image_url,
-                                        "type": "image"
+                                        "type": "image",
+                                        "img_type": img_type,
+                                        "priority": priority,
+                                        "node_id": node_id
                                     })
-                                    logger.info(f"添加输出文件: {filename}")
+                                    logger.info(f"添加输出文件: {filename} (类型: {img_type}, 节点: {node_id})")
+                
+                    # 按优先级排序，最终输出图像排在前面
+                    output_files.sort(key=lambda x: x["priority"], reverse=True)
                 
                 # 设置任务结果
                 task_result = {
                     "output_files": output_files,
-                    "comfyui_result": comfyui_result
+                    "comfyui_result": comfyui_result  # 保留在服务器端用于调试和历史记录
                 }
                 
                 task_data.status = "completed"
@@ -262,12 +277,20 @@ class UserTaskService:
                 task_data.result = task_result
                 logger.info(f"任务完成: {task_id}, 输出文件数量: {len(output_files)}")
                 
-                # 推送完成状态到外部客户端
+                # 推送完成状态到外部客户端 - 只推送必要的数据
                 if push_manager:
+                    # 构建精简的推送数据，只包含前端需要的信息
+                    push_result = {
+                        "output_files": output_files,
+                        # 可以添加其他前端需要的元数据，但不包含完整的工作流
+                        "task_id": task_id,
+                        "completed_at": task_data.completed_at if hasattr(task_data, 'completed_at') else time.time()
+                    }
+                    
                     asyncio.create_task(push_manager.push_task_update(task_id, {
                         "status": "completed",
                         "progress": 100.0,
-                        "result": task_result
+                        "result": push_result
                     }))
                     
             except Exception as e:

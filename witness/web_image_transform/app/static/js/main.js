@@ -162,10 +162,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 progressText.textContent = '100%';
                 taskInfo.textContent = '处理完成！';
             
+                console.log('任务完成，结果数据:', data.result);
+                
                 if (data.result && data.result.output_files && data.result.output_files.length > 0) {
+                    console.log('找到输出文件:', data.result.output_files);
+                    
+                    // 选择第一个文件（已经按优先级排序）
+                    const outputFile = data.result.output_files[0];
+                    console.log('使用输出文件:', outputFile);
+                    
                     resultCard.style.display = 'block';
-                    resultImage.src = data.result.output_files[0].url;
-                    downloadLink.href = data.result.output_files[0].url;
+                    resultImage.src = outputFile.url;
+                    downloadLink.href = outputFile.url;
+                    
+                    console.log('设置图片URL:', outputFile.url);
+                    
+                    // 添加图片加载成功/失败的事件监听
+                    resultImage.onload = () => {
+                        console.log('图片加载成功:', outputFile.url);
+                    };
+                    resultImage.onerror = (e) => {
+                        console.error('图片加载失败:', outputFile.url, e);
+                    };
+                } else {
+                    console.warn('没有找到输出文件:', data.result);
                 }
             
                 submitBtn.disabled = false;

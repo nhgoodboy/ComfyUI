@@ -348,7 +348,7 @@ class ComfyUIService:
         """处理任务完成事件 (成功或失败)"""
         logger.info(f"ComfyUIService收到完成事件: prompt_id={prompt_id}, data={result_data}")
         if self.user_task_service:
-            self.user_task_service.handle_completion_update(prompt_id, result_data)
+            await self.user_task_service.handle_completion_update(prompt_id, result_data)
         else:
             logger.warning("UserTaskService未注入，无法处理完成更新")
 
