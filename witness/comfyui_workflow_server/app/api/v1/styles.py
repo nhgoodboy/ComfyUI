@@ -1,16 +1,14 @@
 """
 风格API端点
 
-提供风格发现、搜索和转换功能的REST API
+提供风格发现、搜索功能的REST API（全局共享）
 """
 
-from fastapi import APIRouter, HTTPException, Query, Request, Depends, Body, File, UploadFile, Form
+from fastapi import APIRouter, HTTPException, Query, Request
 from typing import List, Optional, Dict
 import logging
-from ...models.api_models import StyleInfo, TransformRequest, ApiResponse, TaskStatusData
-from ...models.user_models import APIUser
+from ...models.api_models import StyleInfo
 from ...services.style_service import StyleService
-from .auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -46,41 +44,3 @@ async def get_style(style_id: str, request: Request):
     if not style:
         raise HTTPException(status_code=404, detail="风格不存在")
     return style
-
-@router.post("/transform", response_model=TaskStatusData, summary="提交风格转换任务")
-async def transform_image(
-    req: Request,
-    request: TransformRequest, 
-    user: APIUser = Depends(get_current_user)
-):
-    """
-    为当前认证用户提交一个风格转换任务。
-    这是一个长轮询任务，会返回一个任务ID供后续状态查询。
-    """
-    style_service: StyleService = req.app.state.style_service
-    user_task_service = req.app.state.user_task_service
-    
-    # 验证风格存在
-    style = await style_service.get_style(request.style_id)
-    if not style:
-        raise HTTPException(status_code=404, detail="风格不存在")
-    
-    try:
-        # 创建用户任务
-        task_id = await user_task_service.create_task(
-            user_id=user.username,
-            style_id=request.style_id,
-            input_image_path=request.image_url
-        )
-        
-        task_data = user_task_service.get_user_task(user.username, task_id)
-        if not task_data:
-             raise HTTPException(status_code=404, detail="任务创建后未找到")
-
-        return task_data
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"提交转换任务失败: {user.username} - {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="提交转换任务时发生内部错误")

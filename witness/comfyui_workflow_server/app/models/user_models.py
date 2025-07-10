@@ -1,17 +1,15 @@
 """
 用户相关数据模型
 
-定义多用户支持的数据结构
+定义基于user_id的资源隔离数据结构
 """
 
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
-from enum import Enum
 
 class UserContext(BaseModel):
-    """用户上下文"""
+    """用户上下文 - 用于标识用户身份"""
     user_id: str = Field(..., description="用户ID")
-    request_id: Optional[str] = Field(None, description="请求追踪ID")
 
 class UserTaskData(BaseModel):
     """用户任务数据"""
@@ -44,11 +42,6 @@ class UserStatsResponse(BaseModel):
     task_counts: Dict[str, int] = Field(..., description="任务统计")
     file_counts: Dict[str, int] = Field(..., description="文件统计")
     storage_used: int = Field(..., description="存储使用量(字节)")
-
-class APIUser(BaseModel):
-    """API用户认证模型"""
-    username: str = Field(..., description="用户名")
-    is_admin: bool = Field(False, description="是否为管理员")
 
 class UserTaskListResponse(BaseModel):
     """用户任务列表响应"""

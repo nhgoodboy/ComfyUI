@@ -1,141 +1,19 @@
 """
 应用配置管理
 
-新增多层安全防护配置：
-- API密钥认证
-- JWT令牌验证
-- IP白名单控制
-- 请求签名验证
-- 速率限制配置
+简化配置，专注于微服务核心功能：
+- ComfyUI服务连接
+- 存储管理
+- 基础应用配置
 """
 
 import os
 from typing import List, Dict, Any, Optional
 from pathlib import Path
-import secrets
 import logging
-import json
-import sys
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)
-
-class SecurityConfig:
-    """安全配置类"""
-    
-    def __init__(self):
-        # 安全防护总开关
-        self.security_enabled = os.getenv("SECURITY_ENABLED", "true").lower() == "true"
-        
-        # 基础安全配置
-        self.api_secret_key = os.getenv("API_SECRET_KEY", self._generate_secret_key())
-        self.jwt_secret_key = os.getenv("JWT_SECRET_KEY", self._generate_secret_key())
-        self.encryption_key = os.getenv("ENCRYPTION_KEY", self._generate_secret_key())
-        
-        # IP白名单配置
-        self.allowed_ips = self._parse_ip_list(
-            os.getenv("ALLOWED_IPS", "127.0.0.1,::1,192.168.0.0/24,10.0.0.0/8")
-        )
-        
-        # 认证配置
-        self.signature_timeout = int(os.getenv("SIGNATURE_TIMEOUT", "300"))  # 5分钟
-        self.token_expiry_minutes = int(os.getenv("TOKEN_EXPIRY_MINUTES", "1440"))  # 24小时
-        
-        # 速率限制配置
-        self.rate_limit_per_ip = int(os.getenv("RATE_LIMIT_PER_IP", "60"))  # 每IP每分钟
-        self.rate_limit_per_ip_hour = int(os.getenv("RATE_LIMIT_PER_IP_HOUR", "600")) # 每IP每小时
-        self.rate_limit_per_user = int(os.getenv("RATE_LIMIT_PER_USER", "30"))  # 每用户每分钟
-        
-        # 安全选项
-        self.enforce_https = os.getenv("ENFORCE_HTTPS", "false").lower() == "true"
-        self.secure_cookies = os.getenv("SECURE_COOKIES", "true").lower() == "true"
-        self.cors_origins = self._parse_cors_origins(os.getenv("CORS_ORIGINS", ""))
-        
-        # 多用户配置
-        self.api_users = self._parse_api_users(os.getenv("API_USERS"))
-        
-        # 验证配置
-        self._validate_security_config()
-    
-    def _generate_secret_key(self) -> str:
-        """生成安全密钥"""
-        return secrets.token_hex(32)
-    
-    def _parse_ip_list(self, ip_string: str) -> List[str]:
-        """解析IP白名单"""
-        if not ip_string:
-            return ["127.0.0.1", "::1"]
-        
-        return [ip.strip() for ip in ip_string.split(",") if ip.strip()]
-    
-    def _parse_cors_origins(self, cors_string: str) -> List[str]:
-        """解析CORS源列表"""
-        if not cors_string:
-            return []
-        
-        return [origin.strip() for origin in cors_string.split(",") if origin.strip()]
-    
-    def _parse_api_users(self, users_json_string: Optional[str]) -> Dict[str, Dict]:
-        """解析API用户配置"""
-        if not users_json_string:
-            logger.warning("API_USERS环境变量未设置，将使用默认的示例用户。")
-            return {
-                "user_01_key": {
-                    "username": "default_user",
-                    "permissions": ["read", "write"]
-                }
-            }
-        
-        try:
-            users = json.loads(users_json_string)
-            if not isinstance(users, dict):
-                raise ValueError("API_USERS必须是一个JSON对象的字符串")
-            return users
-        except json.JSONDecodeError:
-            logger.error("API_USERS环境变量包含无效的JSON，将使用默认用户。")
-            return {
-                "user_01_key": {
-                    "username": "default_user",
-                    "permissions": ["read", "write"]
-                }
-            }
-    
-    def _validate_security_config(self):
-        """验证安全配置"""
-        # 检查密钥长度
-        if len(self.api_secret_key) < 32:
-            logger.warning("API密钥长度不足32字符，安全性可能降低")
-        
-        if len(self.jwt_secret_key) < 32:
-            logger.warning("JWT密钥长度不足32字符，安全性可能降低")
-        
-        # 检查IP白名单
-        if not self.allowed_ips:
-            logger.warning("IP白名单为空，将拒绝所有请求")
-        
-        # 检查超时设置
-        if self.signature_timeout < 60:
-            logger.warning("签名超时时间过短，可能导致网络延迟问题")
-        
-        if self.signature_timeout > 3600:
-            logger.warning("签名超时时间过长，可能降低安全性")
-    
-    def get_security_summary(self) -> Dict[str, Any]:
-        """获取安全配置摘要"""
-        return {
-            "security_enabled": self.security_enabled,
-            "api_key_configured": bool(self.api_secret_key),
-            "jwt_configured": bool(self.jwt_secret_key),
-            "ip_whitelist_count": len(self.allowed_ips),
-            "signature_timeout": self.signature_timeout,
-            "token_expiry_minutes": self.token_expiry_minutes,
-            "rate_limit_per_ip": self.rate_limit_per_ip,
-            "rate_limit_per_ip_hour": self.rate_limit_per_ip_hour,
-            "rate_limit_per_user": self.rate_limit_per_user,
-            "https_enforced": self.enforce_https,
-            "secure_cookies": self.secure_cookies
-        }
-
 
 class ComfyUIConfig:
     """ComfyUI服务配置"""
@@ -205,161 +83,151 @@ class StorageConfig:
 
 
 class AppConfig:
-    """应用主配置"""
+    """应用主配置类"""
     
     def __init__(self):
         # 基础配置
-        self.debug = os.getenv("DEBUG", "false").lower() == "true"
         self.host = os.getenv("HOST", "0.0.0.0")
         self.port = int(os.getenv("PORT", "8000"))
-        self.workers = int(os.getenv("WORKERS", "1"))
-    
-    # 日志配置
-        self.log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-        self.log_file = os.getenv("LOG_FILE")
+        self.debug = os.getenv("DEBUG", "false").lower() == "true"
+        self.environment = os.getenv("ENVIRONMENT", "development")
         
-        # 子配置
-        self.security = SecurityConfig()
+        # 服务配置
         self.comfyui = ComfyUIConfig()
         self.storage = StorageConfig()
         
-        # 风格配置
-        self.style_config_path = self.storage.configs_dir / "style_configs.yaml"
+        # 日志配置
+        self.log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+        self.log_format = os.getenv("LOG_FORMAT", "json")
         
-        # 应用信息
-        self.app_name = "ComfyUI Workflow Server"
-        self.version = "2.0.0"
-        self.description = "多用户安全图像处理工作流服务"
+        # CORS配置（简化）
+        self.cors_origins = self._parse_cors_origins(os.getenv("CORS_ORIGINS", "*"))
         
-        # 配置摘要
+        # 记录配置摘要
         self._log_config_summary()
+    
+    def _parse_cors_origins(self, cors_string: str) -> List[str]:
+        """解析CORS源列表"""
+        if not cors_string or cors_string == "*":
+            return ["*"]
+        
+        return [origin.strip() for origin in cors_string.split(",") if origin.strip()]
     
     def _log_config_summary(self):
         """记录配置摘要"""
-        logger.info(f"=== {self.app_name} v{self.version} ===")
-        logger.info(f"运行模式: {'开发' if self.debug else '生产'}")
+        logger.info(f"应用配置初始化完成")
+        logger.info(f"环境: {self.environment}")
         logger.info(f"服务地址: {self.host}:{self.port}")
-        logger.info(f"日志级别: {self.log_level}")
-        logger.info(f"ComfyUI: {self.comfyui.base_url}")
-        logger.info(f"安全配置: {self.security.get_security_summary()}")
+        logger.info(f"ComfyUI地址: {self.comfyui.base_url}")
+        logger.info(f"调试模式: {self.debug}")
     
     def get_logging_config(self) -> Dict[str, Any]:
-        """获取日志配置字典"""
-        log_config = {
+        """获取日志配置"""
+        if self.log_format == "json":
+            formatter_config = {
+                "format": '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}'
+            }
+        else:
+            formatter_config = {
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            }
+        
+        return {
             "version": 1,
             "disable_existing_loggers": False,
             "formatters": {
-                "default": {
-                    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                    "datefmt": "%Y-%m-%d %H:%M:%S",
-                },
+                "default": formatter_config
             },
             "handlers": {
                 "console": {
                     "class": "logging.StreamHandler",
                     "formatter": "default",
-                    "level": self.log_level,
-                },
+                    "level": self.log_level
+                }
+            },
+            "root": {
+                "level": self.log_level,
+                "handlers": ["console"]
             },
             "loggers": {
-                "": {  # Root logger
-                    "handlers": ["console"],
-                    "level": self.log_level,
-                    "propagate": True,
-                },
-                "uvicorn.error": {
+                "uvicorn": {
                     "level": "INFO",
-                },
-                "uvicorn.access": {
                     "handlers": ["console"],
-                    "level": "INFO",
-                    "propagate": False,
+                    "propagate": False
                 },
-            },
-        }
-        if self.log_file:
-            log_config["handlers"]["file"] = {
-                "class": "logging.handlers.RotatingFileHandler",
-                "formatter": "default",
-                "filename": self.log_file,
-                "maxBytes": 1024 * 1024 * 5,  # 5 MB
-                "backupCount": 5,
-                "level": self.log_level,
+                "fastapi": {
+                    "level": "INFO",
+                    "handlers": ["console"],
+                    "propagate": False
+                }
             }
-            log_config["loggers"][""]["handlers"].append("file")
-        return log_config
-
+        }
+    
     def get_fastapi_config(self) -> Dict[str, Any]:
         """获取FastAPI配置"""
         return {
-            "title": self.app_name,
-            "description": self.description,
-            "version": self.version,
+            "title": "ComfyUI Workflow Server",
+            "description": "简化的ComfyUI工作流微服务",
+            "version": "2.0.0",
             "debug": self.debug,
+            "openapi_url": "/openapi.json" if self.debug else None,
             "docs_url": "/docs" if self.debug else None,
             "redoc_url": "/redoc" if self.debug else None,
-            "openapi_url": "/openapi.json" if self.debug else None
         }
     
     def is_production(self) -> bool:
-        """是否生产环境"""
-        return not self.debug
+        """检查是否为生产环境"""
+        return self.environment.lower() == "production"
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> AppConfig:
-    """获取应用配置实例（带缓存）"""
+    """获取全局配置实例"""
     return AppConfig()
 
 
-# 配置验证函数
 def validate_config(settings: AppConfig) -> bool:
-    """验证配置的有效性"""
-    # 验证逻辑可以根据需要扩展
-    # 这里只是一个基本示例
+    """验证配置有效性"""
     try:
-        # 检查必需的安全配置
-        if not settings.security.api_secret_key:
-            logger.error("API密钥未配置")
+        # 验证端口范围
+        if not (1 <= settings.port <= 65535):
+            logger.error(f"无效的端口号: {settings.port}")
             return False
         
-        if not settings.security.jwt_secret_key:
-            logger.error("JWT密钥未配置")
+        if not (1 <= settings.comfyui.port <= 65535):
+            logger.error(f"无效的ComfyUI端口号: {settings.comfyui.port}")
             return False
         
-        if not settings.security.allowed_ips:
-            logger.error("IP白名单未配置")
+        # 验证存储目录
+        if not settings.storage.uploads_dir.exists():
+            logger.error(f"上传目录不存在: {settings.storage.uploads_dir}")
             return False
         
-        # 检查ComfyUI连接
-        if not settings.comfyui.host or not settings.comfyui.port:
-            logger.error("ComfyUI主机或端口未配置")
+        # 验证文件大小限制
+        if settings.storage.max_file_size <= 0:
+            logger.error(f"无效的文件大小限制: {settings.storage.max_file_size}")
             return False
         
         logger.info("配置验证通过")
         return True
-    
+        
     except Exception as e:
-        logger.error(f"配置验证期间发生错误: {e}")
+        logger.error(f"配置验证失败: {e}")
         return False
 
 
 def get_environment_info() -> Dict[str, Any]:
     """获取环境信息"""
+    settings = get_settings()
+    
     return {
-        "python_version": sys.version,
-        "os": sys.platform,
-        "cwd": os.getcwd()
-    }
-
-
-# 导出配置
-__all__ = [
-    "get_settings",
-    "validate_config",
-    "get_environment_info",
-    "AppConfig",
-    "SecurityConfig",
-    "ComfyUIConfig",
-    "StorageConfig"
-] 
+        "environment": settings.environment,
+        "debug_mode": settings.debug,
+        "comfyui_url": settings.comfyui.base_url,
+        "storage_config": {
+            "uploads_dir": str(settings.storage.uploads_dir),
+            "outputs_dir": str(settings.storage.outputs_dir),
+            "max_file_size": settings.storage.max_file_size,
+            "allowed_extensions": settings.storage.allowed_extensions
+        }
+    } 
