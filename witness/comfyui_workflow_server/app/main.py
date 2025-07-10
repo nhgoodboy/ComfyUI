@@ -162,15 +162,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 添加中间件 - 安全第一
-app.add_middleware(
-    SecurityMiddleware,
-    api_users=settings.security.api_users,
-    api_secret_key=settings.security.api_secret_key,
-    allowed_ips=settings.security.allowed_ips,
-    signature_timeout=settings.security.signature_timeout
-)
-app.add_middleware(RateLimitMiddleware)
+# 添加中间件 - 条件性启用安全防护
+if settings.security.security_enabled:
+    # 启用银行级五层安全防护
+    app.add_middleware(
+        SecurityMiddleware,
+        api_users=settings.security.api_users,
+        api_secret_key=settings.security.api_secret_key,
+        allowed_ips=settings.security.allowed_ips,
+        signature_timeout=settings.security.signature_timeout
+    )
+    app.add_middleware(RateLimitMiddleware)
+    logger.info("✅ 安全防护已启用 - 五层安全防护体系激活")
+else:
+    logger.warning("⚠️  安全防护已禁用 - 仅适用于开发环境，生产环境请启用安全防护")
 
 # 添加CORS中间件（仅在开发模式或配置了CORS源时）
 if settings.debug or settings.security.cors_origins:
@@ -252,8 +257,9 @@ async def root(request: Request):
         "version": settings.version,
         "description": settings.description,
         "status": "running",
-        "architecture": "银行级安全防护架构",
-        "security_enabled": True,
+        "architecture": "银行级安全防护架构" if settings.security.security_enabled else "开发模式（安全防护已禁用）",
+        "security_enabled": settings.security.security_enabled,
+        "security_warning": None if settings.security.security_enabled else "⚠️ 安全防护已禁用，仅适用于开发环境",
         "available_styles": available_styles,
         "api_endpoints": {
             "styles": "/api/v1/styles",
@@ -274,8 +280,8 @@ async def health_check(request: Request):
             "message": "风格转换服务运行正常",
             "timestamp": time.time(),
             "version": request.app.state.settings.version,
-            "security_layers": 5,
-            "security_enabled": True
+            "security_layers": 5 if settings.security.security_enabled else 0,
+            "security_enabled": settings.security.security_enabled
         }
         
         # 添加风格统计信息
@@ -296,7 +302,7 @@ async def health_check(request: Request):
                 "message": f"服务异常: {str(e)}",
                 "timestamp": time.time(),
                 "version": settings.version,
-                "security_enabled": True
+                "security_enabled": settings.security.security_enabled
             }
         )
 
@@ -306,23 +312,32 @@ async def security_info():
     if not settings.debug:
         return {"message": "仅开发模式可用"}
     
-    return {
-        "security_summary": settings.security.get_security_summary(),
-        "environment": "development" if settings.debug else "production",
-        "security_layers": [
+    if settings.security.security_enabled:
+        security_layers = [
             "第1层: IP白名单控制",
             "第2层: API密钥认证",
             "第3层: 请求签名验证",
             "第4层: 速率限制保护",
             "第5层: JWT令牌验证"
-        ],
-        "security_features": [
+        ]
+        security_features = [
             "防重放攻击",
             "防时序攻击",
             "防DDoS攻击",
             "数据加密传输",
             "令牌黑名单机制"
         ]
+    else:
+        security_layers = ["安全防护已禁用"]
+        security_features = ["⚠️ 所有安全功能已关闭"]
+    
+    return {
+        "security_summary": settings.security.get_security_summary(),
+        "environment": "development" if settings.debug else "production",
+        "security_status": "启用" if settings.security.security_enabled else "禁用",
+        "security_warning": None if settings.security.security_enabled else "⚠️ 安全防护已禁用，生产环境请启用",
+        "security_layers": security_layers,
+        "security_features": security_features
     }
 
 @app.exception_handler(Exception)

@@ -24,6 +24,9 @@ class SecurityConfig:
     """安全配置类"""
     
     def __init__(self):
+        # 安全防护总开关
+        self.security_enabled = os.getenv("SECURITY_ENABLED", "true").lower() == "true"
+        
         # 基础安全配置
         self.api_secret_key = os.getenv("API_SECRET_KEY", self._generate_secret_key())
         self.jwt_secret_key = os.getenv("JWT_SECRET_KEY", self._generate_secret_key())
@@ -120,6 +123,7 @@ class SecurityConfig:
     def get_security_summary(self) -> Dict[str, Any]:
         """获取安全配置摘要"""
         return {
+            "security_enabled": self.security_enabled,
             "api_key_configured": bool(self.api_secret_key),
             "jwt_configured": bool(self.jwt_secret_key),
             "ip_whitelist_count": len(self.allowed_ips),
