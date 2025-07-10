@@ -264,13 +264,19 @@ class ImageTransformApp {
     handleWebSocketMessage(wsMessage) {
         console.log('收到WebSocket原始消息:', wsMessage);
         
-        // WebSocket消息格式: {type: 'task_update', task_id: '...', data: {...}}
-        if (wsMessage.type !== 'task_update') {
-            console.log('忽略非任务更新消息:', wsMessage.type);
+        // 直接处理任务数据（新格式）：{status: 'running', task_id: '...', progress: 88}
+        let taskData;
+        if (wsMessage.type === 'task_update') {
+            // 旧格式：{type: 'task_update', data: {...}}
+            taskData = wsMessage.data;
+        } else if (wsMessage.status) {
+            // 新格式：直接的任务数据 {status: 'running', task_id: '...', progress: 88}
+            taskData = wsMessage;
+        } else {
+            console.log('忽略未知消息格式:', wsMessage);
             return;
         }
         
-        const taskData = wsMessage.data;
         const status = taskData.status;
         const message = taskData.message || `任务状态: ${status}`;
         const progress = taskData.progress || 0;
