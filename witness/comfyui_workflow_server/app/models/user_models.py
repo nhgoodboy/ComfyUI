@@ -25,6 +25,21 @@ class UserTaskData(BaseModel):
     estimated_remaining: Optional[int] = Field(None, description="预估剩余时间(秒)")
     error_message: Optional[str] = Field(None, description="错误信息")
     result: Optional[Dict[str, Any]] = Field(None, description="任务结果")
+    
+    # 扩展字段 - 用于任务执行过程中的状态管理
+    stage: Optional[str] = Field(None, description="任务阶段")
+    message: Optional[str] = Field(None, description="状态消息")
+    image_url: Optional[str] = Field(None, description="输入图片URL")
+    expected_filename: Optional[str] = Field(None, description="期望的文件名")
+    output_filename: Optional[str] = Field(None, description="输出文件名")
+    download_progress: Optional[float] = Field(None, description="下载进度")
+    transform_progress: Optional[float] = Field(None, description="转换进度")
+    input_file_path: Optional[str] = Field(None, description="输入文件路径")
+    input_file_info: Optional[Dict[str, Any]] = Field(None, description="输入文件信息")
+    
+    class Config:
+        # 允许动态添加字段
+        extra = "allow"
 
 class UserFileInfo(BaseModel):
     """用户文件信息"""

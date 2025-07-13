@@ -90,8 +90,10 @@ class TransformTaskService:
         
         # 验证URL中的文件名
         try:
+            # 获取已知的风格ID列表
+            known_style_ids = list(self.style_registry.styles.keys())
             expected_filename = self.file_naming.validate_url_filename(
-                image_url, style_id, user_id, "input"
+                image_url, style_id, user_id, "input", known_style_ids
             )
         except Exception as e:
             raise RPCDownloadError(
