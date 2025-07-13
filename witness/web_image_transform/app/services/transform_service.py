@@ -56,11 +56,14 @@ class TransformService:
                 health = await self.rpc_client.get_system_health()
                 logger.info(f"ComfyUI服务状态: {health.get('status', 'unknown')}")
             
-            # 创建WebSocket客户端
+            # 创建并启动WebSocket客户端
             ws_url = f"{settings.COMFYUI_WORKFLOW_SERVER_URL.replace('http', 'ws')}/ws/{self.session_id}"
             self.ws_client = ComfyUIWebSocketClient(ws_url, self._handle_ws_message)
             
-            logger.info("转换服务初始化完成")
+            # 启动WebSocket监听器
+            await self.start_push_listener()
+            
+            logger.info("转换服务初始化完成（包含WebSocket连接）")
             
         except Exception as e:
             logger.error(f"转换服务初始化失败: {e}")

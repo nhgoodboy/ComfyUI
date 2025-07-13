@@ -37,15 +37,19 @@ async def create_transform(params: Dict[str, Any], request: Request) -> Dict[str
         # 获取转换任务服务
         transform_service: TransformTaskService = request.app.state.transform_task_service
         
-        # 创建转换任务
+        # 创建转换任务（内部会清理user_id和style_id）
         task_id = await transform_service.create_transform_task(
             user_id=user_id,
             style_id=style_id,
             image_url=image_url
         )
         
-        # 获取任务信息
-        task_data = transform_service.get_user_task(user_id, task_id)
+        # 获取任务信息 - 需要使用清理后的user_id
+        from ...utils.file_naming import FileNamingUtils
+        cleaned_user_id = FileNamingUtils.validate_user_id(user_id)
+        cleaned_style_id = FileNamingUtils.validate_style_id(style_id)
+        
+        task_data = transform_service.get_user_task(cleaned_user_id, task_id)
         if not task_data:
             raise RPCError(
                 code=ErrorCodes.INTERNAL_ERROR,

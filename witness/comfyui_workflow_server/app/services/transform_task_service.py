@@ -88,6 +88,14 @@ class TransformTaskService:
                 details=f"可用风格: {list(self.style_registry.styles.keys())}"
             )
         
+        # 验证工作流存在
+        if style_id not in self.style_registry.workflows:
+            raise RPCTransformError(
+                code=ErrorCodes.STYLE_NOT_FOUND,
+                message=f"风格工作流不存在: {style_id}",
+                details=f"可用工作流: {list(self.style_registry.workflows.keys())}"
+            )
+        
         # 验证URL中的文件名
         try:
             # 获取已知的风格ID列表
@@ -227,8 +235,7 @@ class TransformTaskService:
         
         try:
             # 获取风格工作流
-            style_config = self.style_registry.styles[task_data.style_id]
-            workflow = style_config.workflow
+            workflow = self.style_registry.workflows[task_data.style_id]
             
             # 设置输入参数
             input_params = {
