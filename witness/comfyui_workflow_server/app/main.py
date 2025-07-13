@@ -1,29 +1,32 @@
 """
 ComfyUI工作流服务器主应用
 
-简化的微服务架构：专注于图像风格转换的核心功能
+RPC风格的微服务架构：专注于图像风格转换的核心功能
 """
 
 import asyncio
+import json
 import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any
 import logging.config
 import time
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 # 导入配置
 from .config import get_settings, validate_config, AppConfig
 
-# 导入API路由
-from .api.v1 import v1_router
+# 导入RPC处理器
+from .rpc.handler import rpc_handler
+
+# 导入并注册RPC方法（这会自动注册所有装饰的方法）
+from .rpc.methods import *
 
 # 导入服务类
 from .core.style_registry import StyleRegistry
@@ -31,9 +34,13 @@ from .services.comfyui_service import ComfyUIService
 from .services.user_file_service import UserFileService
 from .services.user_task_service import UserTaskService
 from .services.style_service import StyleService
+from .services.transform_task_service import TransformTaskService
+
+# 导入WebSocket推送管理器
+from .api.v1.websocket_push import push_manager
 
 # 服务实例将在lifespan中创建并附加到app.state
-from .models.api_models import HealthResponse, ApiResponse
+from .models.api_models import HealthResponse
 
 # 日志将在lifespan中配置
 logger = logging.getLogger(__name__)
@@ -87,7 +94,16 @@ async def lifespan(app: FastAPI):
 
         logger.debug("正在初始化样式服务...")
         style_service = StyleService(style_registry=style_registry)
+        app.state.style_service = style_service
         logger.info("样式服务初始化完成。")
+
+        logger.debug("正在初始化转换任务服务...")
+        transform_task_service = TransformTaskService(
+            comfyui_service=comfyui_service,
+            style_registry=style_registry
+        )
+        app.state.transform_task_service = transform_task_service
+        logger.info("转换任务服务初始化完成。")
 
         # --- 4. 挂载服务到 app.state ---
         logger.debug("正在将服务挂载到应用状态...")
@@ -96,10 +112,18 @@ async def lifespan(app: FastAPI):
         app.state.user_file_service = user_file_service
         app.state.user_task_service = user_task_service
         app.state.style_service = style_service
+        app.state.transform_task_service = transform_task_service
         app.state.settings = settings  # 将配置也挂载到state
 
-        # 注入依赖：将UserTaskService实例提供给ComfyUIService用于回调
+        # 注入依赖：将回调服务实例提供给ComfyUIService
         comfyui_service.set_user_task_service(user_task_service)
+        
+        # 为转换任务服务设置ComfyUI结果回调
+        if hasattr(comfyui_service, 'add_result_callback'):
+            comfyui_service.add_result_callback(transform_task_service.on_comfyui_result)
+
+        # 记录启动时间（用于系统统计）
+        app.state.start_time = time.time()
 
         logger.info("服务挂载完成。")
         
@@ -139,12 +163,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 添加静态文件服务
-app.mount(f"/{settings.storage.uploads_dir.name}", StaticFiles(directory=settings.storage.uploads_dir), name=settings.storage.uploads_dir.name)
-app.mount(f"/{settings.storage.outputs_dir.name}", StaticFiles(directory=settings.storage.outputs_dir), name=settings.storage.outputs_dir.name)
-
-# 注册路由
-app.include_router(v1_router, prefix="/api/v1")
+# RPC端点不需要静态文件服务（ComfyUI自己提供文件访问）
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -162,24 +181,75 @@ async def log_requests(request: Request, call_next):
     
     return response
 
+@app.post("/rpc")
+async def rpc_endpoint(request: Request):
+    """RPC端点 - 处理所有RPC请求"""
+    try:
+        # 解析请求体
+        body = await request.body()
+        request_data = json.loads(body.decode('utf-8'))
+        
+        # 检查是否为批量请求
+        if isinstance(request_data, list):
+            # 批量请求
+            responses = await rpc_handler.handle_batch_request(request, request_data)
+            return JSONResponse(content=responses)
+        else:
+            # 单个请求
+            response = await rpc_handler.handle_request(request, request_data)
+            return JSONResponse(content=response)
+            
+    except json.JSONDecodeError:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": 1001,
+                    "message": "无效的JSON格式"
+                },
+                "id": None
+            }
+        )
+    except Exception as e:
+        logger.error(f"RPC端点异常: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": 1004,
+                    "message": "内部服务器错误"
+                },
+                "id": None
+            }
+        )
+
 @app.get("/")
 async def root(request: Request):
     """根端点 - 提供API概览"""
     settings: AppConfig = request.app.state.settings
     
     return {
-        "service": "ComfyUI Workflow Server",
+        "service": "ComfyUI Workflow Server", 
         "version": "2.0.0",
-        "description": "简化的ComfyUI工作流微服务",
+        "description": "RPC风格的ComfyUI工作流微服务",
         "environment": settings.environment,
         "comfyui_connected": hasattr(request.app.state, 'comfyui_service'),
         "api_docs": "/docs" if settings.debug else "禁用（生产模式）",
         "health_check": "/health",
-        "endpoints": {
-            "styles": "/api/v1/styles",
-            "user_tasks": "/api/v1/users/{user_id}/tasks",
-            "user_files": "/api/v1/users/{user_id}/files"
-        }
+        "rpc_endpoint": "/rpc",
+        "websocket": "/ws/{user_id}",
+        "available_methods": [
+            "styles.list",
+            "styles.search", 
+            "styles.get",
+            "transform.create",
+            "transform.get_status",
+            "transform.get_result",
+            "transform.list",
+            "transform.cancel",
+            "system.health",
+            "system.build_filename"
+        ]
     }
 
 @app.get("/health", response_model=HealthResponse)
@@ -224,6 +294,25 @@ async def health_check(request: Request):
         }
     )
 
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    """WebSocket端点 - 为用户提供实时任务状态推送"""
+    await push_manager.connect(websocket, user_id)
+    try:
+        while True:
+            # 保持连接活跃，等待心跳或消息
+            try:
+                message = await websocket.receive_text()
+                # 可以处理心跳消息
+                if message == "ping":
+                    await websocket.send_text("pong")
+            except:
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        push_manager.disconnect(user_id)
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """全局异常处理器"""
@@ -232,8 +321,10 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={
-            "success": False,
-            "error": "内部服务器错误",
-            "detail": "请联系管理员" if not settings.debug else str(exc)
+            "error": {
+                "code": 1004,
+                "message": "内部服务器错误", 
+                "details": str(exc) if get_settings().debug else "请联系管理员"
+            }
         }
     ) 

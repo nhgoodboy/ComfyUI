@@ -1,0 +1,85 @@
+# 下载服务配置
+
+download:
+  # 下载超时时间（秒）
+  timeout: 30
+  
+  # 最大文件大小（字节，10MB）
+  max_file_size: 10485760
+  
+  # 允许的文件格式
+  allowed_formats: 
+    - ".jpg"
+    - ".jpeg" 
+    - ".png"
+    - ".webp"
+    - ".bmp"
+    - ".gif"
+  
+  # HTTP请求配置
+  user_agent: "ComfyUI-Workflow-Server/2.0"
+  max_redirects: 3
+  max_concurrent_downloads: 5
+  
+  # 文件清理配置
+  cleanup:
+    # 临时文件保留时间（小时）
+    temp_retention_hours: 2
+    # 输入文件保留时间（天）
+    input_retention_days: 7
+    # 输出文件保留时间（天）
+    output_retention_days: 30
+    # 是否启用自动清理
+    auto_cleanup: true
+    # 清理任务执行间隔（小时）
+    cleanup_interval_hours: 6
+
+# 文件命名配置
+naming:
+  # 文件命名模式
+  pattern: "{style_id}_{user_id}_{type}.{ext}"
+  
+  # 是否验证URL中的文件名
+  validate_url_naming: true
+  
+  # 允许的风格ID（留空表示允许所有）
+  allowed_styles: []
+  
+  # 允许的文件类型
+  allowed_types:
+    - "input"
+    - "output"
+
+# 转换任务配置  
+transform:
+  # 最大并发转换任务数
+  max_concurrent_transforms: 3
+  
+  # 任务超时时间（秒）
+  task_timeout: 300
+  
+  # 是否自动清理临时文件
+  cleanup_temp_files: true
+  
+  # 旧任务清理配置
+  task_cleanup:
+    # 任务保留时间（小时）
+    max_age_hours: 24
+    # 是否启用自动清理
+    auto_cleanup: true
+    # 清理任务执行间隔（小时）
+    cleanup_interval_hours: 12
+
+# RPC配置
+rpc:
+  # 是否启用批量请求
+  enable_batch_requests: true
+  
+  # 单次批量请求最大数量
+  max_batch_size: 10
+  
+  # 请求超时时间（秒）
+  request_timeout: 60
+  
+  # 是否记录详细日志
+  verbose_logging: false
