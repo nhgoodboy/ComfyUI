@@ -142,14 +142,33 @@ class DownloadService:
                         details=f"服务器返回: {response.reason}"
                     )
                 
-                # 验证Content-Type
+                # 验证Content-Type（更宽松的验证）
                 content_type = response.headers.get('content-type', '')
-                if not any(img_type in content_type.lower() for img_type in ['image/', 'jpeg', 'png', 'webp', 'bmp', 'gif']):
+                
+                # 如果有明确的图片类型，验证它
+                if content_type and any(img_type in content_type.lower() for img_type in ['image/', 'jpeg', 'png', 'webp', 'bmp', 'gif']):
+                    # 明确是图片类型，通过验证
+                    pass
+                elif content_type and content_type.lower().startswith('text/'):
+                    # 如果是text类型，需要进一步检查URL扩展名
+                    url_lower = url.lower()
+                    if any(ext in url_lower for ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']):
+                        # URL看起来像图片，可能是服务器MIME类型配置问题，允许通过
+                        logger.warning(f"Content-Type为text但URL像图片: {url}, Content-Type: {content_type}")
+                    else:
+                        raise RPCDownloadError(
+                            code=ErrorCodes.INVALID_FILE_FORMAT,
+                            message=f"不支持的内容类型: {content_type}",
+                            url=url
+                        )
+                elif content_type:
+                    # 其他明确非图片的类型
                     raise RPCDownloadError(
                         code=ErrorCodes.INVALID_FILE_FORMAT,
                         message=f"不支持的内容类型: {content_type}",
                         url=url
                     )
+                # 如果没有Content-Type，继续尝试下载并依据内容判断
                 
                 # 验证文件大小
                 content_length = response.headers.get('content-length')
