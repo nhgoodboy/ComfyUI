@@ -1,43 +1,80 @@
-# ComfyUI Workflow Server
+# ComfyUI Workflow Server (RPC Edition)
 
-简化的ComfyUI工作流微服务，专注于基于用户ID的资源隔离和图像风格转换功能。
+基于RPC架构的ComfyUI工作流微服务，专注于图像风格转换和文件下载处理。
 
 ## 项目概述
 
-这是一个轻量级的微服务，为ComfyUI提供用户隔离的工作流API。已移除复杂的认证系统，专注于核心业务功能。
+这是一个采用JSON-RPC 2.0协议的微服务，为ComfyUI提供统一的RPC接口。支持从外部URL下载图片并进行风格转换，采用标准化的文件命名规范。
 
 ## 主要特性
 
-- **用户隔离**: 基于user_id的文件和任务完全隔离
-- **简化架构**: 移除认证复杂性，专注核心功能
-- **微服务友好**: 适合与主服务集成，由主服务负责认证
-- **RESTful API**: 清晰的路径结构和资源管理
-- **实时反馈**: WebSocket支持任务进度推送
+- **RPC架构**: 单一端点(`/rpc`)，JSON-RPC 2.0协议
+- **文件下载**: 支持从外部URL下载图片，无需客户端上传
+- **标准化命名**: 文件按`{style_id}_{user_id}_{input/output}.{ext}`格式命名
+- **多阶段处理**: 下载→转换的完整生命周期管理
+- **实时推送**: WebSocket支持任务状态实时更新
+- **错误分类**: 系统化的错误代码体系(1xxx-3xxx)
 
-## API 端点
+## RPC接口
 
-### 用户任务管理
-- `POST /api/v1/users/{user_id}/tasks` - 创建新任务
-- `GET /api/v1/users/{user_id}/tasks` - 获取用户任务列表
-- `GET /api/v1/users/{user_id}/tasks/{task_id}` - 获取任务详情
-- `GET /api/v1/users/{user_id}/tasks/{task_id}/result` - 获取任务结果
-- `DELETE /api/v1/users/{user_id}/tasks/{task_id}` - 取消任务
+### 单一端点
+所有RPC调用统一使用：`POST /rpc`
 
-### 用户文件管理
-- `POST /api/v1/users/{user_id}/files/upload` - 上传文件
-- `GET /api/v1/users/{user_id}/files` - 获取用户文件列表
-- `GET /api/v1/users/{user_id}/files/{file_id}` - 获取文件信息
-- `DELETE /api/v1/users/{user_id}/files/{file_id}` - 删除文件
-- `GET /api/v1/users/{user_id}/files/stats` - 获取文件统计
+### 风格管理方法
+- `styles.list` - 获取所有可用风格
+- `styles.search` - 搜索风格
+- `styles.get` - 获取特定风格详情
 
-### 全局风格管理
-- `GET /api/v1/styles` - 获取所有可用风格
-- `GET /api/v1/styles/search?q={keyword}` - 搜索风格
-- `GET /api/v1/styles/{style_id}` - 获取风格详情
+### 转换任务方法
+- `transform.create` - 创建转换任务（下载+转换）
+- `transform.get_status` - 获取任务状态
+- `transform.get_result` - 获取任务结果
+- `transform.list` - 获取用户任务列表
+- `transform.cancel` - 取消任务
 
-### 系统接口
-- `GET /health` - 健康检查
-- `GET /` - API概览
+### 系统方法
+- `system.health` - 系统健康检查
+- `system.build_filename` - 构建标准文件名
+- `system.get_stats` - 获取系统统计信息
+
+### WebSocket推送
+- `GET /ws/{user_id}` - 实时任务状态推送
+
+## RPC调用示例
+
+### 创建转换任务
+```json
+{
+  "method": "transform.create",
+  "params": {
+    "user_id": "user123",
+    "style_id": "anime_style",
+    "image_url": "https://example.com/image.jpg"
+  },
+  "id": "req_1"
+}
+```
+
+### 获取风格列表
+```json
+{
+  "method": "styles.list",
+  "params": {},
+  "id": "req_2"
+}
+```
+
+### 获取任务状态
+```json
+{
+  "method": "transform.get_status",
+  "params": {
+    "user_id": "user123",
+    "task_id": "task_abc123"
+  },
+  "id": "req_3"
+}
+```
 
 ## 配置环境变量
 
@@ -53,10 +90,16 @@ COMFYUI_HOST=127.0.0.1
 COMFYUI_PORT=8188
 COMFYUI_TIMEOUT=300
 
-# 存储配置
+# 文件存储配置
 UPLOADS_DIR=uploads
 OUTPUTS_DIR=outputs
 MAX_FILE_SIZE=10485760
+MAX_DOWNLOAD_SIZE=50485760
+
+# 下载配置
+DOWNLOAD_TIMEOUT=30
+DOWNLOAD_RETRIES=3
+ALLOWED_SCHEMES=http,https
 
 # 日志配置
 LOG_LEVEL=INFO
@@ -83,47 +126,125 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
 ```
 
-## 用户隔离说明
+## 文件命名规范
 
-### 文件隔离
-- 上传文件：`uploads/{user_id}/`
-- 输出文件：`outputs/{user_id}/`
-- 每个用户只能访问自己的文件
+### 标准格式
+```
+{style_id}_{user_id}_{type}.{extension}
+```
 
-### 任务隔离
-- 任务数据按user_id完全隔离
-- 任务ID在全局唯一，但用户只能访问自己的任务
-- 任务结果与用户ID绑定
+### 示例
+- 输入文件：`anime_style_user123_input.jpg`
+- 输出文件：`anime_style_user123_output.png`
 
-### API安全
-- 通过路径参数传递user_id
-- 主服务负责用户认证和权限验证
-- 此微服务专注于业务逻辑处理
+### 文件组织
+- 下载文件：`uploads/{filename}`
+- 输出文件：`outputs/{filename}`
+- 所有文件按标准命名格式存储
 
-## 与主服务集成
+## 任务生命周期
 
-此微服务设计为内部服务，建议：
+1. **pending** - 任务已创建，等待处理
+2. **downloading** - 正在下载图片
+3. **downloaded** - 图片下载完成
+4. **processing** - 正在进行风格转换
+5. **completed** - 转换完成
+6. **download_failed** - 下载失败
+7. **processing_failed** - 转换失败
 
-1. **网络隔离**: 仅允许主服务访问
-2. **用户验证**: 主服务验证user_id有效性
-3. **请求代理**: 主服务代理所有用户请求
-4. **监控日志**: 通过主服务统一监控和日志
+## 错误代码体系
+
+- **1001-1099**: 通用错误（参数、验证等）
+- **2001-2099**: 下载相关错误
+- **3001-3099**: 转换处理错误
+
+## 与客户端集成
+
+### RPC客户端示例
+
+```python
+import aiohttp
+import json
+
+class ComfyUIRPCClient:
+    def __init__(self, base_url: str, user_id: str):
+        self.base_url = base_url
+        self.user_id = user_id
+        self.rpc_url = f"{base_url}/rpc"
+    
+    async def create_transform(self, style_id: str, image_url: str):
+        payload = {
+            "method": "transform.create",
+            "params": {
+                "user_id": self.user_id,
+                "style_id": style_id,
+                "image_url": image_url
+            },
+            "id": "req_1"
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(self.rpc_url, json=payload) as resp:
+                result = await resp.json()
+                return result["result"]
+```
+
+### WebSocket监听
+
+```python
+import websockets
+import json
+
+async def listen_updates(user_id: str):
+    uri = f"ws://localhost:8000/ws/{user_id}"
+    async with websockets.connect(uri) as websocket:
+        async for message in websocket:
+            data = json.loads(message)
+            print(f"任务更新: {data}")
+```
 
 ## 目录结构
 
 ```
 app/
-├── api/v1/          # API路由
-├── services/        # 业务服务
-├── models/          # 数据模型
-├── config.py        # 配置管理
-└── main.py          # 应用入口
+├── rpc/
+│   ├── __init__.py
+│   ├── handler.py       # RPC请求处理器
+│   ├── router.py        # RPC方法路由
+│   ├── protocol.py      # RPC协议模型
+│   ├── exceptions.py    # RPC异常定义
+│   ├── error_codes.py   # 错误代码定义
+│   └── methods/
+│       ├── styles.py    # 风格管理方法
+│       ├── transform.py # 转换任务方法
+│       └── system.py    # 系统方法
+├── services/
+│   ├── download_service.py     # 文件下载服务
+│   └── transform_task_service.py # 转换任务服务
+├── utils/
+│   └── file_naming.py   # 文件命名工具
+├── config.py            # 配置管理
+└── main.py             # 应用入口
 ```
 
 ## 更新日志
+
+### v3.0.0 - RPC版本
+- 完全重构为RPC架构
+- 单一端点设计（POST /rpc）
+- 支持外部URL图片下载
+- 标准化文件命名规范
+- 多阶段任务生命周期
+- 系统化错误代码体系
+- 实时WebSocket状态推送
 
 ### v2.0.0 - 简化版本
 - 移除复杂的认证系统
 - 简化为基于user_id的资源隔离
 - 优化微服务架构
-- 专注核心业务功能 
+- 专注核心业务功能
+
+### v1.0.0 - 初始RESTful版本
+- RESTful API设计
+- 基础认证系统
+- 用户文件管理 

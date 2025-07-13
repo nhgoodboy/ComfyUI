@@ -1,263 +1,289 @@
+"""
+RPC风格的转换服务
+
+基于新的RPC接口重构转换服务，支持文件URL上传和实时状态推送
+"""
+
 import asyncio
 import logging
-import websockets
-import json
-from typing import Dict, Any
-from starlette.websockets import WebSocket
+import os
+import uuid
+import aiofiles
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+from urllib.parse import urljoin
 
-from app.client.comfyui_client import comfyui_client
+from app.client.rpc_client import ComfyUIRPCClient, ComfyUIWebSocketClient
 from app.config import settings
 
-# 设置日志
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-class ConnectionManager:
-    """管理WebSocket连接"""
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-
-    async def connect(self, websocket: WebSocket, client_id: str):
-        await websocket.accept()
-        self.active_connections[client_id] = websocket
-        logger.info(f"WebSocket client connected: {client_id}")
-
-    def disconnect(self, client_id: str):
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
-            logger.info(f"WebSocket client disconnected: {client_id}")
-
-    async def send_json(self, client_id: str, data: dict):
-        if client_id in self.active_connections:
-            try:
-                await self.active_connections[client_id].send_json(data)
-                return True
-            except Exception as e:
-                logger.warning(f"Failed to send message to client {client_id}: {e}")
-                # 连接可能已断开，清理连接
-                self.disconnect(client_id)
-                return False
-        else:
-            logger.warning(f"Attempted to send message to disconnected client: {client_id}")
-            return False
-
-    def is_connected(self, client_id: str) -> bool:
-        """检查客户端是否仍然连接"""
-        return client_id in self.active_connections
-
-manager = ConnectionManager()
-
-
-class WorkflowServerPushListener:
-    """监听 workflow_server 的 WebSocket 推送"""
-    
-    def __init__(self, transform_service):
-        self.transform_service = transform_service
-        self.websocket = None
-        self.is_running = False
-        self.reconnect_delay = 5  # 重连间隔（秒）
-    
-    async def start(self):
-        """启动监听器"""
-        if self.is_running:
-            return
-        
-        self.is_running = True
-        asyncio.create_task(self._maintain_connection())
-    
-    async def stop(self):
-        """停止监听器"""
-        self.is_running = False
-        if self.websocket:
-            await self.websocket.close()
-    
-    async def _maintain_connection(self):
-        """维护与 workflow_server 的连接"""
-        while self.is_running:
-            try:
-                # 连接到 workflow_server 的推送端点
-                ws_url = f"ws://{settings.COMFYUI_WORKFLOW_SERVER_URL.replace('http://', '').replace('https://', '')}/api/v1/ws/push/web_image_transform"
-                logger.info(f"连接到 workflow_server 推送端点: {ws_url}")
-                
-                async with websockets.connect(ws_url) as websocket:
-                    self.websocket = websocket
-                    logger.info("已连接到 workflow_server 推送端点")
-                    
-                    async for message in websocket:
-                        try:
-                            data = json.loads(message)
-                            await self._handle_push_message(data)
-                        except json.JSONDecodeError as e:
-                            logger.error(f"解析推送消息失败: {e}")
-                        except Exception as e:
-                            logger.error(f"处理推送消息失败: {e}")
-                            
-            except Exception as e:
-                if self.is_running:
-                    logger.warning(f"与 workflow_server 连接失败: {e}")
-                    logger.info(f"{self.reconnect_delay} 秒后重连...")
-                    await asyncio.sleep(self.reconnect_delay)
-                    # 逐步增加重连间隔，最大30秒
-                    self.reconnect_delay = min(self.reconnect_delay * 1.5, 30)
-                else:
-                    break
-        
-        self.websocket = None
-        logger.info("workflow_server 推送监听器已停止")
-    
-    async def _handle_push_message(self, data: Dict[str, Any]):
-        """处理推送消息"""
-        logger.info(f"收到workflow_server推送消息: {data}")
-        
-        if data.get("type") == "task_update":
-            task_id = data.get("task_id")
-            update_data = data.get("data", {})
-            
-            logger.info(f"处理任务更新: task_id={task_id}, data={update_data}")
-            
-            if task_id:
-                await self.transform_service.handle_task_update(task_id, update_data)
-            else:
-                logger.warning("推送消息中缺少task_id")
-        else:
-            logger.warning(f"未知的推送消息类型: {data.get('type')}")
 
 
 class TransformService:
-    """处理图像转换的核心业务逻辑"""
-
+    """转换服务 - 基于RPC接口"""
+    
     def __init__(self):
-        self.task_to_client: Dict[str, str] = {}  # {task_id: client_id} 映射
-        self.push_listener = WorkflowServerPushListener(self)
-
+        self.rpc_client: Optional[ComfyUIRPCClient] = None
+        self.ws_client: Optional[ComfyUIWebSocketClient] = None
+        self.session_id = str(uuid.uuid4())  # 使用session_id作为user_id
+        
+        # 连接管理器，用于向前端推送消息
+        self.connection_manager = None
+        
+        # 确保目录存在
+        self.uploads_dir = Path(settings.UPLOAD_DIR)
+        self.outputs_dir = Path(settings.OUTPUT_DIR)
+        self.uploads_dir.mkdir(exist_ok=True)
+        self.outputs_dir.mkdir(exist_ok=True)
+        
+        logger.info(f"转换服务初始化，session_id: {self.session_id}")
+    
+    def set_connection_manager(self, manager):
+        """设置连接管理器"""
+        self.connection_manager = manager
+    
+    async def initialize(self):
+        """初始化RPC客户端和WebSocket连接"""
+        try:
+            # 创建RPC客户端
+            self.rpc_client = ComfyUIRPCClient(
+                base_url=settings.COMFYUI_WORKFLOW_SERVER_URL,
+                user_id=self.session_id
+            )
+            
+            # 测试连接
+            async with self.rpc_client:
+                health = await self.rpc_client.get_system_health()
+                logger.info(f"ComfyUI服务状态: {health.get('status', 'unknown')}")
+            
+            # 创建WebSocket客户端
+            ws_url = f"{settings.COMFYUI_WORKFLOW_SERVER_URL.replace('http', 'ws')}/ws/{self.session_id}"
+            self.ws_client = ComfyUIWebSocketClient(ws_url, self._handle_ws_message)
+            
+            logger.info("转换服务初始化完成")
+            
+        except Exception as e:
+            logger.error(f"转换服务初始化失败: {e}")
+            raise
+    
     async def start_push_listener(self):
-        """启动推送监听器"""
-        await self.push_listener.start()
-
+        """启动WebSocket推送监听器"""
+        if self.ws_client:
+            await self.ws_client.connect()
+            logger.info("WebSocket推送监听器已启动")
+    
     async def stop_push_listener(self):
-        """停止推送监听器"""
-        await self.push_listener.stop()
-
-    async def get_styles(self, session_id: str) -> Any:
-        """获取可用的风格列表（简化版，无需认证）。"""
+        """停止WebSocket推送监听器"""
+        if self.ws_client:
+            await self.ws_client.close()
+            logger.info("WebSocket推送监听器已停止")
+    
+    async def _handle_ws_message(self, data: Dict[str, Any]):
+        """处理WebSocket消息"""
         try:
-            styles = await comfyui_client.list_styles()
-            return styles
+            logger.debug(f"收到任务更新: {data}")
+            
+            # 转发消息给前端客户端
+            if self.connection_manager:
+                # 添加一些前端需要的字段
+                frontend_data = {
+                    "type": "task_update",
+                    "task_id": data.get("task_id"),
+                    "status": data.get("status"),
+                    "progress": data.get("progress", 0),
+                    "message": data.get("message", ""),
+                    "stage": data.get("stage", "unknown"),
+                    "timestamp": data.get("timestamp"),
+                    "files": data.get("files", {}),
+                    "style_id": data.get("style_id"),
+                    "user_id": data.get("user_id")
+                }
+                
+                # 如果任务完成，添加结果信息
+                if data.get("status") == "completed" and "result" in data:
+                    frontend_data["result"] = data["result"]
+                
+                # 广播给所有连接的前端客户端
+                await self._broadcast_to_clients(frontend_data)
+                
         except Exception as e:
-            logger.error(f"Failed to get styles: {e}")
-            raise
-
-    async def process_transform(
-        self,
-        session_id: str,
-        client_id: str,
-        style_id: str,
-        file_content: bytes,
-        filename: str,
-    ):
-        """处理完整的图像转换流程（简化版）。"""
-        try:
-            # 使用session_id作为user_id
-            user_id = session_id
-            
-            # 1. 上传文件
-            await manager.send_json(client_id, {"status": "uploading", "message": "正在上传图片..."})
-            file_info = await comfyui_client.upload_file(user_id, file_content, filename)
-            
-            # 构造完整的图片URL
-            image_url = f"{settings.COMFYUI_WORKFLOW_SERVER_URL}{file_info['url']}"
-            await manager.send_json(client_id, {"status": "uploaded", "message": "图片上传成功，正在创建任务..."})
-
-            # 2. 创建任务
-            task_result = await comfyui_client.create_task(user_id, style_id, image_url)
-            task_id = task_result["task_id"]
-            
-            # 保存任务到客户端的映射
-            self.task_to_client[task_id] = client_id
-            
-            await manager.send_json(client_id, {
-                "status": "queued", 
-                "message": "任务已加入队列，等待处理。", 
-                "task_id": task_id
-            })
-
-            logger.info(f"任务已创建: {task_id}，等待 workflow_server 推送更新...")
-
-            return {"task_id": task_id}
-        except Exception as e:
-            logger.error(f"Transform process failed for session {session_id}: {e}", exc_info=True)
-            await manager.send_json(client_id, {"status": "failed", "message": str(e)})
-            raise
-
-    def _cleanup_task(self, task_id: str):
-        """清理任务映射"""
-        if task_id in self.task_to_client:
-            del self.task_to_client[task_id]
-
-    async def handle_task_update(self, task_id: str, update_data: Dict[str, Any]):
-        """处理来自workflow_server的任务更新推送"""
-        client_id = self.task_to_client.get(task_id)
-        if not client_id:
-            logger.warning(f"收到未知任务的更新: {task_id}")
+            logger.error(f"处理WebSocket消息失败: {e}")
+    
+    async def _broadcast_to_clients(self, data: Dict[str, Any]):
+        """广播消息给所有前端客户端"""
+        if not self.connection_manager:
             return
-
-        if not manager.is_connected(client_id):
-            logger.warning(f"客户端 {client_id} 已断开连接，清理任务映射")
-            self._cleanup_task(task_id)
-            return
-
+        
+        # 获取所有连接的客户端ID并广播
+        for client_id in list(self.connection_manager.active_connections.keys()):
+            success = await self.connection_manager.send_json(client_id, data)
+            if not success:
+                logger.warning(f"向客户端 {client_id} 发送消息失败")
+    
+    async def get_styles(self) -> List[Dict[str, Any]]:
+        """获取所有可用风格"""
         try:
-            status = update_data.get("status", "unknown")
-            progress = update_data.get("progress", 0)
-            message = update_data.get("message", "")
-
-            logger.info(f"转发任务更新到客户端: task_id={task_id}, client_id={client_id}, status={status}")
-
-            if status == "completed":
-                # 任务完成，转发完整的结果数据
-                try:
-                    # 转发完整的任务数据，包括result信息
-                    response_data = {
-                        "status": "completed",
-                        "message": "图像转换完成！",
-                        "task_id": task_id,
-                        "progress": 100
-                    }
-                    
-                    # 如果有结果数据，添加到响应中
-                    if "result" in update_data:
-                        response_data["result"] = update_data["result"]
-                        logger.info(f"转发任务结果: task_id={task_id}, output_files_count={len(update_data['result'].get('output_files', []))}")
-                    
-                    await manager.send_json(client_id, response_data)
-                    self._cleanup_task(task_id)
-                except Exception as e:
-                    logger.error(f"转发任务完成消息失败: {e}")
-                    await manager.send_json(client_id, {
-                        "status": "failed",
-                        "message": f"处理结果失败: {str(e)}",
-                        "task_id": task_id
-                    })
-                    self._cleanup_task(task_id)
-            elif status == "failed":
-                error_msg = update_data.get("error_message", "转换失败")
-                await manager.send_json(client_id, {
-                    "status": "failed",
-                    "message": error_msg,
-                    "task_id": task_id
-                })
-                self._cleanup_task(task_id)
-            else:
-                # 进行中的状态
-                await manager.send_json(client_id, {
-                    "status": status,  # 保持原始状态值（小写）
-                    "message": message or f"任务状态: {status}",
-                    "task_id": task_id,
-                    "progress": progress
-                })
-
+            async with self.rpc_client:
+                result = await self.rpc_client.get_styles()
+                return result.get("styles", [])
         except Exception as e:
-            logger.error(f"处理任务更新失败: task_id={task_id}, error={e}")
+            logger.error(f"获取风格列表失败: {e}")
+            raise
+    
+    async def search_styles(self, query: str) -> List[Dict[str, Any]]:
+        """搜索风格"""
+        try:
+            async with self.rpc_client:
+                result = await self.rpc_client.search_styles(query)
+                return result.get("styles", [])
+        except Exception as e:
+            logger.error(f"搜索风格失败: {e}")
+            raise
+    
+    async def save_uploaded_file(self, file_content: bytes, filename: str, style_id: str) -> str:
+        """
+        保存上传的文件并按照RPC规范命名
+        
+        Args:
+            file_content: 文件内容
+            filename: 原始文件名
+            style_id: 风格ID
+        
+        Returns:
+            str: 文件访问URL
+        """
+        try:
+            # 获取文件扩展名
+            file_ext = Path(filename).suffix.lower()
+            if not file_ext:
+                file_ext = ".jpg"
+            
+            # 使用RPC客户端生成符合规范的文件名
+            async with self.rpc_client:
+                filename_info = await self.rpc_client.build_filename(
+                    style_id=style_id,
+                    file_type="input",
+                    extension=file_ext[1:]  # 去掉点号
+                )
+            
+            standard_filename = filename_info["filename"]
+            
+            # 保存文件
+            file_path = self.uploads_dir / standard_filename
+            async with aiofiles.open(file_path, 'wb') as f:
+                await f.write(file_content)
+            
+            # 生成访问URL
+            file_url = f"http://{settings.PUBLIC_HOST}:{settings.APP_PORT}/uploads/{standard_filename}"
+            
+            logger.info(f"文件已保存: {standard_filename} -> {file_url}")
+            return file_url
+            
+        except Exception as e:
+            logger.error(f"保存文件失败: {e}")
+            raise
+    
+    async def create_transform_task(self, style_id: str, image_url: str) -> Dict[str, Any]:
+        """
+        创建转换任务
+        
+        Args:
+            style_id: 风格ID
+            image_url: 图片URL
+        
+        Returns:
+            Dict: 任务信息
+        """
+        try:
+            async with self.rpc_client:
+                result = await self.rpc_client.create_transform(style_id, image_url)
+                
+                logger.info(f"转换任务已创建: {result.get('task_id')}")
+                return result
+                
+        except Exception as e:
+            logger.error(f"创建转换任务失败: {e}")
+            raise
+    
+    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+        """获取任务状态"""
+        try:
+            async with self.rpc_client:
+                return await self.rpc_client.get_task_status(task_id)
+        except Exception as e:
+            logger.error(f"获取任务状态失败: {e}")
+            raise
+    
+    async def get_task_result(self, task_id: str) -> Dict[str, Any]:
+        """获取任务结果"""
+        try:
+            async with self.rpc_client:
+                return await self.rpc_client.get_task_result(task_id)
+        except Exception as e:
+            logger.error(f"获取任务结果失败: {e}")
+            raise
+    
+    async def list_user_tasks(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """获取用户任务列表"""
+        try:
+            async with self.rpc_client:
+                result = await self.rpc_client.list_tasks(limit=limit)
+                return result.get("tasks", [])
+        except Exception as e:
+            logger.error(f"获取任务列表失败: {e}")
+            raise
+    
+    async def cancel_task(self, task_id: str) -> bool:
+        """取消任务"""
+        try:
+            async with self.rpc_client:
+                result = await self.rpc_client.cancel_task(task_id)
+                return result.get("success", False)
+        except Exception as e:
+            logger.error(f"取消任务失败: {e}")
+            return False
+    
+    async def get_system_health(self) -> Dict[str, Any]:
+        """获取系统健康状态"""
+        try:
+            async with self.rpc_client:
+                return await self.rpc_client.get_system_health()
+        except Exception as e:
+            logger.error(f"获取系统健康状态失败: {e}")
+            return {"status": "unhealthy", "error": str(e)}
+    
+    async def transform_image(self, file_content: bytes, filename: str, style_id: str) -> Dict[str, Any]:
+        """
+        完整的图像转换流程（上传文件 + 创建任务）
+        
+        Args:
+            file_content: 文件内容
+            filename: 文件名
+            style_id: 风格ID
+        
+        Returns:
+            Dict: 任务信息
+        """
+        try:
+            # 1. 保存文件并生成标准URL
+            image_url = await self.save_uploaded_file(file_content, filename, style_id)
+            
+            # 2. 创建转换任务
+            task_info = await self.create_transform_task(style_id, image_url)
+            
+            # 3. 添加文件信息到响应
+            task_info["image_url"] = image_url
+            
+            return task_info
+            
+        except Exception as e:
+            logger.error(f"图像转换失败: {e}")
+            raise
+    
+    def get_session_id(self) -> str:
+        """获取当前会话ID"""
+        return self.session_id
 
-# 创建全局服务实例
-transform_service = TransformService() 
+
+# 创建全局转换服务实例
+transform_service = TransformService()

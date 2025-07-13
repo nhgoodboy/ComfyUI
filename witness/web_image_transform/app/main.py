@@ -58,6 +58,10 @@ def create_app() -> FastAPI:
     # 设置静态文件
     if os.path.exists("app/static"):
         app.mount("/static", StaticFiles(directory="app/static"), name="static")
+    
+    # 设置上传和输出文件的静态访问
+    app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+    app.mount("/outputs", StaticFiles(directory=settings.OUTPUT_DIR), name="outputs")
 
     # 设置模板
     if os.path.exists("templates"):
