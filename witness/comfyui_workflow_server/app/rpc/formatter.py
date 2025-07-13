@@ -31,17 +31,25 @@ class RPCFormatter:
     def format_error(error_code: int, message: str, request_id: str, data: Any = None) -> Dict[str, Any]:
         """格式化错误响应"""
         error_dict = {
-            "code": error_code,
-            "message": message
+            "code": int(error_code),
+            "message": str(message)
         }
         
         if data is not None:
-            error_dict["data"] = data
+            # 确保data是可序列化的
+            try:
+                import json
+                # 尝试序列化data，如果失败就转换为字符串
+                json.dumps(data)
+                error_dict["data"] = data
+            except (TypeError, ValueError):
+                # 如果data不能序列化，转换为字符串
+                error_dict["data"] = str(data)
         
         # 直接返回字典，避免Pydantic序列化问题
         return {
             "error": error_dict,
-            "id": request_id
+            "id": str(request_id) if request_id else None
         }
     
     @staticmethod
@@ -81,13 +89,26 @@ class RPCFormatter:
     @staticmethod
     def format_style_info(style) -> Dict[str, Any]:
         """格式化风格信息"""
-        return {
-            "id": style.id,
-            "name": style.name,
-            "description": style.description,
-            "estimated_time": getattr(style, 'estimated_time', 0),
-            "tags": getattr(style, 'tags', [])
-        }
+        try:
+            # 确保所有值都是可序列化的
+            result = {
+                "id": str(style.id) if style.id else "",
+                "name": str(style.name) if style.name else "",
+                "description": str(style.description) if style.description else "",
+                "estimated_time": int(getattr(style, 'estimated_time', 0)),
+                "tags": list(getattr(style, 'tags', []))
+            }
+            return result
+        except Exception as e:
+            logger.error(f"格式化风格信息失败: {e}")
+            # 返回安全的默认值
+            return {
+                "id": "unknown",
+                "name": "Unknown Style",
+                "description": "Style information unavailable",
+                "estimated_time": 60,
+                "tags": []
+            }
     
     @staticmethod
     def format_transform_result(task, result_data) -> Dict[str, Any]:
