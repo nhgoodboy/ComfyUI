@@ -28,80 +28,34 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
         
         # 检查ComfyUI连接
         comfyui_healthy = False
-        comfyui_error = None
-        
         try:
             if hasattr(request.app.state, 'comfyui_service'):
-                comfyui_service: ComfyUIService = request.app.state.comfyui_service
+                comfyui_service = request.app.state.comfyui_service
                 comfyui_healthy = comfyui_service._client_id is not None
-        except Exception as e:
-            comfyui_error = str(e)
+        except Exception:
+            comfyui_healthy = False
         
         # 检查存储目录
         storage_healthy = True
-        storage_errors = []
-        
         try:
-            # 检查输入目录
-            inputs_dir = settings.storage.base_dir / "inputs"
-            if not inputs_dir.exists():
-                inputs_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 检查输出目录  
-            outputs_dir = settings.storage.base_dir / "outputs"
-            if not outputs_dir.exists():
-                outputs_dir.mkdir(parents=True, exist_ok=True)
-                
-            # 检查临时目录
-            temp_dir = settings.storage.base_dir / "temp"
-            if not temp_dir.exists():
-                temp_dir.mkdir(parents=True, exist_ok=True)
-                
-        except Exception as e:
+            storage_healthy = (
+                settings.storage.uploads_dir.exists() and 
+                settings.storage.outputs_dir.exists()
+            )
+        except Exception:
             storage_healthy = False
-            storage_errors.append(str(e))
         
         # 检查风格注册表
-        styles_healthy = False
         styles_count = 0
-        
         try:
             if hasattr(request.app.state, 'style_registry'):
                 style_registry = request.app.state.style_registry
                 styles_count = len(style_registry.styles)
-                styles_healthy = styles_count > 0
-        except Exception as e:
-            logger.warning(f"检查风格注册表失败: {e}")
-        
-        # 检查服务状态
-        services_status = {}
-        
-        # 检查转换任务服务
-        try:
-            if hasattr(request.app.state, 'transform_task_service'):
-                transform_service = request.app.state.transform_task_service
-                services_status["transform_task_service"] = "healthy"
-            else:
-                services_status["transform_task_service"] = "missing"
-        except Exception as e:
-            services_status["transform_task_service"] = f"error: {str(e)}"
-        
-        # 检查下载服务
-        try:
-            download_service = request.app.state.get('download_service')
-            if download_service:
-                services_status["download_service"] = "healthy"
-            else:
-                services_status["download_service"] = "not_configured"
-        except Exception as e:
-            services_status["download_service"] = f"error: {str(e)}"
+        except Exception:
+            styles_count = 0
         
         # 计算总体状态
-        overall_status = "healthy"
-        if not comfyui_healthy or not storage_healthy or not styles_healthy:
-            overall_status = "unhealthy"
-        elif any("error" in status for status in services_status.values()):
-            overall_status = "degraded"
+        overall_status = "healthy" if comfyui_healthy and storage_healthy and styles_count > 0 else "unhealthy"
         
         return {
             "status": overall_status,
@@ -109,28 +63,12 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
             "services": {
                 "comfyui": "healthy" if comfyui_healthy else "unhealthy",
                 "storage": "healthy" if storage_healthy else "unhealthy", 
-                "styles": "healthy" if styles_healthy else "unhealthy"
+                "styles": "healthy" if styles_count > 0 else "unhealthy"
             },
             "details": {
-                "comfyui": {
-                    "connected": comfyui_healthy,
-                    "error": comfyui_error,
-                    "url": settings.comfyui.base_url if hasattr(settings, 'comfyui') else None
-                },
-                "storage": {
-                    "healthy": storage_healthy,
-                    "errors": storage_errors,
-                    "paths": {
-                        "inputs": str(settings.storage.base_dir / "inputs"),
-                        "outputs": str(settings.storage.base_dir / "outputs"),
-                        "temp": str(settings.storage.base_dir / "temp")
-                    }
-                },
-                "styles": {
-                    "count": styles_count,
-                    "healthy": styles_healthy
-                },
-                "services": services_status,
+                "comfyui_connected": comfyui_healthy,
+                "storage_healthy": storage_healthy,
+                "styles_count": styles_count,
                 "environment": settings.environment,
                 "version": "2.0.0"
             }

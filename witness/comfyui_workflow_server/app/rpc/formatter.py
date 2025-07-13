@@ -21,8 +21,11 @@ class RPCFormatter:
             # 如果结果不是字典，包装成字典
             result = {"data": result}
         
-        response = RPCResponse.success(result, request_id)
-        return response.dict(exclude_none=True)
+        # 直接返回字典，避免Pydantic序列化问题
+        return {
+            "result": result,
+            "id": request_id
+        }
     
     @staticmethod
     def format_error(error_code: int, message: str, request_id: str, data: Any = None) -> Dict[str, Any]:
@@ -35,8 +38,11 @@ class RPCFormatter:
         if data is not None:
             error_dict["data"] = data
         
-        response = RPCResponse.error(error_dict, request_id)
-        return response.dict(exclude_none=True)
+        # 直接返回字典，避免Pydantic序列化问题
+        return {
+            "error": error_dict,
+            "id": request_id
+        }
     
     @staticmethod
     def format_task_status(task) -> Dict[str, Any]:

@@ -36,8 +36,8 @@ class DownloadService:
         self.max_redirects = 3
         
         # 存储路径
-        self.temp_dir = self.settings.storage.base_dir / "temp"
-        self.inputs_dir = self.settings.storage.base_dir / "inputs"
+        self.temp_dir = self.settings.storage.uploads_dir / "temp"
+        self.inputs_dir = self.settings.storage.uploads_dir / "inputs"
         
         # 确保目录存在
         self.temp_dir.mkdir(exist_ok=True, parents=True)

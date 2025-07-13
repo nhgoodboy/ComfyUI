@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     
     # 用户配置
     DEFAULT_USER_ID: str = Field(default="web_user", description="默认用户ID")
+    
+    # RPC客户端配置
+    RPC_TIMEOUT: int = Field(default=60, description="RPC调用超时时间（秒）")
+    RPC_MAX_RETRIES: int = Field(default=3, description="RPC最大重试次数")
+    RPC_RECONNECT_DELAY: int = Field(default=3, description="RPC重连延迟（秒）")
 
 # 创建一个全局可用的配置实例
 settings = Settings()
