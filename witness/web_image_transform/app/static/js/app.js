@@ -22,28 +22,35 @@ class ImageTransformApp {
 
     async init() {
         try {
+            console.log('=== 应用初始化开始 ===');
+            
             // 生成客户端ID
             this.clientId = 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             console.log('客户端ID:', this.clientId);
             
             // 获取会话信息
+            console.log('获取会话信息...');
             await this.getSessionInfo();
             
             // 初始化WebSocket连接
+            console.log('初始化WebSocket连接...');
             this.initWebSocket();
             
             // 加载可用风格
+            console.log('加载可用风格...');
             await this.loadStyles();
             
             // 绑定事件
+            console.log('绑定事件...');
             this.bindEvents();
             
             // 初始化按钮状态
+            console.log('初始化按钮状态...');
             this.updateSubmitButton();
             
-            console.log('应用初始化成功');
+            console.log('=== 应用初始化成功 ===');
         } catch (error) {
-            console.error('应用初始化失败:', error);
+            console.error('=== 应用初始化失败 ===', error);
             this.showError('应用初始化失败: ' + error.message);
         }
     }
@@ -191,18 +198,22 @@ class ImageTransformApp {
 
     async loadStyles() {
         try {
+            console.log('开始加载风格列表...');
             this.showLoading('正在加载风格列表...');
             
             const response = await fetch(`${this.apiBase}/styles`);
+            console.log('风格API响应状态:', response.status);
+            
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
             this.styles = await response.json();
+            console.log('获取到风格数据:', this.styles);
             this.populateStyleSelect();
             this.hideLoading();
             
-            console.log('风格列表加载完成:', this.styles.length);
+            console.log('风格列表加载完成:', this.styles.length, '个风格');
         } catch (error) {
             console.error('加载风格列表失败:', error);
             this.hideLoading();
@@ -235,7 +246,7 @@ class ImageTransformApp {
         }
 
         // 表单提交事件
-        const form = document.getElementById('transform-form');
+        const form = document.getElementById('upload-form');
         if (form) {
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
@@ -253,7 +264,7 @@ class ImageTransformApp {
         }
 
         // 拖放事件
-        const dropZone = document.getElementById('drop-zone');
+        const dropZone = document.querySelector('.upload-area');
         if (dropZone) {
             this.initDropZone(dropZone);
         }
@@ -286,26 +297,42 @@ class ImageTransformApp {
     }
 
     handleFileSelect(event) {
+        console.log('=== 文件选择事件触发 ===');
         const file = event.target.files[0];
-        if (!file) return;
+        console.log('选择的文件:', file);
+        
+        if (!file) {
+            console.log('没有选择文件');
+            return;
+        }
+
+        console.log('文件信息:', {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: file.lastModified
+        });
 
         // 验证文件类型
         if (!file.type.startsWith('image/')) {
+            console.error('文件类型无效:', file.type);
             this.showError('请选择图片文件');
             return;
         }
 
         // 验证文件大小 (10MB)
         if (file.size > 10 * 1024 * 1024) {
+            console.error('文件大小超限:', file.size);
             this.showError('文件大小不能超过10MB');
             return;
         }
 
+        console.log('文件验证通过，显示预览...');
         // 显示预览
         this.displayImagePreview(file);
         this.updateSubmitButton();
 
-        console.log('文件已选择:', file.name, '大小:', (file.size / 1024 / 1024).toFixed(2) + 'MB');
+        console.log('文件选择处理完成 ✓');
     }
 
     displayImagePreview(file) {
@@ -313,11 +340,24 @@ class ImageTransformApp {
         reader.onload = (e) => {
             const previewContainer = document.getElementById('image-preview');
             if (previewContainer) {
-                previewContainer.innerHTML = `
-                    <img src="${e.target.result}" alt="预览图片" style="max-width: 100%; max-height: 300px;">
-                    <p>文件: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)</p>
-                `;
                 previewContainer.style.display = 'block';
+                previewContainer.innerHTML = `
+                    <div style="border: 2px dashed #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
+                        <img src="${e.target.result}" alt="预览图片" style="max-width: 100%; max-height: 200px; border-radius: 4px;">
+                        <p style="margin: 10px 0 0 0; color: #666; font-size: 14px;">
+                            <strong>${file.name}</strong><br>
+                            大小: ${(file.size / 1024 / 1024).toFixed(2)}MB
+                        </p>
+                    </div>
+                `;
+            }
+            
+            // 同时更新文件名显示
+            const fileNameSpan = document.getElementById('file-name');
+            if (fileNameSpan) {
+                fileNameSpan.textContent = `已选择: ${file.name}`;
+                fileNameSpan.style.color = '#28a745';
+                fileNameSpan.style.fontWeight = 'bold';
             }
         };
         reader.readAsDataURL(file);
