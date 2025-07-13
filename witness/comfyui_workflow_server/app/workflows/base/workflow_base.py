@@ -247,3 +247,39 @@ class BaseWorkflow(ABC):
     def __repr__(self) -> str:
         return (f"{self.__class__.__name__}(id='{self.metadata.id}', "
                 f"name='{self.metadata.name}', version='{self.metadata.version}')") 
+    
+    async def execute_async(
+        self, 
+        comfyui_service, 
+        parameters: Dict[str, Any], 
+        progress_callback=None
+    ) -> str:
+        """异步执行工作流
+        
+        Args:
+            comfyui_service: ComfyUI服务实例
+            parameters: 工作流参数
+            progress_callback: 进度回调函数
+            
+        Returns:
+            str: ComfyUI的prompt_id
+        """
+        try:
+            # 1. 验证参数
+            validated_params = self.validate_parameters(parameters)
+            
+            # 2. 预处理
+            processed_params = await self.pre_process(validated_params)
+            
+            # 3. 构建工作流
+            workflow_json = await self.build_workflow(processed_params)
+            
+            # 4. 提交到ComfyUI
+            prompt_id = await comfyui_service.queue_prompt(workflow_json)
+            
+            self.logger.info(f"工作流 {self.metadata.id} 已提交到ComfyUI，prompt_id: {prompt_id}")
+            return prompt_id
+            
+        except Exception as e:
+            self.logger.error(f"工作流 {self.metadata.id} 执行失败: {e}")
+            raise

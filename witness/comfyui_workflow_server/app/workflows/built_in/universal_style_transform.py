@@ -72,42 +72,76 @@ class UniversalStyleTransformWorkflow(BaseWorkflow):
         """验证和处理参数"""
         validated_params = {}
         
-        # 验证图像URL参数
+        # 支持两种输入方式：image_url（原有方式）或 input_image_path（新方式）
         image_url = parameters.get("image_url")
-        if not image_url:
-            raise ValueError("参数 'image_url' 是必需的")
+        input_image_path = parameters.get("input_image_path")
         
-        # 简单的URL格式验证
-        if not isinstance(image_url, str) or not image_url.strip():
-            raise ValueError("参数 'image_url' 必须是有效的URL字符串")
+        if image_url:
+            # 原有的URL方式
+            if not isinstance(image_url, str) or not image_url.strip():
+                raise ValueError("参数 'image_url' 必须是有效的URL字符串")
+            
+            # 检查URL格式
+            if not (image_url.startswith('http://') or image_url.startswith('https://')):
+                raise ValueError("参数 'image_url' 必须以 http:// 或 https:// 开头")
+            
+            validated_params["image_url"] = image_url.strip()
+            
+        elif input_image_path:
+            # 新的本地文件路径方式
+            if not isinstance(input_image_path, str) or not input_image_path.strip():
+                raise ValueError("参数 'input_image_path' 必须是有效的文件路径")
+            
+            validated_params["input_image_path"] = input_image_path.strip()
+            
+        else:
+            raise ValueError("必须提供 'image_url' 或 'input_image_path' 参数")
         
-        # 检查URL格式
-        if not (image_url.startswith('http://') or image_url.startswith('https://')):
-            raise ValueError("参数 'image_url' 必须以 http:// 或 https:// 开头")
+        # 添加输出文件名支持
+        output_filename = parameters.get("output_filename")
+        if output_filename:
+            validated_params["output_filename"] = output_filename
         
-        validated_params["image_url"] = image_url.strip()
-        
-        self.logger.info(f"{self.style_config.get('name', 'Unknown')} 参数验证完成: image_url={image_url}")
+        self.logger.info(f"{self.style_config.get('name', 'Unknown')} 参数验证完成")
         return validated_params
     
     async def pre_process(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """预处理步骤：下载图片并上传到ComfyUI"""
+        """预处理步骤：处理图片并上传到ComfyUI"""
         try:
-            image_url = parameters["image_url"]
-            self.logger.info(f"开始下载图片: {image_url}")
-            
-            # 使用注入的ComfyUI服务实例
-            image_data = await self.comfyui_service.download_image(image_url)
-            self.logger.info(f"图片下载完成，大小: {len(image_data)} bytes")
-            
-            # 根据风格ID生成文件名
-            style_name = self.style_id.replace('_transform', '').replace('_style', '')
-            filename = await self.comfyui_service.upload_image(image_data, f"{style_name}_input.jpg")
-            self.logger.info(f"图片上传完成，文件名: {filename}")
-            
-            # 更新参数
             processed_params = parameters.copy()
-            processed_params["image_filename"] = filename
+            
+            if "image_url" in parameters:
+                # URL方式：下载图片并上传到ComfyUI
+                image_url = parameters["image_url"]
+                self.logger.info(f"开始下载图片: {image_url}")
+                
+                # 使用注入的ComfyUI服务实例
+                image_data = await self.comfyui_service.download_image(image_url)
+                self.logger.info(f"图片下载完成，大小: {len(image_data)} bytes")
+                
+                # 根据风格ID生成文件名
+                style_name = self.style_id.replace('_transform', '').replace('_style', '')
+                filename = await self.comfyui_service.upload_image(image_data, f"{style_name}_input.jpg")
+                self.logger.info(f"图片上传完成，文件名: {filename}")
+                
+                processed_params["image_filename"] = filename
+                
+            elif "input_image_path" in parameters:
+                # 本地文件路径方式：读取本地文件并上传到ComfyUI
+                input_image_path = parameters["input_image_path"]
+                self.logger.info(f"开始处理本地文件: {input_image_path}")
+                
+                # 读取本地文件
+                with open(input_image_path, 'rb') as f:
+                    image_data = f.read()
+                self.logger.info(f"本地文件读取完成，大小: {len(image_data)} bytes")
+                
+                # 根据风格ID生成文件名
+                style_name = self.style_id.replace('_transform', '').replace('_style', '')
+                filename = await self.comfyui_service.upload_image(image_data, f"{style_name}_input.jpg")
+                self.logger.info(f"图片上传完成，文件名: {filename}")
+                
+                processed_params["image_filename"] = filename
             
             return processed_params
             
