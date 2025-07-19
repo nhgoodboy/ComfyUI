@@ -8,6 +8,7 @@ import asyncio
 import logging
 import os
 import uuid
+import time
 import aiofiles
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -152,12 +153,17 @@ class TransformService:
             file_content: 文件内容
             filename: 原始文件名
             style_id: 风格ID
-            request_id: 请求ID (可选)
+            request_id: 请求ID (如果为None则自动生成)
         
         Returns:
             str: 文件访问URL
         """
         try:
+            # 如果没有提供request_id，自动生成一个
+            if not request_id:
+                request_id = f"req_{int(time.time())}_{str(uuid.uuid4())[:8]}"
+                logger.info(f"自动生成request_id: {request_id}")
+            
             # 获取文件扩展名
             file_ext = Path(filename).suffix.lower()
             if not file_ext:
@@ -196,12 +202,17 @@ class TransformService:
         Args:
             style_id: 风格ID
             image_url: 图片URL
-            request_id: 请求ID (可选)
+            request_id: 请求ID (如果为None则自动生成)
         
         Returns:
             Dict: 任务信息
         """
         try:
+            # 如果没有提供request_id，自动生成一个
+            if not request_id:
+                request_id = f"req_{int(time.time())}_{str(uuid.uuid4())[:8]}"
+                logger.info(f"自动生成request_id: {request_id}")
+            
             async with self.rpc_client:
                 result = await self.rpc_client.create_transform(style_id, image_url, request_id)
                 
