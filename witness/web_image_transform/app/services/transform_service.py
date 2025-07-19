@@ -159,10 +159,9 @@ class TransformService:
             str: 文件访问URL
         """
         try:
-            # 如果没有提供request_id，自动生成一个
+            # request_id应该由调用者提供
             if not request_id:
-                request_id = f"req_{int(time.time())}_{str(uuid.uuid4())[:8]}"
-                logger.info(f"自动生成request_id: {request_id}")
+                raise ValueError("request_id是必需的")
             
             # 获取文件扩展名
             file_ext = Path(filename).suffix.lower()
@@ -208,10 +207,9 @@ class TransformService:
             Dict: 任务信息
         """
         try:
-            # 如果没有提供request_id，自动生成一个
+            # request_id应该由调用者提供
             if not request_id:
-                request_id = f"req_{int(time.time())}_{str(uuid.uuid4())[:8]}"
-                logger.info(f"自动生成request_id: {request_id}")
+                raise ValueError("request_id是必需的")
             
             async with self.rpc_client:
                 result = await self.rpc_client.create_transform(style_id, image_url, request_id)
@@ -284,6 +282,11 @@ class TransformService:
             Dict: 任务信息
         """
         try:
+            # 确保使用同一个request_id
+            if not request_id:
+                request_id = f"req_{int(time.time())}_{str(uuid.uuid4())[:8]}"
+                logger.info(f"生成统一request_id: {request_id}")
+            
             # 1. 保存文件并生成标准URL
             image_url = await self.save_uploaded_file(file_content, filename, style_id, request_id)
             
