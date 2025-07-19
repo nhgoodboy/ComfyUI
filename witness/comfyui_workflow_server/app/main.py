@@ -91,6 +91,9 @@ async def lifespan(app: FastAPI):
         app.state.transform_task_service = transform_task_service
         app.state.settings = settings  # 将配置也挂载到state
         
+        # 注入依赖：将转换任务服务实例提供给ComfyUIService
+        comfyui_service.set_transform_task_service(transform_task_service)
+        
         # 为转换任务服务设置ComfyUI结果回调
         if hasattr(comfyui_service, 'add_result_callback'):
             comfyui_service.add_result_callback(transform_task_service.on_comfyui_result)

@@ -284,6 +284,14 @@ class TransformTaskService:
         """等待转换完成"""
         timeout = 300  # 5分钟超时
         start_time = time.time()
+        last_progress_update = start_time
+        estimated_progress = 10.0  # 开始时假设已完成10%
+        
+        # 初始进度更新
+        task_data.progress = estimated_progress
+        task_data.stage = "transform"
+        task_data.message = "正在处理图像..."
+        await self._push_task_update(task_data)
         
         while time.time() - start_time < timeout:
             # 检查任务状态
@@ -297,6 +305,16 @@ class TransformTaskService:
                     message="任务已被取消",
                     task_id=task_data.task_id
                 )
+            
+            # 如果超过5秒没有收到ComfyUI的进度更新，模拟进度增长
+            current_time = time.time()
+            if current_time - last_progress_update > 5:
+                estimated_progress = min(90.0, estimated_progress + 10.0)  # 最大增长到90%
+                task_data.progress = estimated_progress
+                task_data.message = f"处理中... ({estimated_progress:.0f}%)"
+                await self._push_task_update(task_data)
+                last_progress_update = current_time
+                logger.info(f"模拟进度更新: {estimated_progress:.0f}%")
             
             await asyncio.sleep(1)
         
@@ -444,3 +462,52 @@ class TransformTaskService:
         
         if cleanup_count > 0:
             logger.info(f"清理了 {cleanup_count} 个旧任务")
+    
+    def handle_progress_update(self, prompt_id: str, progress_data: Dict[str, Any]):
+        """处理ComfyUI进度更新"""
+        logger.info(f"收到进度更新: prompt_id={prompt_id}, data={progress_data}")
+        
+        task_id = self.prompt_to_task.get(prompt_id)
+        if not task_id:
+            logger.warning(f"收到未知prompt_id的进度更新: {prompt_id}")
+            return
+        
+        user_id = self.task_to_user.get(task_id)
+        if not user_id:
+            logger.warning(f"任务 {task_id} 找不到用户")
+            return
+        
+        task_data = self.get_user_task(user_id, task_id)
+        if not task_data:
+            logger.warning(f"任务数据不存在: {task_id}")
+            return
+        
+        # 更新任务进度
+        if 'value' in progress_data and 'max' in progress_data:
+            max_val = progress_data['max']
+            current_val = progress_data['value']
+            if max_val > 0:
+                # ComfyUI的进度是针对当前节点的，我们需要映射到整体进度
+                node_progress = (current_val / max_val) * 100
+                # 假设ComfyUI执行占总进度的80%（10%-90%），前面10%是下载，最后10%是完成
+                overall_progress = 10.0 + (node_progress * 0.8)
+                
+                task_data.progress = min(90.0, overall_progress)  # 最大90%，为完成留10%
+                task_data.stage = "transform"
+                task_data.message = f"生成进度: {current_val}/{max_val} ({task_data.progress:.1f}%)"
+                logger.info(f"任务 {task_id} ComfyUI进度更新: 节点{node_progress:.1f}% -> 总体{task_data.progress:.1f}%")
+                
+                # 推送进度更新
+                asyncio.create_task(self._push_task_update(task_data))
+        else:
+            # 即使没有具体进度值，也可以推送一般状态更新
+            if 'status' in progress_data:
+                task_data.stage = "transform"
+                task_data.message = f"状态: {progress_data['status']}"
+                logger.info(f"任务 {task_id} 状态更新: {progress_data['status']}")
+                asyncio.create_task(self._push_task_update(task_data))
+    
+    async def handle_completion_update(self, prompt_id: str, result_data: Dict[str, Any]):
+        """处理ComfyUI完成事件"""
+        # 这个方法与on_comfyui_result类似，我们可以直接调用它
+        self.on_comfyui_result(prompt_id, result_data)

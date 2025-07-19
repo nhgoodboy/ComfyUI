@@ -22,7 +22,7 @@ from comfyui_client.websocket import ComfyUIWebSocketClient
 from ..config import get_settings
 
 if TYPE_CHECKING:
-    from ..services.user_task_service import UserTaskService
+    from ..services.transform_task_service import TransformTaskService
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class ComfyUIService:
         self.ws_client = None
         self._workflow_cache = {}
         self.is_initialized = False
-        self.user_task_service: Optional['UserTaskService'] = None
+        self.transform_task_service: Optional['TransformTaskService'] = None
         
         # 连接状态管理
         self.connection_pool = None
@@ -202,10 +202,10 @@ class ComfyUIService:
             self.last_health_check = current_time
             return False
     
-    def set_user_task_service(self, service: 'UserTaskService'):
-        """注入UserTaskService实例以处理回调"""
-        self.user_task_service = service
-        logger.info("UserTaskService已成功注入到ComfyUIService")
+    def set_transform_task_service(self, service: 'TransformTaskService'):
+        """注入TransformTaskService实例以处理回调"""
+        self.transform_task_service = service
+        logger.info("TransformTaskService已成功注入到ComfyUIService")
 
     def _get_sampler_node_ids(self, workflow: Dict[str, Any]) -> List[str]:
         """从工作流中提取所有采样器节点的ID"""
@@ -339,24 +339,24 @@ class ComfyUIService:
     async def _on_progress(self, prompt_id: str, progress_data: Dict[str, Any]):
         """处理进度更新事件"""
         logger.info(f"ComfyUIService收到进度事件: prompt_id={prompt_id}, data={progress_data}")
-        if self.user_task_service:
-            self.user_task_service.handle_progress_update(prompt_id, progress_data)
+        if self.transform_task_service:
+            self.transform_task_service.handle_progress_update(prompt_id, progress_data)
         else:
-            logger.warning("UserTaskService未注入，无法处理进度更新")
+            logger.warning("TransformTaskService未注入，无法处理进度更新")
 
     async def _on_completion(self, prompt_id: str, result_data: Dict[str, Any]):
         """处理任务完成事件 (成功或失败)"""
         logger.info(f"ComfyUIService收到完成事件: prompt_id={prompt_id}, data={result_data}")
-        if self.user_task_service:
-            await self.user_task_service.handle_completion_update(prompt_id, result_data)
+        if self.transform_task_service:
+            await self.transform_task_service.handle_completion_update(prompt_id, result_data)
         else:
-            logger.warning("UserTaskService未注入，无法处理完成更新")
+            logger.warning("TransformTaskService未注入，无法处理完成更新")
 
     async def _find_task_by_prompt_id(self, prompt_id: str) -> Optional[str]:
-        """根据prompt_id查找任务ID (此逻辑已移至UserTaskService)"""
+        """根据prompt_id查找任务ID (此逻辑已移至TransformTaskService)"""
         # 这个函数现在是多余的，可以被移除，但为了安全暂时保留
-        if self.user_task_service and hasattr(self.user_task_service, 'prompt_to_task'):
-            return self.user_task_service.prompt_to_task.get(prompt_id)
+        if self.transform_task_service and hasattr(self.transform_task_service, 'prompt_to_task'):
+            return self.transform_task_service.prompt_to_task.get(prompt_id)
         return None
 
     async def _poll_history(self, task_id: str, prompt_id: str):
