@@ -31,9 +31,6 @@ from .rpc.methods import *
 # 导入服务类
 from .core.style_registry import StyleRegistry
 from .services.comfyui_service import ComfyUIService
-from .services.user_file_service import UserFileService
-from .services.user_task_service import UserTaskService
-from .services.style_service import StyleService
 from .services.transform_task_service import TransformTaskService
 
 # 导入WebSocket推送管理器
@@ -76,26 +73,8 @@ async def lifespan(app: FastAPI):
         app.state.style_registry = style_registry
         logger.info("样式注册表初始化完成。")
 
-        logger.debug("正在初始化用户文件服务...")
-        user_file_service = UserFileService(
-            base_upload_dir=settings.storage.uploads_dir,
-            base_output_dir=settings.storage.outputs_dir
-        )
-        app.state.user_file_service = user_file_service
-        logger.info("用户文件服务初始化完成。")
-        
-        logger.debug("正在初始化用户任务服务...")
-        user_task_service = UserTaskService(
-            comfyui_service=comfyui_service,
-            style_registry=style_registry
-        )
-        app.state.user_task_service = user_task_service
-        logger.info("用户任务服务初始化完成。")
-
-        logger.debug("正在初始化样式服务...")
-        style_service = StyleService(style_registry=style_registry)
-        app.state.style_service = style_service
-        logger.info("样式服务初始化完成。")
+        # RPC架构下不再需要用户文件服务、用户任务服务和样式服务
+        # 这些功能已被RPC方法替代
 
         logger.debug("正在初始化转换任务服务...")
         transform_task_service = TransformTaskService(
@@ -109,14 +88,8 @@ async def lifespan(app: FastAPI):
         logger.debug("正在将服务挂载到应用状态...")
         app.state.comfyui_service = comfyui_service
         app.state.style_registry = style_registry
-        app.state.user_file_service = user_file_service
-        app.state.user_task_service = user_task_service
-        app.state.style_service = style_service
         app.state.transform_task_service = transform_task_service
         app.state.settings = settings  # 将配置也挂载到state
-
-        # 注入依赖：将回调服务实例提供给ComfyUIService
-        comfyui_service.set_user_task_service(user_task_service)
         
         # 为转换任务服务设置ComfyUI结果回调
         if hasattr(comfyui_service, 'add_result_callback'):

@@ -13,7 +13,7 @@ from ..validator import RPCValidator
 from ..formatter import RPCFormatter
 from ..exceptions import RPCError
 from ..error_codes import ErrorCodes
-from ...services.style_service import StyleService
+from ...core.style_registry import StyleRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 async def list_styles(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
     """获取所有可用风格"""
     try:
-        # 获取风格服务
-        style_service: StyleService = request.app.state.style_service
+        # 获取风格注册表
+        style_registry: StyleRegistry = request.app.state.style_registry
         
         # 获取所有风格
-        styles = await style_service.get_all_styles()
+        styles = await style_registry.get_all_styles()
         
         # 格式化风格信息
         formatted_styles = [
@@ -62,11 +62,11 @@ async def search_styles(params: Dict[str, Any], request: Request) -> Dict[str, A
                 data={"field": "q", "value": query}
             )
         
-        # 获取风格服务
-        style_service: StyleService = request.app.state.style_service
+        # 获取风格注册表
+        style_registry: StyleRegistry = request.app.state.style_registry
         
         # 搜索风格
-        styles = await style_service.search_styles(query.strip())
+        styles = await style_registry.search_styles(query.strip())
         
         # 格式化风格信息
         formatted_styles = [
@@ -100,11 +100,11 @@ async def get_style(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
         style_id = params["style_id"]
         RPCValidator.validate_style_id(style_id)
         
-        # 获取风格服务
-        style_service: StyleService = request.app.state.style_service
+        # 获取风格注册表
+        style_registry: StyleRegistry = request.app.state.style_registry
         
         # 获取风格详情
-        style = await style_service.get_style(style_id)
+        style = await style_registry.get_style(style_id)
         
         if not style:
             raise RPCError(
