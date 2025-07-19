@@ -40,6 +40,7 @@ class TaskInfo(BaseModel):
     created_at: float
     estimated_time: int = None
     file_info: Dict[str, Any] = None
+    request_id: str = None
 
 
 # WebSocket连接管理器
@@ -112,7 +113,8 @@ async def search_styles(request: Request, q: str):
 async def create_transform_task(
     request: Request,
     style_id: str = Form(...),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    request_id: str = Form(None)
 ):
     """
     创建图像转换任务
@@ -120,6 +122,7 @@ async def create_transform_task(
     Args:
         style_id: 风格ID
         file: 上传的图片文件
+        request_id: 请求ID (可选)
     
     Returns:
         TaskInfo: 任务信息
@@ -148,7 +151,8 @@ async def create_transform_task(
         task_info = await transform_service.transform_image(
             file_content=file_content,
             filename=file.filename or "image.jpg",
-            style_id=style_id
+            style_id=style_id,
+            request_id=request_id
         )
         
         logger.info(f"转换任务创建成功: {task_info.get('task_id')}")

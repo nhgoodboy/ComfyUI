@@ -127,13 +127,17 @@ class ComfyUIRPCClient:
         return await self.call_rpc("styles.get", {"style_id": style_id})
     
     # 转换任务方法
-    async def create_transform(self, style_id: str, image_url: str) -> Dict[str, Any]:
+    async def create_transform(self, style_id: str, image_url: str, request_id: str = None) -> Dict[str, Any]:
         """创建转换任务"""
-        return await self.call_rpc("transform.create", {
+        params = {
             "user_id": self.user_id,
             "style_id": style_id,
             "image_url": image_url
-        })
+        }
+        if request_id:
+            params["request_id"] = request_id
+        
+        return await self.call_rpc("transform.create", params)
     
     async def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """获取任务状态"""
@@ -172,14 +176,18 @@ class ComfyUIRPCClient:
         """获取系统健康状态"""
         return await self.call_rpc("system.health")
     
-    async def build_filename(self, style_id: str, file_type: str = "input", extension: str = "jpg") -> Dict[str, Any]:
+    async def build_filename(self, style_id: str, request_id: str = None, file_type: str = "input", extension: str = "jpg") -> Dict[str, Any]:
         """构建符合规范的文件名"""
-        return await self.call_rpc("system.build_filename", {
+        params = {
             "style_id": style_id,
             "user_id": self.user_id,
             "type": file_type,
             "extension": extension
-        })
+        }
+        if request_id:
+            params["request_id"] = request_id
+        
+        return await self.call_rpc("system.build_filename", params)
     
     async def get_system_stats(self) -> Dict[str, Any]:
         """获取系统统计信息"""

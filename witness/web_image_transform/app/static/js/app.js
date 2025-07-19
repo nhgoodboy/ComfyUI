@@ -20,6 +20,10 @@ class ImageTransformApp {
         this.init();
     }
 
+    generateRequestId() {
+        return 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
     async init() {
         try {
             console.log('=== 应用初始化开始 ===');
@@ -128,7 +132,8 @@ class ImageTransformApp {
     }
 
     handleTaskUpdate(data) {
-        console.log(`任务更新 - ${data.task_id}: ${data.status} (${data.progress}%) - ${data.message}`);
+        const requestId = data.data ? data.data.request_id : data.request_id;
+        console.log(`任务更新 - ${data.task_id} (request_id: ${requestId}): ${data.status} (${data.progress}%) - ${data.message}`);
         
         // 更新当前任务状态
         if (this.currentTask && this.currentTask.task_id === data.task_id) {
@@ -387,9 +392,14 @@ class ImageTransformApp {
             this.clearResults();
             this.showProgress();
 
+            // 生成request_id
+            const requestId = this.generateRequestId();
+            console.log('生成request_id:', requestId);
+
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
             formData.append('style_id', styleSelect.value);
+            formData.append('request_id', requestId);
 
             this.updateStatus('正在提交转换任务...', 'info');
 

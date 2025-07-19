@@ -99,7 +99,8 @@ class TransformService:
                     "timestamp": data.get("timestamp"),
                     "files": data.get("files", {}),
                     "style_id": data.get("style_id"),
-                    "user_id": data.get("user_id")
+                    "user_id": data.get("user_id"),
+                    "request_id": data.get("request_id")
                 }
                 
                 # 如果任务完成，添加结果信息
@@ -143,7 +144,7 @@ class TransformService:
             logger.error(f"搜索风格失败: {e}")
             raise
     
-    async def save_uploaded_file(self, file_content: bytes, filename: str, style_id: str) -> str:
+    async def save_uploaded_file(self, file_content: bytes, filename: str, style_id: str, request_id: str = None) -> str:
         """
         保存上传的文件并按照RPC规范命名
         
@@ -151,6 +152,7 @@ class TransformService:
             file_content: 文件内容
             filename: 原始文件名
             style_id: 风格ID
+            request_id: 请求ID (可选)
         
         Returns:
             str: 文件访问URL
@@ -165,6 +167,7 @@ class TransformService:
             async with self.rpc_client:
                 filename_info = await self.rpc_client.build_filename(
                     style_id=style_id,
+                    request_id=request_id,
                     file_type="input",
                     extension=file_ext[1:]  # 去掉点号
                 )
@@ -186,22 +189,23 @@ class TransformService:
             logger.error(f"保存文件失败: {e}")
             raise
     
-    async def create_transform_task(self, style_id: str, image_url: str) -> Dict[str, Any]:
+    async def create_transform_task(self, style_id: str, image_url: str, request_id: str = None) -> Dict[str, Any]:
         """
         创建转换任务
         
         Args:
             style_id: 风格ID
             image_url: 图片URL
+            request_id: 请求ID (可选)
         
         Returns:
             Dict: 任务信息
         """
         try:
             async with self.rpc_client:
-                result = await self.rpc_client.create_transform(style_id, image_url)
+                result = await self.rpc_client.create_transform(style_id, image_url, request_id)
                 
-                logger.info(f"转换任务已创建: {result.get('task_id')}")
+                logger.info(f"转换任务已创建: {result.get('task_id')} (request_id: {request_id})")
                 return result
                 
         except Exception as e:
@@ -255,7 +259,7 @@ class TransformService:
             logger.error(f"获取系统健康状态失败: {e}")
             return {"status": "unhealthy", "error": str(e)}
     
-    async def transform_image(self, file_content: bytes, filename: str, style_id: str) -> Dict[str, Any]:
+    async def transform_image(self, file_content: bytes, filename: str, style_id: str, request_id: str = None) -> Dict[str, Any]:
         """
         完整的图像转换流程（上传文件 + 创建任务）
         
@@ -263,16 +267,17 @@ class TransformService:
             file_content: 文件内容
             filename: 文件名
             style_id: 风格ID
+            request_id: 请求ID (可选)
         
         Returns:
             Dict: 任务信息
         """
         try:
             # 1. 保存文件并生成标准URL
-            image_url = await self.save_uploaded_file(file_content, filename, style_id)
+            image_url = await self.save_uploaded_file(file_content, filename, style_id, request_id)
             
             # 2. 创建转换任务
-            task_info = await self.create_transform_task(style_id, image_url)
+            task_info = await self.create_transform_task(style_id, image_url, request_id)
             
             # 3. 添加文件信息到响应
             task_info["image_url"] = image_url
