@@ -26,7 +26,7 @@ async def list_styles(params: Dict[str, Any], request: Request) -> Dict[str, Any
         style_registry: StyleRegistry = request.app.state.style_registry
         
         # 获取所有风格
-        styles = await style_registry.get_all_styles()
+        styles = style_registry.get_all_styles()
         
         # 格式化风格信息
         formatted_styles = [
@@ -66,7 +66,7 @@ async def search_styles(params: Dict[str, Any], request: Request) -> Dict[str, A
         style_registry: StyleRegistry = request.app.state.style_registry
         
         # 搜索风格
-        styles = await style_registry.search_styles(query.strip())
+        styles = style_registry.search_styles(query.strip())
         
         # 格式化风格信息
         formatted_styles = [
@@ -104,7 +104,7 @@ async def get_style(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
         style_registry: StyleRegistry = request.app.state.style_registry
         
         # 获取风格详情
-        style = await style_registry.get_style(style_id)
+        style = style_registry.get_style(style_id)
         
         if not style:
             raise RPCError(

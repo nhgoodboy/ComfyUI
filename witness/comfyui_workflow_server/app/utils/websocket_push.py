@@ -5,6 +5,7 @@ WebSocket 推送管理器
 
 import logging
 from typing import Dict, Any
+from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
