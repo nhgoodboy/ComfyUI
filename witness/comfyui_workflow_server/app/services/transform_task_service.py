@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # 导入推送管理器
 try:
-    from ..api.v1.websocket_push import push_manager
+    from ..utils.websocket_push import push_manager
 except ImportError:
     push_manager = None
     logger.warning("WebSocket 推送管理器不可用")

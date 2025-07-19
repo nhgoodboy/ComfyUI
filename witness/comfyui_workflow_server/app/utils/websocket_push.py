@@ -1,15 +1,12 @@
 """
-WebSocket 推送 API
-用于向外部客户端（如 web_image_transform）推送任务状态更新
+WebSocket 推送管理器
+用于向外部客户端推送任务状态更新
 """
 
 import logging
 from typing import Dict, Any
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
-
-router = APIRouter()
 
 # 存储WebSocket连接
 class PushConnectionManager:
@@ -55,26 +52,6 @@ class PushConnectionManager:
 
 # 全局推送管理器
 push_manager = PushConnectionManager()
-
-@router.websocket("/push/{client_id}")
-async def websocket_push_endpoint(websocket: WebSocket, client_id: str):
-    """
-    WebSocket 推送端点
-    外部客户端连接到此端点以接收任务状态更新
-    """
-    await push_manager.connect(websocket, client_id)
-    try:
-        while True:
-            # 保持连接活跃，等待服务器推送
-            # 客户端可以发送心跳包或保持空消息
-            try:
-                await websocket.receive_text()
-            except:
-                break
-    except WebSocketDisconnect:
-        pass
-    finally:
-        push_manager.disconnect(client_id)
 
 # 导出推送管理器供其他模块使用
 __all__ = ["push_manager"] 

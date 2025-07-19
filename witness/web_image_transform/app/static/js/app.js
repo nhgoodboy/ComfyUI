@@ -132,21 +132,23 @@ class ImageTransformApp {
     }
 
     handleTaskUpdate(data) {
-        const requestId = data.data ? data.data.request_id : data.request_id;
-        console.log(`任务更新 - ${data.task_id} (request_id: ${requestId}): ${data.status} (${data.progress}%) - ${data.message}`);
+        // 使用标准的嵌套数据结构
+        const taskData = data.data;
+        const requestId = taskData.request_id;
+        console.log(`任务更新 - ${data.task_id} (request_id: ${requestId}): ${taskData.status} (${taskData.progress}%) - ${taskData.message}`);
         
         // 更新当前任务状态
         if (this.currentTask && this.currentTask.task_id === data.task_id) {
-            this.currentTask = { ...this.currentTask, ...data };
+            this.currentTask = { ...this.currentTask, ...taskData };
         }
 
         // 更新UI
-        this.updateProgressUI(data);
+        this.updateProgressUI(taskData);
 
         // 处理不同状态
-        switch (data.status) {
+        switch (taskData.status) {
             case 'downloading':
-                this.updateStatus(`下载中: ${data.message}`, 'info');
+                this.updateStatus(`下载中: ${taskData.message}`, 'info');
                 break;
             
             case 'downloaded':
@@ -154,23 +156,23 @@ class ImageTransformApp {
                 break;
             
             case 'processing':
-                this.updateStatus(`转换中: ${data.message}`, 'info');
+                this.updateStatus(`转换中: ${taskData.message}`, 'info');
                 break;
             
             case 'completed':
-                this.handleTaskCompleted(data);
+                this.handleTaskCompleted(taskData);
                 break;
             
             case 'download_failed':
-                this.handleTaskFailed(data, '图片下载失败');
+                this.handleTaskFailed(taskData, '图片下载失败');
                 break;
             
             case 'processing_failed':
-                this.handleTaskFailed(data, '图像转换失败');
+                this.handleTaskFailed(taskData, '图像转换失败');
                 break;
             
             default:
-                this.updateStatus(data.message || '任务状态未知', 'info');
+                this.updateStatus(taskData.message || '任务状态未知', 'info');
         }
     }
 

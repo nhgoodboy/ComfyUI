@@ -217,17 +217,29 @@ app/
 │   ├── protocol.py      # RPC协议模型
 │   ├── exceptions.py    # RPC异常定义
 │   ├── error_codes.py   # 错误代码定义
+│   ├── formatter.py     # 响应格式化器
+│   ├── validator.py     # 参数验证器
 │   └── methods/
 │       ├── styles.py    # 风格管理方法
 │       ├── transform.py # 转换任务方法
 │       └── system.py    # 系统方法
 ├── services/
-│   ├── download_service.py     # 文件下载服务
+│   ├── comfyui_service.py       # ComfyUI客户端服务
+│   ├── download_service.py      # 文件下载服务
 │   └── transform_task_service.py # 转换任务服务
 ├── utils/
-│   └── file_naming.py   # 文件命名工具
-├── config.py            # 配置管理
-└── main.py             # 应用入口
+│   ├── file_naming.py    # 文件命名工具
+│   ├── websocket_push.py # WebSocket推送管理器
+│   └── crypto_utils.py   # 加密工具
+├── core/
+│   └── style_registry.py # 风格注册表
+├── models/
+│   ├── api_models.py     # API数据模型
+│   └── user_models.py    # 用户数据模型
+├── workflows/
+│   └── built_in/         # 内置工作流
+├── config.py             # 配置管理
+└── main.py              # 应用入口
 ```
 
 ## 更新日志

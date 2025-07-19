@@ -34,7 +34,7 @@ from .services.comfyui_service import ComfyUIService
 from .services.transform_task_service import TransformTaskService
 
 # 导入WebSocket推送管理器
-from .api.v1.websocket_push import push_manager
+from .utils.websocket_push import push_manager
 
 # 服务实例将在lifespan中创建并附加到app.state
 from .models.api_models import HealthResponse
