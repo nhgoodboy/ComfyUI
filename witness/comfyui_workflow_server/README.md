@@ -10,7 +10,7 @@
 
 - **RPC架构**: 单一端点(`/rpc`)，JSON-RPC 2.0协议
 - **文件下载**: 支持从外部URL下载图片，无需客户端上传
-- **标准化命名**: 文件按`{style_id}_{user_id}_{input/output}.{ext}`格式命名
+- **标准化命名**: 文件按`{style_id}_{user_id}_{request_id}_{input/output}.{ext}`格式命名
 - **多阶段处理**: 下载→转换的完整生命周期管理
 - **实时推送**: WebSocket支持任务状态实时更新
 - **错误分类**: 系统化的错误代码体系(1xxx-3xxx)
@@ -49,7 +49,8 @@
   "params": {
     "user_id": "user123",
     "style_id": "anime_style",
-    "image_url": "https://example.com/image.jpg"
+    "image_url": "https://example.com/image.jpg",
+    "request_id": "req123"
   },
   "id": "req_1"
 }
@@ -130,12 +131,12 @@ gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
 
 ### 标准格式
 ```
-{style_id}_{user_id}_{type}.{extension}
+{style_id}_{user_id}_{request_id}_{type}.{extension}
 ```
 
 ### 示例
-- 输入文件：`anime_style_user123_input.jpg`
-- 输出文件：`anime_style_user123_output.png`
+- 输入文件：`anime_style_user123_req123_input.jpg`
+- 输出文件：`anime_style_user123_req123_output.png`
 
 ### 文件组织
 - 下载文件：`uploads/{filename}`
@@ -165,6 +166,7 @@ gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
 ```python
 import aiohttp
 import json
+import uuid
 
 class ComfyUIRPCClient:
     def __init__(self, base_url: str, user_id: str):
@@ -172,13 +174,14 @@ class ComfyUIRPCClient:
         self.user_id = user_id
         self.rpc_url = f"{base_url}/rpc"
     
-    async def create_transform(self, style_id: str, image_url: str):
+    async def create_transform(self, style_id: str, image_url: str, request_id: str = None):
         payload = {
             "method": "transform.create",
             "params": {
                 "user_id": self.user_id,
                 "style_id": style_id,
-                "image_url": image_url
+                "image_url": image_url,
+                "request_id": request_id or str(uuid.uuid4())
             },
             "id": "req_1"
         }

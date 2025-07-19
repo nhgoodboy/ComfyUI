@@ -17,6 +17,7 @@ class UserTaskData(BaseModel):
     prompt_id: Optional[str] = None  # ComfyUI的prompt_id
     user_id: str = Field(..., description="用户ID")
     style_id: str = Field(..., description="风格ID")
+    request_id: str = Field(..., description="请求ID")
     status: str = Field(..., description="任务状态")
     progress: float = Field(..., description="进度(0-100)")
     created_at: float = Field(..., description="创建时间戳")

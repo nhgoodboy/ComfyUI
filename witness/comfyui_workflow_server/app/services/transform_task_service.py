@@ -62,6 +62,7 @@ class TransformTaskService:
         user_id: str, 
         style_id: str, 
         image_url: str,
+        request_id: Optional[str] = None,
         progress_callback: Optional[Callable] = None
     ) -> str:
         """
@@ -71,6 +72,7 @@ class TransformTaskService:
             user_id: 用户ID
             style_id: 风格ID
             image_url: 图片URL
+            request_id: 请求ID (可选，如果不提供则自动生成)
             progress_callback: 进度回调函数
         
         Returns:
@@ -79,6 +81,12 @@ class TransformTaskService:
         # 验证参数
         user_id = self.file_naming.validate_user_id(user_id)
         style_id = self.file_naming.validate_style_id(style_id)
+        
+        # 生成或验证request_id
+        if request_id is None:
+            request_id = str(uuid.uuid4())
+        else:
+            request_id = self.file_naming.validate_request_id(request_id)
         
         # 验证风格存在
         if style_id not in self.style_registry.styles:
@@ -101,7 +109,7 @@ class TransformTaskService:
             # 获取已知的风格ID列表
             known_style_ids = list(self.style_registry.styles.keys())
             expected_filename = self.file_naming.validate_url_filename(
-                image_url, style_id, user_id, "input", known_style_ids
+                image_url, style_id, user_id, request_id, "input", known_style_ids
             )
         except Exception as e:
             raise RPCDownloadError(
@@ -119,6 +127,7 @@ class TransformTaskService:
             task_id=task_id,
             user_id=user_id,
             style_id=style_id,
+            request_id=request_id,
             status="pending",
             progress=0.0,
             created_at=current_time,
@@ -335,6 +344,7 @@ class TransformTaskService:
                 "task_id": task_data.task_id,
                 "user_id": task_data.user_id,
                 "style_id": task_data.style_id,
+                "request_id": task_data.request_id,
                 "status": task_data.status,
                 "stage": getattr(task_data, 'stage', 'unknown'),
                 "progress": task_data.progress,

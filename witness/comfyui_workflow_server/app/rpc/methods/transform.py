@@ -28,11 +28,16 @@ async def create_transform(params: Dict[str, Any], request: Request) -> Dict[str
         user_id = params["user_id"]
         style_id = params["style_id"]
         image_url = params["image_url"]
+        request_id = params.get("request_id", None)  # 可选参数
         
         # 验证参数
         RPCValidator.validate_user_id(user_id)
         RPCValidator.validate_style_id(style_id)
         RPCValidator.validate_image_url(image_url)
+        
+        if request_id is not None:
+            from ...utils.file_naming import FileNamingUtils
+            request_id = FileNamingUtils.validate_request_id(request_id)
         
         # 获取转换任务服务
         transform_service: TransformTaskService = request.app.state.transform_task_service
@@ -41,7 +46,8 @@ async def create_transform(params: Dict[str, Any], request: Request) -> Dict[str
         task_id = await transform_service.create_transform_task(
             user_id=user_id,
             style_id=style_id,
-            image_url=image_url
+            image_url=image_url,
+            request_id=request_id
         )
         
         # 获取任务信息 - 需要使用清理后的user_id

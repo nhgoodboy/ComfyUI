@@ -88,16 +88,18 @@ async def build_filename(params: Dict[str, Any], request: Request) -> Dict[str, 
     """构建符合规范的文件名"""
     try:
         # 验证必需参数
-        RPCValidator.validate_required_fields(params, ["style_id", "user_id", "type"])
+        RPCValidator.validate_required_fields(params, ["style_id", "user_id", "request_id", "type"])
         
         style_id = params["style_id"]
         user_id = params["user_id"]
+        request_id = params["request_id"]
         file_type = params["type"]
         extension = params.get("extension", "jpg")
         
         # 验证参数
         RPCValidator.validate_style_id(style_id)
         RPCValidator.validate_user_id(user_id)
+        request_id = FileNamingUtils.validate_request_id(request_id)
         
         if file_type not in ["input", "output"]:
             raise RPCError(
@@ -107,7 +109,7 @@ async def build_filename(params: Dict[str, Any], request: Request) -> Dict[str, 
             )
         
         # 构建文件名
-        filename = FileNamingUtils.build_filename(style_id, user_id, file_type, extension)
+        filename = FileNamingUtils.build_filename(style_id, user_id, request_id, file_type, extension)
         
         # 构建示例URL
         settings = request.app.state.settings
@@ -123,11 +125,12 @@ async def build_filename(params: Dict[str, Any], request: Request) -> Dict[str, 
             "components": {
                 "style_id": style_id,
                 "user_id": user_id,
+                "request_id": request_id,
                 "type": file_type,
                 "extension": extension
             },
             "example_url": example_url,
-            "pattern": "{style_id}_{user_id}_{type}.{ext}"
+            "pattern": "{style_id}_{user_id}_{request_id}_{type}.{ext}"
         }
         
     except RPCError:
@@ -174,8 +177,8 @@ async def parse_filename(params: Dict[str, Any], request: Request) -> Dict[str, 
             "filename": params.get("filename", ""),
             "valid": False,
             "error": str(e),
-            "expected_pattern": "{style_id}_{user_id}_{input|output}.{ext}",
-            "example": "clay_style_alice_input.jpg"
+            "expected_pattern": "{style_id}_{user_id}_{request_id}_{input|output}.{ext}",
+            "example": "clay_style_alice_123e4567-e89b-12d3-a456-426614174000_input.jpg"
         }
 
 

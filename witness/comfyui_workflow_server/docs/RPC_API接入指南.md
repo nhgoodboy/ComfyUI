@@ -32,7 +32,7 @@ ComfyUI Workflow Server 提供了基于JSON-RPC的API接口，专注于AI图像�
 
 - 🎨 **风格管理**: 风格发现、搜索和查询
 - 🔄 **一体化转换**: 自动下载图片 + 风格转换
-- 📁 **规范化命名**: `{style_id}_{user_id}_{input/output}.{ext}`
+- 📁 **规范化命名**: `{style_id}_{user_id}_{request_id}_{input/output}.{ext}`
 - 🔌 **实时推送**: WebSocket 任务状态和进度更新
 - 📊 **多阶段跟踪**: 下载阶段 + 转换阶段进度监控
 - ⚡ **批量支持**: 支持批量RPC请求
@@ -41,16 +41,16 @@ ComfyUI Workflow Server 提供了基于JSON-RPC的API接口，专注于AI图像�
 
 #### 输入文件命名
 ```
-{style_id}_{user_id}_input.{ext}
-示例: clay_style_alice_input.jpg
-     anime_style_bob_input.png
+{style_id}_{user_id}_{request_id}_input.{ext}
+示例: clay_style_alice_req123_input.jpg
+     anime_style_bob_req456_input.png
 ```
 
 #### 输出文件命名
 ```
-{style_id}_{user_id}_output.{ext} 
-示例: clay_style_alice_output.png
-     anime_style_bob_output.jpg
+{style_id}_{user_id}_{request_id}_output.{ext} 
+示例: clay_style_alice_req123_output.png
+     anime_style_bob_req456_output.jpg
 ```
 
 #### 处理流程
@@ -95,7 +95,8 @@ curl -X POST "http://your-domain:8000/rpc" \
        "params": {
          "user_id": "alice",
          "style_id": "clay_style",
-         "image_url": "https://external.com/clay_style_alice_input.jpg"
+         "image_url": "https://external.com/clay_style_alice_req123_input.jpg",
+         "request_id": "req123"
        },
        "id": "req_002"
      }'
@@ -115,7 +116,8 @@ curl -X POST "http://your-domain:8000/rpc" \
     "params": {
       "user_id": "alice",
       "style_id": "clay_style",
-      "image_url": "https://external.com/clay_style_alice_input.jpg"
+      "image_url": "https://external.com/clay_style_alice_req123_input.jpg",
+      "request_id": "req123"
     },
     "id": "req_002"
   }
@@ -231,7 +233,8 @@ ws.onmessage = (event) => {
   "params": {
     "user_id": "alice",
     "style_id": "clay_style", 
-    "image_url": "https://external.com/clay_style_alice_input.jpg"
+    "image_url": "https://external.com/clay_style_alice_req123_input.jpg",
+    "request_id": "req123"
   },
   "id": "req_004"
 }
@@ -251,8 +254,8 @@ ws.onmessage = (event) => {
     "created_at": 1640995200.123,
     "estimated_time": 45,
     "file_info": {
-      "input_filename": "clay_style_alice_input.jpg",
-      "expected_output_filename": "clay_style_alice_output.png"
+      "input_filename": "clay_style_alice_req123_input.jpg",
+      "expected_output_filename": "clay_style_alice_req123_output.png"
     }
   },
   "id": "req_004"
@@ -289,8 +292,8 @@ ws.onmessage = (event) => {
     "created_at": 1640995200.123,
     "started_at": 1640995205.456,
     "file_info": {
-      "input_filename": "clay_style_alice_input.jpg",
-      "expected_output_filename": "clay_style_alice_output.png"
+      "input_filename": "clay_style_alice_req123_input.jpg",
+      "expected_output_filename": "clay_style_alice_req123_output.png"
     }
   },
   "id": "req_005"
@@ -338,16 +341,16 @@ ws.onmessage = (event) => {
     "style_id": "clay_style",
     "status": "completed",
     "input_info": {
-      "filename": "clay_style_alice_input.jpg",
-      "path": "/storage/inputs/clay_style_alice_input.jpg",
+      "filename": "clay_style_alice_req123_input.jpg",
+      "path": "/storage/inputs/clay_style_alice_req123_input.jpg",
       "size": 1024000,
       "format": "jpeg",
-      "original_url": "https://external.com/clay_style_alice_input.jpg"
+      "original_url": "https://external.com/clay_style_alice_req123_input.jpg"
     },
     "output_images": [
       {
-        "filename": "clay_style_alice_output.png",
-        "url": "http://127.0.0.1:8188/view?filename=clay_style_alice_output.png&type=output",
+        "filename": "clay_style_alice_req123_output.png",
+        "url": "http://127.0.0.1:8188/view?filename=clay_style_alice_req123_output.png&type=output",
         "size": 2048000
       }
     ],
@@ -484,6 +487,7 @@ ws.onmessage = (event) => {
   "params": {
     "style_id": "clay_style",
     "user_id": "alice", 
+    "request_id": "req123",
     "type": "input",
     "extension": "jpg"
   },
@@ -495,15 +499,16 @@ ws.onmessage = (event) => {
 ```json
 {
   "result": {
-    "filename": "clay_style_alice_input.jpg",
+    "filename": "clay_style_alice_req123_input.jpg",
     "components": {
       "style_id": "clay_style",
       "user_id": "alice",
+      "request_id": "req123",
       "type": "input", 
       "extension": "jpg"
     },
-    "example_url": "http://your-domain:8000/inputs/clay_style_alice_input.jpg",
-    "pattern": "{style_id}_{user_id}_{type}.{ext}"
+    "example_url": "http://your-domain:8000/inputs/clay_style_alice_req123_input.jpg",
+    "pattern": "{style_id}_{user_id}_{request_id}_{type}.{ext}"
   },
   "id": "req_010"
 }
@@ -575,8 +580,8 @@ ws://your-domain:8000/ws/{user_id}
   "progress": 45.2,
   "message": "正在下载图片... 45.2%",
   "files": {
-    "input": "clay_style_alice_input.jpg",
-    "output": "clay_style_alice_output.png"
+    "input": "clay_style_alice_req123_input.jpg",
+    "output": "clay_style_alice_req123_output.png"
   },
   "timestamp": 1640995250.123
 }
@@ -593,14 +598,14 @@ ws://your-domain:8000/ws/{user_id}
   "progress": 100.0,
   "message": "转换完成",
   "files": {
-    "input": "clay_style_alice_input.jpg",
-    "output": "clay_style_alice_output.png"
+    "input": "clay_style_alice_req123_input.jpg",
+    "output": "clay_style_alice_req123_output.png"
   },
   "result": {
     "output_images": [
       {
-        "filename": "clay_style_alice_output.png",
-        "url": "http://127.0.0.1:8188/view?filename=clay_style_alice_output.png&type=output"
+        "filename": "clay_style_alice_req123_output.png",
+        "url": "http://127.0.0.1:8188/view?filename=clay_style_alice_req123_output.png&type=output"
       }
     ]
   },
@@ -672,11 +677,12 @@ class ComfyUIRPCClient {
         return await this.callRPC('styles.list');
     }
     
-    async createTransform(styleId, imageUrl) {
+    async createTransform(styleId, imageUrl, requestId = null) {
         return await this.callRPC('transform.create', {
             user_id: this.userId,
             style_id: styleId,
-            image_url: imageUrl
+            image_url: imageUrl,
+            request_id: requestId
         });
     }
     
@@ -734,7 +740,7 @@ client.getStyles().then(styles => {
 });
 
 // 创建转换任务
-client.createTransform('clay_style', 'https://external.com/clay_style_alice_input.jpg')
+client.createTransform('clay_style', 'https://external.com/clay_style_alice_req123_input.jpg')
     .then(task => {
         console.log('任务已创建:', task.task_id);
     })
@@ -946,7 +952,7 @@ async def main():
         # 创建转换任务
         task = await client.create_transform(
             "clay_style",
-            "https://external.com/clay_style_alice_input.jpg"
+            "https://external.com/clay_style_alice_req123_input.jpg"
         )
         print("任务创建:", task["task_id"])
         
@@ -1010,11 +1016,12 @@ class ComfyUIRPCClient {
         return await this.callRPC('styles.list');
     }
     
-    async createTransform(styleId, imageUrl) {
+    async createTransform(styleId, imageUrl, requestId = null) {
         return await this.callRPC('transform.create', {
             user_id: this.userId,
             style_id: styleId,
-            image_url: imageUrl
+            image_url: imageUrl,
+            request_id: requestId
         });
     }
     
@@ -1074,7 +1081,7 @@ async function main() {
         // 创建转换任务
         const task = await client.createTransform(
             'clay_style',
-            'https://external.com/clay_style_alice_input.jpg'
+            'https://external.com/clay_style_alice_req123_input.jpg'
         );
         console.log('任务创建:', task.task_id);
         
@@ -1106,13 +1113,14 @@ main();
 **外部服务器文件命名**:
 ```bash
 # 正确的文件命名
-clay_style_alice_input.jpg     ✅
-anime_style_bob_input.png      ✅
-cartoon_style_charlie_input.webp ✅
+clay_style_alice_req123_input.jpg     ✅
+anime_style_bob_req456_input.png      ✅
+cartoon_style_charlie_req789_input.webp ✅
 
 # 错误的文件命名  
-alice_input.jpg                ❌ 缺少风格ID
-clay_style_input.jpg           ❌ 缺少用户ID
+alice_input.jpg                ❌ 缺少风格ID和请求ID
+clay_style_input.jpg           ❌ 缺少用户ID和请求ID
+clay_style_alice_input.jpg     ❌ 缺少请求ID
 random_photo.jpg               ❌ 不符合规范
 ```
 
@@ -1122,12 +1130,13 @@ random_photo.jpg               ❌ 不符合规范
 const filenameInfo = await client.callRPC('system.build_filename', {
     style_id: 'clay_style',
     user_id: 'alice',
+    request_id: 'req123',
     type: 'input',
     extension: 'jpg'
 });
 
 console.log('标准文件名:', filenameInfo.filename);
-// 输出: clay_style_alice_input.jpg
+// 输出: clay_style_alice_req123_input.jpg
 ```
 
 ### 2. 错误处理策略
