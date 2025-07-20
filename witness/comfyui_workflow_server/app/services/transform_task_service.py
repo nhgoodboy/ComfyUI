@@ -40,10 +40,10 @@ class TransformTaskService:
         self.download_service = DownloadService()
         self.file_naming = FileNamingUtils()
         
-        # 任务存储：按用户隔离
-        self.user_tasks: Dict[str, Dict[str, UserTaskData]] = {}  # {user_id: {task_id: task_data}}
-        self.task_to_user: Dict[str, str] = {}  # {task_id: user_id}
-        self.prompt_to_task: Dict[str, str] = {}  # {prompt_id: task_id}
+        # 任务存储：按用户隔离，使用request_id作为主键
+        self.user_tasks: Dict[str, Dict[str, UserTaskData]] = {}  # {user_id: {request_id: task_data}}
+        self.request_to_user: Dict[str, str] = {}  # {request_id: user_id}
+        self.prompt_to_request: Dict[str, str] = {}  # {prompt_id: request_id}
         
         # 任务状态枚举
         self.TASK_STATUSES = {
@@ -76,7 +76,7 @@ class TransformTaskService:
             progress_callback: 进度回调函数
         
         Returns:
-            str: 任务ID
+            str: 请求ID (request_id)
         """
         # 验证参数
         user_id = self.file_naming.validate_user_id(user_id)
@@ -118,16 +118,13 @@ class TransformTaskService:
                 url=image_url
             )
         
-        # 生成任务ID
-        task_id = str(uuid.uuid4())
         current_time = time.time()
         
-        # 创建任务数据
+        # 创建任务数据，使用request_id作为主键
         task_data = UserTaskData(
-            task_id=task_id,
+            request_id=request_id,
             user_id=user_id,
             style_id=style_id,
-            request_id=request_id,
             status="pending",
             progress=0.0,
             created_at=current_time,
@@ -151,29 +148,29 @@ class TransformTaskService:
         if user_id not in self.user_tasks:
             self.user_tasks[user_id] = {}
         
-        self.user_tasks[user_id][task_id] = task_data
-        self.task_to_user[task_id] = user_id
+        self.user_tasks[user_id][request_id] = task_data
+        self.request_to_user[request_id] = user_id
         
-        logger.info(f"创建转换任务: {task_id}, 用户: {user_id}, 风格: {style_id}")
+        logger.info(f"创建转换任务: {request_id}, 用户: {user_id}, 风格: {style_id}")
         
         # 推送任务创建消息
         await self._push_task_update(task_data)
         
         # 异步执行任务
-        asyncio.create_task(self._execute_transform_task(task_id, progress_callback))
+        asyncio.create_task(self._execute_transform_task(request_id, progress_callback))
         
-        return task_id
+        return request_id
     
-    async def _execute_transform_task(self, task_id: str, progress_callback: Optional[Callable] = None):
+    async def _execute_transform_task(self, request_id: str, progress_callback: Optional[Callable] = None):
         """执行转换任务的完整流程"""
-        user_id = self.task_to_user.get(task_id)
+        user_id = self.request_to_user.get(request_id)
         if not user_id:
-            logger.error(f"任务 {task_id} 找不到对应的用户")
+            logger.error(f"请求 {request_id} 找不到对应的用户")
             return
         
-        task_data = self.user_tasks[user_id].get(task_id)
+        task_data = self.user_tasks[user_id].get(request_id)
         if not task_data:
-            logger.error(f"任务 {task_id} 数据不存在")
+            logger.error(f"请求 {request_id} 数据不存在")
             return
         
         try:
@@ -225,7 +222,7 @@ class TransformTaskService:
             
             await self._push_task_update(task_data)
             
-            logger.info(f"任务 {task_data.task_id} 下载完成: {file_path}")
+            logger.info(f"请求 {task_data.request_id} 下载完成: {file_path}")
             
         except Exception as e:
             task_data.status = "download_failed"
@@ -262,7 +259,7 @@ class TransformTaskService:
             )
             
             # 记录prompt_id映射
-            self.prompt_to_task[prompt_id] = task_data.task_id
+            self.prompt_to_request[prompt_id] = task_data.request_id
             
             # 等待转换完成
             await self._wait_for_transform_completion(task_data, prompt_id)
@@ -301,14 +298,14 @@ class TransformTaskService:
                 raise RPCTransformError(
                     code=ErrorCodes.TASK_CANCELLED,
                     message="任务已被取消",
-                    task_id=task_data.task_id
+                    request_id=task_data.request_id
                 )
             
             # 检查是否收到ComfyUI的进度更新
             current_time = time.time()
             if current_time - last_progress_update > 10:
                 # 超过10秒没有进度更新，记录调试信息但不强制模拟进度
-                logger.debug(f"任务 {task_data.task_id} 超过10秒没有收到进度更新")
+                logger.debug(f"请求 {task_data.request_id} 超过10秒没有收到进度更新")
                 last_progress_update = current_time
             
             await asyncio.sleep(1)
@@ -318,7 +315,7 @@ class TransformTaskService:
             raise RPCTransformError(
                 code=ErrorCodes.TRANSFORM_FAILED,
                 message="转换超时",
-                task_id=task_data.task_id
+                request_id=task_data.request_id
             )
     
     async def _complete_task(self, task_data: UserTaskData):
@@ -331,7 +328,7 @@ class TransformTaskService:
         
         await self._push_task_update(task_data)
         
-        logger.info(f"任务 {task_data.task_id} 完成")
+        logger.info(f"请求 {task_data.request_id} 完成")
     
     async def _fail_task(self, task_data: UserTaskData, error_message: str):
         """任务失败"""
@@ -345,7 +342,7 @@ class TransformTaskService:
         
         await self._push_task_update(task_data)
         
-        logger.error(f"任务 {task_data.task_id} 失败: {error_message}")
+        logger.error(f"请求 {task_data.request_id} 失败: {error_message}")
     
     async def _push_task_update(self, task_data: UserTaskData):
         """推送任务状态更新"""
@@ -354,10 +351,9 @@ class TransformTaskService:
         
         try:
             update_data = {
-                "task_id": task_data.task_id,
+                "request_id": task_data.request_id,
                 "user_id": task_data.user_id,
                 "style_id": task_data.style_id,
-                "request_id": task_data.request_id,
                 "status": task_data.status,
                 "stage": getattr(task_data, 'stage', 'unknown'),
                 "progress": task_data.progress,
@@ -376,15 +372,15 @@ class TransformTaskService:
             if task_data.status == "completed" and task_data.result:
                 update_data["result"] = task_data.result
             
-            await push_manager.push_task_update(task_data.task_id, update_data)
+            await push_manager.push_task_update(task_data.request_id, update_data)
             
         except Exception as e:
             logger.warning(f"推送任务更新失败: {e}")
     
-    def get_user_task(self, user_id: str, task_id: str) -> Optional[UserTaskData]:
+    def get_user_task(self, user_id: str, request_id: str) -> Optional[UserTaskData]:
         """获取用户任务"""
         user_tasks = self.user_tasks.get(user_id, {})
-        return user_tasks.get(task_id)
+        return user_tasks.get(request_id)
     
     def list_user_tasks(self, user_id: str, limit: int = 100) -> List[UserTaskData]:
         """获取用户任务列表"""
@@ -396,9 +392,9 @@ class TransformTaskService:
         
         return tasks[:limit]
     
-    async def cancel_task(self, user_id: str, task_id: str) -> bool:
+    async def cancel_task(self, user_id: str, request_id: str) -> bool:
         """取消任务"""
-        task_data = self.get_user_task(user_id, task_id)
+        task_data = self.get_user_task(user_id, request_id)
         if not task_data:
             return False
         
@@ -411,28 +407,28 @@ class TransformTaskService:
         
         await self._push_task_update(task_data)
         
-        logger.info(f"任务 {task_id} 已被用户 {user_id} 取消")
+        logger.info(f"请求 {request_id} 已被用户 {user_id} 取消")
         return True
     
     def on_comfyui_result(self, prompt_id: str, result: Dict[str, Any]):
         """ComfyUI结果回调"""
-        task_id = self.prompt_to_task.get(prompt_id)
-        if not task_id:
+        request_id = self.prompt_to_request.get(prompt_id)
+        if not request_id:
             logger.warning(f"收到未知prompt_id的结果: {prompt_id}")
             return
         
-        user_id = self.task_to_user.get(task_id)
+        user_id = self.request_to_user.get(request_id)
         if not user_id:
-            logger.warning(f"任务 {task_id} 找不到用户")
+            logger.warning(f"请求 {request_id} 找不到用户")
             return
         
-        task_data = self.get_user_task(user_id, task_id)
+        task_data = self.get_user_task(user_id, request_id)
         if not task_data:
-            logger.warning(f"任务数据不存在: {task_id}")
+            logger.warning(f"任务数据不存在: {request_id}")
             return
         
         # 更新任务结果 - 先记录原始结果用于调试
-        logger.info(f"任务 {task_id} 收到ComfyUI原始结果: {result}")
+        logger.info(f"任务 {request_id} 收到ComfyUI原始结果: {result}")
         
         # 异步获取完整的历史记录信息
         asyncio.create_task(self._process_completion_result(task_data, prompt_id, result))
@@ -441,9 +437,9 @@ class TransformTaskService:
         """处理完成结果，获取完整的历史记录信息"""
         try:
             # 获取完整的历史记录
-            logger.info(f"任务 {task_data.task_id} 获取历史记录信息...")
+            logger.info(f"任务 {task_data.request_id} 获取历史记录信息...")
             history = await self.comfyui_service.get_result(prompt_id)
-            logger.info(f"任务 {task_data.task_id} 获取到历史记录: {history}")
+            logger.info(f"任务 {task_data.request_id} 获取到历史记录: {history}")
             
             # 更新任务状态
             task_data.status = "completed"
@@ -462,7 +458,7 @@ class TransformTaskService:
                             if filename:
                                 file_url = f"http://{self.comfyui_service.server_address}:{self.comfyui_service.port}/view?filename={filename}"
                                 output_files.append(file_url)
-                                logger.info(f"任务 {task_data.task_id} 找到输出文件: {file_url}")
+                                logger.info(f"任务 {task_data.request_id} 找到输出文件: {file_url}")
             
             # 构造完整的结果数据
             task_data.result = {
@@ -477,13 +473,13 @@ class TransformTaskService:
                 'history': history  # 包含完整历史记录用于调试
             }
             
-            logger.info(f"任务 {task_data.task_id} 完成，生成了 {len(output_files)} 个文件")
+            logger.info(f"任务 {task_data.request_id} 完成，生成了 {len(output_files)} 个文件")
             
             # 推送任务完成更新
             await self._push_task_update(task_data)
             
         except Exception as e:
-            logger.error(f"处理任务 {task_data.task_id} 完成结果失败: {e}", exc_info=True)
+            logger.error(f"处理任务 {task_data.request_id} 完成结果失败: {e}", exc_info=True)
             # 即使获取历史记录失败，也要标记任务为完成
             task_data.status = "completed"
             task_data.stage = "completed"
@@ -500,15 +496,15 @@ class TransformTaskService:
         for user_id, user_tasks in self.user_tasks.items():
             tasks_to_remove = []
             
-            for task_id, task_data in user_tasks.items():
+            for request_id, task_data in user_tasks.items():
                 task_age = current_time - task_data.created_at
                 if task_age > max_age_hours * 3600:
-                    tasks_to_remove.append(task_id)
+                    tasks_to_remove.append(request_id)
             
-            for task_id in tasks_to_remove:
-                del user_tasks[task_id]
-                if task_id in self.task_to_user:
-                    del self.task_to_user[task_id]
+            for request_id in tasks_to_remove:
+                del user_tasks[request_id]
+                if request_id in self.request_to_user:
+                    del self.request_to_user[request_id]
                 cleanup_count += 1
         
         if cleanup_count > 0:
@@ -518,19 +514,19 @@ class TransformTaskService:
         """处理ComfyUI进度更新"""
         logger.info(f"收到进度更新: prompt_id={prompt_id}, data={progress_data}")
         
-        task_id = self.prompt_to_task.get(prompt_id)
-        if not task_id:
+        request_id = self.prompt_to_request.get(prompt_id)
+        if not request_id:
             logger.warning(f"收到未知prompt_id的进度更新: {prompt_id}")
             return
         
-        user_id = self.task_to_user.get(task_id)
+        user_id = self.request_to_user.get(request_id)
         if not user_id:
-            logger.warning(f"任务 {task_id} 找不到用户")
+            logger.warning(f"请求 {request_id} 找不到用户")
             return
         
-        task_data = self.get_user_task(user_id, task_id)
+        task_data = self.get_user_task(user_id, request_id)
         if not task_data:
-            logger.warning(f"任务数据不存在: {task_id}")
+            logger.warning(f"任务数据不存在: {request_id}")
             return
         
         # 更新任务进度
@@ -557,7 +553,7 @@ class TransformTaskService:
             else:
                 task_data.message = f"生成进度: {task_data.progress:.1f}% - 节点: {node_id}"
                 
-            logger.info(f"任务 {task_id} ComfyUI进度更新: 节点{node_progress:.1f}% -> 总体{task_data.progress:.1f}% (步骤: {current_step}/{total_steps})")
+            logger.info(f"任务 {request_id} ComfyUI进度更新: 节点{node_progress:.1f}% -> 总体{task_data.progress:.1f}% (步骤: {current_step}/{total_steps})")
             
             # 推送进度更新
             asyncio.create_task(self._push_task_update(task_data))
@@ -570,7 +566,7 @@ class TransformTaskService:
                 task_data.progress = 30.0
                 task_data.stage = "transform"
                 task_data.message = "开始图像转换..."
-                logger.info(f"任务 {task_id} 开始转换")
+                logger.info(f"任务 {request_id} 开始转换")
                 asyncio.create_task(self._push_task_update(task_data))
                 
             elif status == "executing_node":
@@ -578,18 +574,18 @@ class TransformTaskService:
                 node_id = progress_data.get('node', 'unknown')
                 task_data.stage = "transform"
                 task_data.message = f"正在执行节点: {node_id}"
-                logger.info(f"任务 {task_id} 执行节点: {node_id}")
+                logger.info(f"任务 {request_id} 执行节点: {node_id}")
                 asyncio.create_task(self._push_task_update(task_data))
                 
             else:
                 # 其他状态更新
                 task_data.stage = "transform"
                 task_data.message = f"状态: {status}"
-                logger.info(f"任务 {task_id} 状态更新: {status}")
+                logger.info(f"任务 {request_id} 状态更新: {status}")
                 asyncio.create_task(self._push_task_update(task_data))
         else:
             # 没有可处理的进度或状态信息
-            logger.debug(f"任务 {task_id} 收到无法处理的进度数据: {progress_data}")
+            logger.debug(f"任务 {request_id} 收到无法处理的进度数据: {progress_data}")
     
     async def handle_completion_update(self, prompt_id: str, result_data: Dict[str, Any]):
         """处理ComfyUI完成事件"""

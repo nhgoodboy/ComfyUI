@@ -43,7 +43,7 @@ async def create_transform(params: Dict[str, Any], request: Request) -> Dict[str
         transform_service: TransformTaskService = request.app.state.transform_task_service
         
         # 创建转换任务（内部会清理user_id和style_id）
-        task_id = await transform_service.create_transform_task(
+        request_id = await transform_service.create_transform_task(
             user_id=user_id,
             style_id=style_id,
             image_url=image_url,
@@ -55,7 +55,7 @@ async def create_transform(params: Dict[str, Any], request: Request) -> Dict[str
         cleaned_user_id = FileNamingUtils.validate_user_id(user_id)
         cleaned_style_id = FileNamingUtils.validate_style_id(style_id)
         
-        task_data = transform_service.get_user_task(cleaned_user_id, task_id)
+        task_data = transform_service.get_user_task(cleaned_user_id, request_id)
         if not task_data:
             raise RPCError(
                 code=ErrorCodes.INTERNAL_ERROR,
@@ -89,25 +89,25 @@ async def get_transform_status(params: Dict[str, Any], request: Request) -> Dict
     """获取转换任务状态"""
     try:
         # 验证必需参数
-        RPCValidator.validate_required_fields(params, ["user_id", "task_id"])
+        RPCValidator.validate_required_fields(params, ["user_id", "request_id"])
         
         user_id = params["user_id"]
-        task_id = params["task_id"]
+        request_id = params["request_id"]
         
         # 验证参数
         RPCValidator.validate_user_id(user_id)
-        RPCValidator.validate_task_id(task_id)
+        RPCValidator.validate_request_id(request_id)
         
         # 获取转换任务服务
         transform_service: TransformTaskService = request.app.state.transform_task_service
         
         # 获取任务状态
-        task_data = transform_service.get_user_task(user_id, task_id)
+        task_data = transform_service.get_user_task(user_id, request_id)
         if not task_data:
             raise RPCError(
                 code=ErrorCodes.TASK_NOT_FOUND,
                 message="任务不存在",
-                data={"user_id": user_id, "task_id": task_id}
+                data={"user_id": user_id, "request_id": request_id}
             )
         
         # 格式化任务状态
@@ -129,31 +129,31 @@ async def get_transform_result(params: Dict[str, Any], request: Request) -> Dict
     """获取转换任务结果"""
     try:
         # 验证必需参数
-        RPCValidator.validate_required_fields(params, ["user_id", "task_id"])
+        RPCValidator.validate_required_fields(params, ["user_id", "request_id"])
         
         user_id = params["user_id"]
-        task_id = params["task_id"]
+        request_id = params["request_id"]
         
         # 验证参数
         RPCValidator.validate_user_id(user_id)
-        RPCValidator.validate_task_id(task_id)
+        RPCValidator.validate_request_id(request_id)
         
         # 获取转换任务服务
         transform_service: TransformTaskService = request.app.state.transform_task_service
         
         # 调试：记录当前存储的所有用户和任务
-        logger.info(f"查找任务: user_id={user_id}, task_id={task_id}")
+        logger.info(f"查找任务: user_id={user_id}, request_id={request_id}")
         logger.info(f"当前存储的用户: {list(transform_service.user_tasks.keys())}")
         for uid, tasks in transform_service.user_tasks.items():
             logger.info(f"用户 {uid} 的任务: {list(tasks.keys())}")
         
         # 获取任务数据
-        task_data = transform_service.get_user_task(user_id, task_id)
+        task_data = transform_service.get_user_task(user_id, request_id)
         if not task_data:
             raise RPCError(
                 code=ErrorCodes.TASK_NOT_FOUND,
                 message="任务不存在",
-                data={"user_id": user_id, "task_id": task_id}
+                data={"user_id": user_id, "request_id": request_id}
             )
         
         # 检查任务状态
@@ -162,7 +162,7 @@ async def get_transform_result(params: Dict[str, Any], request: Request) -> Dict
                 code=ErrorCodes.TASK_NOT_FOUND,
                 message="任务结果尚不可用",
                 data={
-                    "task_id": task_id,
+                    "request_id": request_id,
                     "current_status": task_data.status,
                     "message": "任务未完成或已失败"
                 }
@@ -172,7 +172,7 @@ async def get_transform_result(params: Dict[str, Any], request: Request) -> Dict
             raise RPCError(
                 code=ErrorCodes.INTERNAL_ERROR,
                 message="任务已完成但结果数据不可用",
-                data={"task_id": task_id}
+                data={"request_id": request_id}
             )
         
         # 格式化转换结果
@@ -260,36 +260,36 @@ async def cancel_transform(params: Dict[str, Any], request: Request) -> Dict[str
     """取消转换任务"""
     try:
         # 验证必需参数
-        RPCValidator.validate_required_fields(params, ["user_id", "task_id"])
+        RPCValidator.validate_required_fields(params, ["user_id", "request_id"])
         
         user_id = params["user_id"]
-        task_id = params["task_id"]
+        request_id = params["request_id"]
         
         # 验证参数
         RPCValidator.validate_user_id(user_id)
-        RPCValidator.validate_task_id(task_id)
+        RPCValidator.validate_request_id(request_id)
         
         # 获取转换任务服务
         transform_service: TransformTaskService = request.app.state.transform_task_service
         
         # 取消任务
-        success = await transform_service.cancel_task(user_id, task_id)
+        success = await transform_service.cancel_task(user_id, request_id)
         
         if not success:
             # 检查任务是否存在
-            task_data = transform_service.get_user_task(user_id, task_id)
+            task_data = transform_service.get_user_task(user_id, request_id)
             if not task_data:
                 raise RPCError(
                     code=ErrorCodes.TASK_NOT_FOUND,
                     message="任务不存在",
-                    data={"user_id": user_id, "task_id": task_id}
+                    data={"user_id": user_id, "request_id": request_id}
                 )
             else:
                 raise RPCError(
                     code=ErrorCodes.TASK_CANCELLED,
                     message="任务无法取消",
                     data={
-                        "task_id": task_id,
+                        "request_id": request_id,
                         "current_status": task_data.status,
                         "reason": "任务已完成或已失败"
                     }
@@ -297,7 +297,7 @@ async def cancel_transform(params: Dict[str, Any], request: Request) -> Dict[str
         
         return {
             "success": True,
-            "task_id": task_id,
+            "request_id": request_id,
             "message": "任务已成功取消"
         }
         

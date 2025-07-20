@@ -91,10 +91,10 @@ class RPCDownloadError(RPCError):
 class RPCTransformError(RPCError):
     """转换相关错误"""
     
-    def __init__(self, code: int, message: str = None, task_id: str = None, details: str = None):
+    def __init__(self, code: int, message: str = None, request_id: str = None, details: str = None):
         data = {}
-        if task_id:
-            data["task_id"] = task_id
+        if request_id:
+            data["request_id"] = request_id
         if details:
             data["details"] = details
             

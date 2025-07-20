@@ -110,9 +110,9 @@ class StyleTransformClient:
                 raise Exception(f"API请求失败: {response.status} - {result}")
             return result
     
-    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, request_id: str) -> Dict[str, Any]:
         """查询任务状态"""
-        url = f"{self.base_url}/api/v1/task/{task_id}"
+        url = f"{self.base_url}/api/v1/task/{request_id}"
         
         session = await self._get_session()
         async with session.get(url) as response:
@@ -132,12 +132,12 @@ class StyleTransformClient:
                 raise Exception(f"API请求失败: {response.status} - {result}")
             return result
     
-    async def wait_for_completion(self, task_id: str, timeout: int = 300) -> Dict[str, Any]:
+    async def wait_for_completion(self, request_id: str, timeout: int = 300) -> Dict[str, Any]:
         """等待任务完成"""
         start_time = time.time()
         
         while time.time() - start_time < timeout:
-            result = await self.get_task_status(task_id)
+            result = await self.get_task_status(request_id)
             status = result.get("status")
             
             if status == "completed":
@@ -145,10 +145,10 @@ class StyleTransformClient:
             elif status == "failed":
                 raise Exception(f"任务失败: {result.get('error_message')}")
             
-            print(f"任务 {task_id} 状态: {status}, 进度: {result.get('progress', 0)}%")
+            print(f"任务 {request_id} 状态: {status}, 进度: {result.get('progress', 0)}%")
             await asyncio.sleep(2)
         
-        raise TimeoutError(f"任务 {task_id} 超时")
+        raise TimeoutError(f"任务 {request_id} 超时")
 
 async def main():
     """主函数示例"""
@@ -173,11 +173,11 @@ async def main():
         print(f"任务创建成功: {json.dumps(result, indent=2, ensure_ascii=False)}")
         
         if result.get("success"):
-            task_id = result["task_id"]
+            request_id = result["request_id"]
             
             # 等待完成
-            print(f"等待任务 {task_id} 完成...")
-            final_result = await client.wait_for_completion(task_id)
+            print(f"等待任务 {request_id} 完成...")
+            final_result = await client.wait_for_completion(request_id)
             
             print(f"任务完成: {json.dumps(final_result, indent=2, ensure_ascii=False)}")
             print(f"输出图像: {final_result.get('output_image_url')}")
@@ -205,12 +205,12 @@ async def main():
         if batch_result.get("success"):
             # 等待所有任务完成
             for task_result in batch_result["results"]:
-                task_id = task_result["task_id"]
+                request_id = task_result["request_id"]
                 try:
-                    final_result = await client.wait_for_completion(task_id)
-                    print(f"任务 {task_id} 完成: {final_result.get('output_image_url')}")
+                    final_result = await client.wait_for_completion(request_id)
+                    print(f"任务 {request_id} 完成: {final_result.get('output_image_url')}")
                 except Exception as e:
-                    print(f"任务 {task_id} 失败: {e}")
+                    print(f"任务 {request_id} 失败: {e}")
         
     except Exception as e:
         print(f"批量图像变换失败: {e}")

@@ -59,42 +59,42 @@ class WorkflowAPIClient:
         ) as response:
             if response.status == 200:
                 data = await response.json()
-                return data.get("data")  # 返回task_id
+                return data.get("data")  # 返回request_id
             else:
                 error_text = await response.text()
                 raise Exception(f"执行工作流失败: {response.status} - {error_text}")
     
-    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, request_id: str) -> Dict[str, Any]:
         """获取任务状态"""
-        async with self.session.get(f"{self.base_url}/api/v1/workflows/tasks/{task_id}") as response:
+        async with self.session.get(f"{self.base_url}/api/v1/workflows/tasks/{request_id}") as response:
             if response.status == 200:
                 data = await response.json()
                 return data.get("data", {})
             else:
                 raise Exception(f"获取任务状态失败: {response.status}")
     
-    async def get_task_result(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_result(self, request_id: str) -> Dict[str, Any]:
         """获取任务结果"""
-        async with self.session.get(f"{self.base_url}/api/v1/workflows/tasks/{task_id}/result") as response:
+        async with self.session.get(f"{self.base_url}/api/v1/workflows/tasks/{request_id}/result") as response:
             if response.status == 200:
                 data = await response.json()
                 return data.get("data", {})
             else:
                 raise Exception(f"获取任务结果失败: {response.status}")
     
-    async def wait_for_completion(self, task_id: str, timeout: int = 300) -> Dict[str, Any]:
+    async def wait_for_completion(self, request_id: str, timeout: int = 300) -> Dict[str, Any]:
         """等待任务完成"""
         start_time = time.time()
         
         while time.time() - start_time < timeout:
-            status_data = await self.get_task_status(task_id)
+            status_data = await self.get_task_status(request_id)
             status = status_data.get("status")
             progress = status_data.get("progress", 0)
             
-            print(f"任务 {task_id}: {status} ({progress:.1%})")
+            print(f"任务 {request_id}: {status} ({progress:.1%})")
             
             if status == "completed":
-                result = await self.get_task_result(task_id)
+                result = await self.get_task_result(request_id)
                 return result
             elif status == "failed":
                 error_msg = status_data.get("error_message", "未知错误")
@@ -128,13 +128,13 @@ async def demo_clay_style_transform():
             "image_url": "https://example.com/test-image.jpg"  # 这里应该是实际的图像URL
         }
         
-        task_id = await client.execute_workflow("clay_style_transform", parameters)
-        print(f"任务已提交，任务ID: {task_id}")
+        request_id = await client.execute_workflow("clay_style_transform", parameters)
+        print(f"任务已提交，任务ID: {request_id}")
         
         # 4. 等待完成
         print("\n4. 等待任务完成...")
         try:
-            result = await client.wait_for_completion(task_id)
+            result = await client.wait_for_completion(request_id)
             print(f"任务完成! 结果: {json.dumps(result, indent=2, ensure_ascii=False)}")
         except Exception as e:
             print(f"任务失败: {e}")
@@ -219,8 +219,8 @@ async def demo_parameter_validation():
         }
         
         try:
-            task_id = await client.execute_workflow("clay_style_transform", invalid_parameters)
-            print(f"意外成功: {task_id}")
+            request_id = await client.execute_workflow("clay_style_transform", invalid_parameters)
+            print(f"意外成功: {request_id}")
         except Exception as e:
             print(f"验证失败（预期）: {e}")
 

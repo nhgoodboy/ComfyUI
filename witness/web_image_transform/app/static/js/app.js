@@ -132,7 +132,7 @@ class ImageTransformApp {
     }
 
     handleWebSocketMessage(data) {
-        if (data.type === 'task_update' && data.task_id) {
+        if (data.type === 'task_update' && data.request_id) {
             this.handleTaskUpdate(data);
         }
     }
@@ -141,14 +141,14 @@ class ImageTransformApp {
         // 使用标准的嵌套数据结构
         const taskData = data.data;
         const requestId = taskData.request_id;
-        console.log(`任务更新 - ${data.task_id} (request_id: ${requestId}): ${taskData.status} (${taskData.progress}%) - ${taskData.message}`);
+        console.log(`任务更新 - ${data.request_id} (request_id: ${requestId}): ${taskData.status} (${taskData.progress}%) - ${taskData.message}`);
         
-        // 将task_id添加到taskData中，方便后续方法使用
-        taskData.task_id = data.task_id;
-        console.log('DEBUG: 设置taskData.task_id为:', taskData.task_id);
+        // 将request_id添加到taskData中，方便后续方法使用
+        taskData.request_id = data.request_id;
+        console.log('DEBUG: 设置taskData.request_id为:', taskData.request_id);
         
         // 更新当前任务状态
-        if (this.currentTask && this.currentTask.task_id === data.task_id) {
+        if (this.currentTask && this.currentTask.request_id === data.request_id) {
             this.currentTask = { ...this.currentTask, ...taskData };
         }
 
@@ -170,7 +170,7 @@ class ImageTransformApp {
                 break;
             
             case 'completed':
-                console.log('URGENT DEBUG: 调用handleTaskCompleted，taskData.task_id =', taskData.task_id);
+                console.log('URGENT DEBUG: 调用handleTaskCompleted，taskData.request_id =', taskData.request_id);
                 this.handleTaskCompleted(taskData);
                 break;
             
@@ -193,7 +193,7 @@ class ImageTransformApp {
         
         // 调试：打印data内容
         console.log('handleTaskCompleted 收到的data:', data);
-        console.log('data.task_id:', data.task_id);
+        console.log('data.request_id:', data.request_id);
         
         // 检查是否有结果数据
         if (data.result) {
@@ -459,7 +459,7 @@ class ImageTransformApp {
             this.currentTask = result;
 
             console.log('转换任务已创建:', result);
-            this.updateStatus(`任务已创建: ${result.task_id}`, 'success');
+            this.updateStatus(`任务已创建: ${result.request_id}`, 'success');
 
         } catch (error) {
             console.error('提交转换任务失败:', error);

@@ -24,22 +24,22 @@ class PushConnectionManager:
             del self.active_connections[client_id]
             logger.info(f"推送客户端断开: {client_id}")
     
-    async def push_task_update(self, task_id: str, update_data: Dict[str, Any]):
+    async def push_task_update(self, request_id: str, update_data: Dict[str, Any]):
         """向所有连接的客户端推送任务更新"""
         message = {
             "type": "task_update",
-            "task_id": task_id,
+            "request_id": request_id,
             "data": update_data
         }
         
-        logger.info(f"准备推送任务更新: task_id={task_id}, 连接数={len(self.active_connections)}")
+        logger.info(f"准备推送任务更新: request_id={request_id}, 连接数={len(self.active_connections)}")
         logger.info(f"推送消息内容: {message}")
         
         disconnected_clients = []
         for client_id, websocket in self.active_connections.items():
             try:
                 await websocket.send_json(message)
-                logger.info(f"成功推送任务更新到客户端 {client_id}: {task_id}")
+                logger.info(f"成功推送任务更新到客户端 {client_id}: {request_id}")
             except Exception as e:
                 logger.warning(f"推送消息失败，客户端 {client_id}: {e}")
                 disconnected_clients.append(client_id)

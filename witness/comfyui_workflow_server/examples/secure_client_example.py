@@ -207,13 +207,13 @@ class SecureComfyUIClient:
         }
         return await self._make_request("POST", "/api/v1/styles/transform", data)
     
-    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, request_id: str) -> Dict[str, Any]:
         """获取任务状态"""
-        return await self._make_request("GET", f"/api/v1/tasks/{task_id}")
+        return await self._make_request("GET", f"/api/v1/tasks/{request_id}")
     
-    async def get_task_result(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_result(self, request_id: str) -> Dict[str, Any]:
         """获取任务结果"""
-        return await self._make_request("GET", f"/api/v1/tasks/{task_id}/result")
+        return await self._make_request("GET", f"/api/v1/tasks/{request_id}/result")
     
     async def upload_file(self, file_path: str) -> Dict[str, Any]:
         """上传文件"""
@@ -226,9 +226,9 @@ class SecureComfyUIClient:
         """获取用户任务列表"""
         return await self._make_request("GET", "/api/v1/tasks")
     
-    async def delete_task(self, task_id: str) -> Dict[str, Any]:
+    async def delete_task(self, request_id: str) -> Dict[str, Any]:
         """删除任务"""
-        return await self._make_request("DELETE", f"/api/v1/tasks/{task_id}")
+        return await self._make_request("DELETE", f"/api/v1/tasks/{request_id}")
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
@@ -263,15 +263,15 @@ class SecureWorkflowManager:
                 style_name=style_name,
                 image_file=file_id
             )
-            task_id = task_result["task_id"]
+            request_id = task_result["request_id"]
             
             # 步骤3：等待任务完成（如果需要）
             if wait_for_completion:
                 logger.info("步骤3: 等待任务完成")
-                result = await self._wait_for_task_completion(task_id, max_wait_time)
+                result = await self._wait_for_task_completion(request_id, max_wait_time)
                 return result
             else:
-                return {"task_id": task_id, "status": "submitted"}
+                return {"request_id": request_id, "status": "submitted"}
                 
         except Exception as e:
             logger.error(f"风格转换失败: {e}")
@@ -279,18 +279,18 @@ class SecureWorkflowManager:
     
     async def _wait_for_task_completion(
         self, 
-        task_id: str, 
+        request_id: str, 
         max_wait_time: int
     ) -> Dict[str, Any]:
         """等待任务完成"""
         start_time = time.time()
         
         while time.time() - start_time < max_wait_time:
-            status = await self.client.get_task_status(task_id)
+            status = await self.client.get_task_status(request_id)
             
             if status["status"] == "completed":
                 logger.info("任务完成，获取结果")
-                return await self.client.get_task_result(task_id)
+                return await self.client.get_task_result(request_id)
             elif status["status"] == "failed":
                 raise Exception(f"任务失败: {status.get('error', 'Unknown error')}")
             

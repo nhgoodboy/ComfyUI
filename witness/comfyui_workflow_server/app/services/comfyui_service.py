@@ -340,12 +340,12 @@ class ComfyUIService:
         
         return {"status": "pending"}
     
-    async def submit_workflow(self, task_id: str, workflow: Dict[str, Any]) -> str:
+    async def submit_workflow(self, request_id: str, workflow: Dict[str, Any]) -> str:
         """
         提交工作流并开始监控
         """
         prompt_id = await self.queue_prompt(workflow)
-        logger.info(f"任务 {task_id} 已提交到ComfyUI, prompt_id: {prompt_id}")
+        logger.info(f"任务 {request_id} 已提交到ComfyUI, prompt_id: {prompt_id}")
         return prompt_id
 
     def _on_progress(self, prompt_id: str, progress_data: Dict[str, Any]):
@@ -365,13 +365,13 @@ class ComfyUIService:
             logger.warning("TransformTaskService未注入，无法处理完成更新")
 
     async def _find_task_by_prompt_id(self, prompt_id: str) -> Optional[str]:
-        """根据prompt_id查找任务ID (此逻辑已移至TransformTaskService)"""
+        """根据prompt_id查找请求ID (此逻辑已移至TransformTaskService)"""
         # 这个函数现在是多余的，可以被移除，但为了安全暂时保留
-        if self.transform_task_service and hasattr(self.transform_task_service, 'prompt_to_task'):
-            return self.transform_task_service.prompt_to_task.get(prompt_id)
+        if self.transform_task_service and hasattr(self.transform_task_service, 'prompt_to_request'):
+            return self.transform_task_service.prompt_to_request.get(prompt_id)
         return None
 
-    async def _poll_history(self, task_id: str, prompt_id: str):
+    async def _poll_history(self, request_id: str, prompt_id: str):
         """
         (已废弃) 轮询历史记录以获取结果。
         此方法将被新的WebSocket事件驱动模型取代。

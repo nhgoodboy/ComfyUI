@@ -30,7 +30,7 @@ class StyleInfo(BaseModel):
 
 
 class TaskInfo(BaseModel):
-    task_id: str
+    request_id: str
     user_id: str
     style_id: str
     status: str
@@ -155,7 +155,7 @@ async def create_transform_task(
             request_id=request_id
         )
         
-        logger.info(f"转换任务创建成功: {task_info.get('task_id')}")
+        logger.info(f"转换任务创建成功: {task_info.get('request_id')}")
         return task_info
         
     except HTTPException:
@@ -165,24 +165,24 @@ async def create_transform_task(
         raise HTTPException(status_code=500, detail=f"创建转换任务失败: {str(e)}")
 
 
-@api_router.get("/tasks/{task_id}", response_model=TaskInfo)
-async def get_task_status(task_id: str):
+@api_router.get("/tasks/{request_id}", response_model=TaskInfo)
+async def get_task_status(request_id: str):
     """获取任务状态"""
     try:
         await transform_service.initialize()
-        task_info = await transform_service.get_task_status(task_id)
+        task_info = await transform_service.get_task_status(request_id)
         return task_info
     except Exception as e:
         logger.error(f"获取任务状态失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取任务状态失败: {str(e)}")
 
 
-@api_router.get("/tasks/{task_id}/result")
-async def get_task_result(task_id: str):
+@api_router.get("/tasks/{request_id}/result")
+async def get_task_result(request_id: str):
     """获取任务结果"""
     try:
         await transform_service.initialize()
-        result = await transform_service.get_task_result(task_id)
+        result = await transform_service.get_task_result(request_id)
         return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"获取任务结果失败: {e}")
@@ -204,12 +204,12 @@ async def list_tasks(limit: int = 50):
         raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
 
 
-@api_router.delete("/tasks/{task_id}")
-async def cancel_task(task_id: str):
+@api_router.delete("/tasks/{request_id}")
+async def cancel_task(request_id: str):
     """取消任务"""
     try:
         await transform_service.initialize()
-        success = await transform_service.cancel_task(task_id)
+        success = await transform_service.cancel_task(request_id)
         
         if success:
             return {"success": True, "message": "任务已取消"}

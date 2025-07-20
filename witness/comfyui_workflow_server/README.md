@@ -78,7 +78,7 @@
   "method": "transform.get_status",
   "params": {
     "user_id": "user123",
-    "task_id": "task_abc123"
+    "request_id": "req_abc123"
   },
   "id": "req_3"
 }
@@ -215,13 +215,13 @@ async def listen_updates(user_id: str):
                 
             data = json.loads(message)
             if data.get('type') == 'task_update':
-                task_id = data.get('task_id')
+                request_id = data.get('request_id')
                 task_data = data.get('data', {})
                 status = task_data.get('status')
                 progress = task_data.get('progress', 0)
                 message = task_data.get('message', '')
                 
-                print(f"任务 {task_id}: {status} ({progress}%) - {message}")
+                print(f"任务 {request_id}: {status} ({progress}%) - {message}")
                 
                 # 处理任务完成
                 if status == 'completed' and 'result' in task_data:
@@ -278,7 +278,7 @@ app/
 ```json
 {
   "type": "task_update",
-  "task_id": "abc123",
+  "request_id": "req123",
   "data": {
     "status": "processing",
     "progress": 45.6,

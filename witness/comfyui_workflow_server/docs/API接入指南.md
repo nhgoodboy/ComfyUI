@@ -217,7 +217,7 @@ graph LR
 ```json
 {
   "success": true,
-  "task_id": "task_12345",
+  "request_id": "task_12345",
   "user_id": "alice",
   "estimated_time": 45
 }
@@ -240,7 +240,7 @@ graph LR
   "user_id": "alice",
   "tasks": [
     {
-      "task_id": "task_12345",
+      "request_id": "task_12345",
       "user_id": "alice", 
       "style_id": "clay_style_transform",
       "status": "completed",
@@ -258,17 +258,17 @@ graph LR
 
 #### 3. 获取任务详情
 
-**端点**: `GET /api/v1/users/{user_id}/tasks/{task_id}`
+**端点**: `GET /api/v1/users/{user_id}/tasks/{request_id}`
 
 **路径参数**:
 - `user_id` (string, required): 用户标识符
-- `task_id` (string, required): 任务ID
+- `request_id` (string, required): 任务ID
 
 **响应**: 与任务列表中的单个任务相同格式
 
 #### 4. 获取任务结果
 
-**端点**: `GET /api/v1/users/{user_id}/tasks/{task_id}/result`
+**端点**: `GET /api/v1/users/{user_id}/tasks/{request_id}/result`
 
 **描述**: 仅在任务状态为 `completed` 时可用。
 
@@ -440,7 +440,7 @@ WebSocket系统提供任务状态的实时更新，支持两种连接方式：
 ```json
 {
   "status": "running",
-  "task_id": "task_12345", 
+  "request_id": "task_12345", 
   "progress": 45.0,
   "message": "处理中... 步骤 12/25 (48.0%)",
   "estimated_remaining": 30,
@@ -454,7 +454,7 @@ WebSocket系统提供任务状态的实时更新，支持两种连接方式：
 ```json
 {
   "status": "completed",
-  "task_id": "task_12345",
+  "request_id": "task_12345",
   "progress": 100.0,
   "message": "图像转换完成！",
   "result": {
@@ -468,7 +468,7 @@ WebSocket系统提供任务状态的实时更新，支持两种连接方式：
         "node_id": "35"
       }
     ],
-    "task_id": "task_12345",
+    "request_id": "task_12345",
     "completed_at": null
   }
 }
@@ -510,9 +510,9 @@ class ComfyUIWebSocketClient {
     }
     
     handleTaskUpdate(data) {
-        const { status, task_id, progress, message } = data;
+        const { status, request_id, progress, message } = data;
         
-        console.log(`任务 ${task_id}: ${status} (${progress}%) - ${message}`);
+        console.log(`任务 ${request_id}: ${status} (${progress}%) - ${message}`);
         
         if (status === 'completed') {
             this.handleTaskCompleted(data);
@@ -631,17 +631,17 @@ class ComfyUIClient:
         )
         return response.json()
     
-    def get_task_status(self, task_id):
+    def get_task_status(self, request_id):
         """获取任务状态"""
         response = requests.get(
-            f"{self.base_url}/api/v1/users/{self.user_id}/tasks/{task_id}"
+            f"{self.base_url}/api/v1/users/{self.user_id}/tasks/{request_id}"
         )
         return response.json()
     
-    def get_task_result(self, task_id):
+    def get_task_result(self, request_id):
         """获取任务结果"""
         response = requests.get(
-            f"{self.base_url}/api/v1/users/{self.user_id}/tasks/{task_id}/result"
+            f"{self.base_url}/api/v1/users/{self.user_id}/tasks/{request_id}/result"
         )
         return response.json()
     
@@ -669,7 +669,7 @@ class ComfyUIClient:
                     print(f"收到任务更新: {data}")
                     
                     if data.get('status') == 'completed':
-                        print(f"任务 {data['task_id']} 完成!")
+                        print(f"任务 {data['request_id']} 完成!")
                         if 'result' in data:
                             output_files = data['result'].get('output_files', [])
                             for file in output_files:
@@ -701,14 +701,14 @@ async def main():
         print("任务创建结果:", task_result)
         
         if task_result.get('success'):
-            task_id = task_result['task_id']
+            request_id = task_result['request_id']
             
             # 启动WebSocket监听（在后台运行）
             asyncio.create_task(client.websocket_listen())
             
             # 轮询任务状态
             while True:
-                status = client.get_task_status(task_id)
+                status = client.get_task_status(request_id)
                 print(f"任务状态: {status}")
                 
                 if status['status'] in ['completed', 'failed']:
@@ -718,7 +718,7 @@ async def main():
             
             # 获取结果
             if status['status'] == 'completed':
-                result = client.get_task_result(task_id)
+                result = client.get_task_result(request_id)
                 print("任务结果:", result)
 
 # 运行示例

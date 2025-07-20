@@ -84,9 +84,9 @@ class MultiUserAPIClient:
             else:
                 raise Exception(f"风格转换失败: {result.get('error')}")
     
-    async def get_task_status(self, user_id: str, task_id: str) -> Dict:
+    async def get_task_status(self, user_id: str, request_id: str) -> Dict:
         """获取任务状态"""
-        url = f"{self.base_url}/api/v1/tasks/{task_id}"
+        url = f"{self.base_url}/api/v1/tasks/{request_id}"
         headers = self._get_headers(user_id)
         
         async with self.session.get(url, headers=headers) as response:
@@ -96,9 +96,9 @@ class MultiUserAPIClient:
             else:
                 raise Exception(f"获取任务状态失败: {result.get('error')}")
     
-    async def get_task_result(self, user_id: str, task_id: str) -> Dict:
+    async def get_task_result(self, user_id: str, request_id: str) -> Dict:
         """获取任务结果"""
-        url = f"{self.base_url}/api/v1/tasks/{task_id}/result"
+        url = f"{self.base_url}/api/v1/tasks/{request_id}/result"
         headers = self._get_headers(user_id)
         
         async with self.session.get(url, headers=headers) as response:
@@ -175,13 +175,13 @@ async def single_user_workflow(user_id: str, image_path: str):
                 style_id, 
                 upload_result['url']
             )
-            task_id = transform_result['task_id']
-            logger.info(f"任务创建成功: {task_id}")
+            request_id = transform_result['request_id']
+            logger.info(f"任务创建成功: {request_id}")
             
             # 4. 轮询任务状态
             logger.info("4. 等待任务完成...")
             while True:
-                status = await client.get_task_status(user_id, task_id)
+                status = await client.get_task_status(user_id, request_id)
                 logger.info(f"任务状态: {status['status']} ({status['progress']}%)")
                 
                 if status['status'] == 'completed':
@@ -195,7 +195,7 @@ async def single_user_workflow(user_id: str, image_path: str):
             
             # 5. 获取任务结果
             logger.info("5. 获取任务结果...")
-            result = await client.get_task_result(user_id, task_id)
+            result = await client.get_task_result(user_id, request_id)
             logger.info(f"转换完成: {result}")
             
             # 6. 获取用户统计

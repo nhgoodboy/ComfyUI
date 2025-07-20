@@ -97,7 +97,7 @@ class TransformService:
                 # 构造前端期待的嵌套数据结构
                 frontend_data = {
                     "type": "task_update",
-                    "task_id": data.get("task_id"),  # task_id在顶层
+                    "request_id": data.get("request_id"),  # request_id在顶层
                     "data": {
                         "status": task_data.get("status"),
                         "progress": task_data.get("progress", 0),
@@ -221,27 +221,27 @@ class TransformService:
             async with self.rpc_client:
                 result = await self.rpc_client.create_transform(style_id, image_url, request_id)
                 
-                logger.info(f"转换任务已创建: {result.get('task_id')} (request_id: {request_id})")
+                logger.info(f"转换任务已创建: {result.get('request_id')} (request_id: {request_id})")
                 return result
                 
         except Exception as e:
             logger.error(f"创建转换任务失败: {e}")
             raise
     
-    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, request_id: str) -> Dict[str, Any]:
         """获取任务状态"""
         try:
             async with self.rpc_client:
-                return await self.rpc_client.get_task_status(task_id)
+                return await self.rpc_client.get_task_status(request_id)
         except Exception as e:
             logger.error(f"获取任务状态失败: {e}")
             raise
     
-    async def get_task_result(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_result(self, request_id: str) -> Dict[str, Any]:
         """获取任务结果"""
         try:
             async with self.rpc_client:
-                return await self.rpc_client.get_task_result(task_id)
+                return await self.rpc_client.get_task_result(request_id)
         except Exception as e:
             logger.error(f"获取任务结果失败: {e}")
             raise
@@ -256,11 +256,11 @@ class TransformService:
             logger.error(f"获取任务列表失败: {e}")
             raise
     
-    async def cancel_task(self, task_id: str) -> bool:
+    async def cancel_task(self, request_id: str) -> bool:
         """取消任务"""
         try:
             async with self.rpc_client:
-                result = await self.rpc_client.cancel_task(task_id)
+                result = await self.rpc_client.cancel_task(request_id)
                 return result.get("success", False)
         except Exception as e:
             logger.error(f"取消任务失败: {e}")

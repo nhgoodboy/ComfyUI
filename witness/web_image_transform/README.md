@@ -109,12 +109,12 @@ Content-Type: multipart/form-data
 
 ### 获取任务状态
 ```http
-GET /api/tasks/{task_id}
+GET /api/tasks/{request_id}
 ```
 
 ### 获取任务结果
 ```http
-GET /api/tasks/{task_id}/result
+GET /api/tasks/{request_id}/result
 ```
 
 ### WebSocket实时通信

@@ -64,36 +64,36 @@ class StyleAPIClient:
         ) as resp:
             if resp.status == 200:
                 result = await resp.json()
-                return result.get("task_id") if result.get("success") else None
+                return result.get("request_id") if result.get("success") else None
             else:
                 error_text = await resp.text()
                 print(f"转换失败: {resp.status} - {error_text}")
                 return None
     
-    async def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task_status(self, request_id: str) -> Optional[Dict[str, Any]]:
         """获取任务状态"""
-        async with self.session.get(f"{self.base_url}/api/v1/tasks/{task_id}") as resp:
+        async with self.session.get(f"{self.base_url}/api/v1/tasks/{request_id}") as resp:
             if resp.status == 200:
                 result = await resp.json()
                 return result.get("data") if result.get("success") else None
             return None
     
-    async def get_task_result(self, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task_result(self, request_id: str) -> Optional[Dict[str, Any]]:
         """获取任务结果"""
-        async with self.session.get(f"{self.base_url}/api/v1/tasks/{task_id}/result") as resp:
+        async with self.session.get(f"{self.base_url}/api/v1/tasks/{request_id}/result") as resp:
             if resp.status == 200:
                 result = await resp.json()
                 return result.get("data") if result.get("success") else None
             return None
     
-    async def wait_for_completion(self, task_id: str, timeout: int = 300) -> Optional[Dict[str, Any]]:
+    async def wait_for_completion(self, request_id: str, timeout: int = 300) -> Optional[Dict[str, Any]]:
         """等待任务完成"""
         start_time = time.time()
         
         while time.time() - start_time < timeout:
-            status = await self.get_task_status(task_id)
+            status = await self.get_task_status(request_id)
             if not status:
-                print(f"❌ 获取任务状态失败: {task_id}")
+                print(f"❌ 获取任务状态失败: {request_id}")
                 return None
             
             status_value = status.get("status", "unknown")
@@ -103,7 +103,7 @@ class StyleAPIClient:
             
             if status_value == "completed":
                 print("✅ 任务完成！")
-                return await self.get_task_result(task_id)
+                return await self.get_task_result(request_id)
             elif status_value == "failed":
                 error_msg = status.get("error_message", "未知错误")
                 print(f"❌ 任务失败: {error_msg}")
@@ -165,17 +165,17 @@ async def demo_basic_usage():
                     selected_style = styles[0]
                     print(f"3. 执行风格转换 ({selected_style['name']})...")
                     
-                    task_id = await client.transform_image(
+                    request_id = await client.transform_image(
                         selected_style['id'], 
                         test_image_url
                     )
                     
-                    if task_id:
-                        print(f"   任务ID: {task_id}")
+                    if request_id:
+                        print(f"   任务ID: {request_id}")
                         
                         # 4. 等待完成
                         print("\n4. 等待任务完成...")
-                        result = await client.wait_for_completion(task_id)
+                        result = await client.wait_for_completion(request_id)
                         
                         if result:
                             print(f"🎉 转换成功！")
@@ -243,17 +243,17 @@ async def demo_multiple_styles():
                 # 并行提交任务
                 tasks = []
                 for style in selected_styles:
-                    task_id = await client.transform_image(style['id'], test_image_url)
-                    if task_id:
-                        tasks.append((style['name'], task_id))
-                        print(f"   已提交 {style['name']} 任务: {task_id}")
+                    request_id = await client.transform_image(style['id'], test_image_url)
+                    if request_id:
+                        tasks.append((style['name'], request_id))
+                        print(f"   已提交 {style['name']} 任务: {request_id}")
                 
                 # 等待所有任务完成
                 print("\n等待所有任务完成...")
                 results = {}
-                for style_name, task_id in tasks:
+                for style_name, request_id in tasks:
                     print(f"\n等待 {style_name} 完成...")
-                    result = await client.wait_for_completion(task_id)
+                    result = await client.wait_for_completion(request_id)
                     results[style_name] = result
                 
                 # 显示结果

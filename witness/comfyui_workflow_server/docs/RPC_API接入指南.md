@@ -247,7 +247,7 @@ ws.onmessage = (event) => {
 ```json
 {
   "result": {
-    "task_id": "task_12345",
+    "request_id": "task_12345",
     "user_id": "alice",
     "style_id": "clay_style",
     "status": "pending",
@@ -273,7 +273,7 @@ ws.onmessage = (event) => {
   "method": "transform.get_status",
   "params": {
     "user_id": "alice",
-    "task_id": "task_12345"
+    "request_id": "task_12345"
   },
   "id": "req_005"
 }
@@ -285,7 +285,7 @@ ws.onmessage = (event) => {
 ```json
 {
   "result": {
-    "task_id": "task_12345",
+    "request_id": "task_12345",
     "user_id": "alice",
     "style_id": "clay_style", 
     "status": "downloading",
@@ -307,7 +307,7 @@ ws.onmessage = (event) => {
 ```json
 {
   "result": {
-    "task_id": "task_12345",
+    "request_id": "task_12345",
     "user_id": "alice", 
     "style_id": "clay_style",
     "status": "processing",
@@ -329,7 +329,7 @@ ws.onmessage = (event) => {
   "method": "transform.get_result",
   "params": {
     "user_id": "alice",
-    "task_id": "task_12345"
+    "request_id": "task_12345"
   },
   "id": "req_006"
 }
@@ -339,7 +339,7 @@ ws.onmessage = (event) => {
 ```json
 {
   "result": {
-    "task_id": "task_12345",
+    "request_id": "task_12345",
     "user_id": "alice",
     "style_id": "clay_style",
     "status": "completed",
@@ -386,7 +386,7 @@ ws.onmessage = (event) => {
     "user_id": "alice",
     "tasks": [
       {
-        "task_id": "task_12345",
+        "request_id": "task_12345",
         "user_id": "alice",
         "style_id": "clay_style",
         "status": "completed",
@@ -413,7 +413,7 @@ ws.onmessage = (event) => {
   "method": "transform.cancel",
   "params": {
     "user_id": "alice", 
-    "task_id": "task_12345"
+    "request_id": "task_12345"
   },
   "id": "req_008"
 }
@@ -424,7 +424,7 @@ ws.onmessage = (event) => {
 {
   "result": {
     "success": true,
-    "task_id": "task_12345", 
+    "request_id": "task_12345", 
     "message": "任务已成功取消"
   },
   "id": "req_008"
@@ -576,7 +576,7 @@ ws://your-domain:8000/ws/{user_id}
 ```json
 {
   "type": "task_update",
-  "task_id": "task_12345",
+  "request_id": "task_12345",
   "data": {
     "user_id": "alice",
     "style_id": "clay_style",
@@ -598,7 +598,7 @@ ws://your-domain:8000/ws/{user_id}
 ```json
 {
   "type": "task_update",
-  "task_id": "task_12345", 
+  "request_id": "task_12345", 
   "data": {
     "user_id": "alice",
     "style_id": "clay_style",
@@ -715,20 +715,20 @@ class ComfyUIRPCClient {
     async getTaskStatus(taskId) {
         return await this.callRPC('transform.get_status', {
             user_id: this.userId,
-            task_id: taskId
+            request_id: taskId
         });
     }
     
     async getTaskResult(taskId) {
         return await this.callRPC('transform.get_result', {
             user_id: this.userId,
-            task_id: taskId
+            request_id: taskId
         });
     }
     
     handleTaskUpdate(data) {
         const taskData = data.data;
-        console.log(`任务 ${data.task_id}: ${taskData.status} (${taskData.progress}%) - ${taskData.message}`);
+        console.log(`任务 ${data.request_id}: ${taskData.status} (${taskData.progress}%) - ${taskData.message}`);
         
         if (taskData.status === 'completed') {
             this.handleTaskCompleted(taskData);
@@ -776,7 +776,7 @@ client.getStyles().then(styles => {
 // 创建转换任务
 client.createTransform('clay_style', 'https://external.com/clay_style_alice_req123_input.jpg')
     .then(task => {
-        console.log('任务已创建:', task.task_id);
+        console.log('任务已创建:', task.request_id);
     })
     .catch(error => {
         console.error('创建任务失败:', error);
@@ -910,18 +910,18 @@ class ComfyUIRPCClient:
             "image_url": image_url
         })
     
-    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, request_id: str) -> Dict[str, Any]:
         """获取任务状态"""
         return await self.call_rpc("transform.get_status", {
             "user_id": self.user_id,
-            "task_id": task_id
+            "request_id": request_id
         })
     
-    async def get_task_result(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_result(self, request_id: str) -> Dict[str, Any]:
         """获取任务结果"""
         return await self.call_rpc("transform.get_result", {
             "user_id": self.user_id,
-            "task_id": task_id
+            "request_id": request_id
         })
     
     async def list_tasks(self, limit: int = 100, status_filter: list = None) -> Dict[str, Any]:
@@ -935,11 +935,11 @@ class ComfyUIRPCClient:
         
         return await self.call_rpc("transform.list", params)
     
-    async def cancel_task(self, task_id: str) -> Dict[str, Any]:
+    async def cancel_task(self, request_id: str) -> Dict[str, Any]:
         """取消任务"""
         return await self.call_rpc("transform.cancel", {
             "user_id": self.user_id,
-            "task_id": task_id
+            "request_id": request_id
         })
     
     async def build_filename(self, style_id: str, file_type: str = "input", extension: str = "jpg") -> Dict[str, Any]:
@@ -988,13 +988,13 @@ async def main():
             "clay_style",
             "https://external.com/clay_style_alice_req123_input.jpg"
         )
-        print("任务创建:", task["task_id"])
+        print("任务创建:", task["request_id"])
         
         # 定义消息处理器
         async def handle_message(data):
             if data.get('type') == 'task_update':
                 task_data = data.get('data', {})
-                print(f"任务 {data['task_id']}: {task_data['status']} ({task_data['progress']}%)")
+                print(f"任务 {data['request_id']}: {task_data['status']} ({task_data['progress']}%)")
                 
                 if task_data['status'] == 'completed':
                     # 检查结果数据
@@ -1006,7 +1006,7 @@ async def main():
                             print("任务完成，输出文件:", result['output_images'])
                     else:
                         # 如果WebSocket没有结果，主动获取
-                        result = await client.get_task_result(data['task_id'])
+                        result = await client.get_task_result(data['request_id'])
                         print("任务完成，输出文件:", result["output_images"])
         
         # 启动WebSocket监听（这会一直运行）
@@ -1072,14 +1072,14 @@ class ComfyUIRPCClient {
     async getTaskStatus(taskId) {
         return await this.callRPC('transform.get_status', {
             user_id: this.userId,
-            task_id: taskId
+            request_id: taskId
         });
     }
     
     async getTaskResult(taskId) {
         return await this.callRPC('transform.get_result', {
             user_id: this.userId,
-            task_id: taskId
+            request_id: taskId
         });
     }
     
@@ -1134,13 +1134,13 @@ async function main() {
             'clay_style',
             'https://external.com/clay_style_alice_req123_input.jpg'
         );
-        console.log('任务创建:', task.task_id);
+        console.log('任务创建:', task.request_id);
         
         // 监听WebSocket消息
         client.connectWebSocket(async (data) => {
             if (data.type === 'task_update') {
                 const taskData = data.data;
-                console.log(`任务 ${data.task_id}: ${taskData.status} (${taskData.progress}%)`);
+                console.log(`任务 ${data.request_id}: ${taskData.status} (${taskData.progress}%)`);
                 
                 if (taskData.status === 'completed') {
                     // 检查结果数据
@@ -1148,7 +1148,7 @@ async function main() {
                         console.log('任务完成，输出文件:', taskData.result.files.output);
                     } else {
                         // 如果WebSocket没有结果，主动获取
-                        const result = await client.getTaskResult(data.task_id);
+                        const result = await client.getTaskResult(data.request_id);
                         console.log('任务完成，输出文件:', result.output_images);
                     }
                 }
@@ -1240,7 +1240,7 @@ class TaskMonitor {
     async startMonitoring() {
         // 启动WebSocket监听
         this.client.connectWebSocket((data) => {
-            if (data.type === 'task_update' && data.task_id === this.taskId) {
+            if (data.type === 'task_update' && data.request_id === this.taskId) {
                 this.wsConnected = true;
                 this.handleUpdate(data.data);
             }
@@ -1296,7 +1296,7 @@ class TaskMonitor {
 
 // 使用示例
 const task = await client.createTransform('clay_style', imageUrl);
-const monitor = new TaskMonitor(client, task.task_id);
+const monitor = new TaskMonitor(client, task.request_id);
 monitor.startMonitoring();
 ```
 
@@ -1309,7 +1309,7 @@ async function batchGetTaskStatus(client, taskIds) {
         method: 'transform.get_status',
         params: {
             user_id: client.userId,
-            task_id: taskId
+            request_id: taskId
         },
         id: `batch_${index}`
     }));

@@ -145,18 +145,18 @@ class ComfyUIRPCClient:
         
         return await self.call_rpc("transform.create", params)
     
-    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, request_id: str) -> Dict[str, Any]:
         """获取任务状态"""
         return await self.call_rpc("transform.get_status", {
             "user_id": self.user_id,
-            "task_id": task_id
+            "request_id": request_id
         })
     
-    async def get_task_result(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_result(self, request_id: str) -> Dict[str, Any]:
         """获取任务结果"""
         return await self.call_rpc("transform.get_result", {
             "user_id": self.user_id,
-            "task_id": task_id
+            "request_id": request_id
         })
     
     async def list_tasks(self, limit: int = 100, status_filter: List[str] = None) -> Dict[str, Any]:
@@ -170,11 +170,11 @@ class ComfyUIRPCClient:
         
         return await self.call_rpc("transform.list", params)
     
-    async def cancel_task(self, task_id: str) -> Dict[str, Any]:
+    async def cancel_task(self, request_id: str) -> Dict[str, Any]:
         """取消任务"""
         return await self.call_rpc("transform.cancel", {
             "user_id": self.user_id,
-            "task_id": task_id
+            "request_id": request_id
         })
     
     # 系统方法

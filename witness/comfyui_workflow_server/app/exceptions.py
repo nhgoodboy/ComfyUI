@@ -135,11 +135,11 @@ class NetworkError(WorkflowAPIException):
 class TaskError(WorkflowAPIException):
     """任务处理错误"""
     
-    def __init__(self, message: str, task_id: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(self, message: str, request_id: str, details: Optional[Dict[str, Any]] = None):
         super().__init__(
             error_code="TASK_ERROR",
             error_message=f"任务处理失败: {message}",
-            details={"task_id": task_id, **(details or {})},
+            details={"request_id": request_id, **(details or {})},
             status_code=500
         )
 

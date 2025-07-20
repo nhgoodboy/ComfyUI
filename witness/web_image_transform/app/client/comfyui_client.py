@@ -44,15 +44,15 @@ class ComfyUIClient:
         response = await self._make_request("POST", url, json=json_data)
         return response.json()
 
-    async def get_task_status(self, user_id: str, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, user_id: str, request_id: str) -> Dict[str, Any]:
         """获取指定用户的任务状态。"""
-        url = f"/api/v1/users/{user_id}/tasks/{task_id}"
+        url = f"/api/v1/users/{user_id}/tasks/{request_id}"
         response = await self._make_request("GET", url)
         return response.json()
 
-    async def get_task_result(self, user_id: str, task_id: str) -> Dict[str, Any]:
+    async def get_task_result(self, user_id: str, request_id: str) -> Dict[str, Any]:
         """获取指定用户的任务结果。"""
-        url = f"/api/v1/users/{user_id}/tasks/{task_id}/result"
+        url = f"/api/v1/users/{user_id}/tasks/{request_id}/result"
         response = await self._make_request("GET", url)
         return response.json()
 

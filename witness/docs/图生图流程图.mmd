@@ -11,8 +11,8 @@ sequenceDiagram
     Backend->>API: POST /api/v1/transform<br/>{user_id, image_url, style_type}
     
     API->>TaskMgr: 创建任务
-    TaskMgr-->>API: 返回task_id
-    API-->>Backend: 返回{task_id, status: "pending"}
+    TaskMgr-->>API: 返回request_id
+    API-->>Backend: 返回{request_id, status: "pending"}
     Backend-->>APP: 返回任务ID
     
     Note over API,ComfyUI: 后台异步处理开始
@@ -41,7 +41,7 @@ sequenceDiagram
     Note over APP,Backend: 客户端轮询或WebSocket获取结果
     
     APP->>Backend: 查询任务状态
-    Backend->>API: GET /api/v1/task/{task_id}
+    Backend->>API: GET /api/v1/task/{request_id}
     API->>TaskMgr: 获取任务信息
     TaskMgr-->>API: 返回任务详情
     API-->>Backend: 返回{status: "completed", output_image_url}

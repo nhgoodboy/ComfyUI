@@ -95,13 +95,13 @@ async def test_happy_path_e2e(
 
     assert task_response.status_code == 202 # Accepted
     task_data = task_response.json()
-    assert "task_id" in task_data
-    task_id = task_data["task_id"]
-    assert task_id == mock_prompt_id
+    assert "request_id" in task_data
+    request_id = task_data["request_id"]
+    assert request_id == mock_prompt_id
     mock_queue_prompt.assert_called_once() # 验证模拟函数被调用
     
     # --- 步骤 3 & 4: 轮询任务状态并获取结果 ---
-    status_path = f"/api/v1/tasks/{task_id}"
+    status_path = f"/api/v1/tasks/{request_id}"
     status_method = "GET"
     status_headers = get_secure_headers_for_test(status_method, status_path, token=auth_token)
     

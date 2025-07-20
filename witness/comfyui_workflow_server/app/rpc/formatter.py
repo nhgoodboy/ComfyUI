@@ -56,7 +56,7 @@ class RPCFormatter:
     def format_task_status(task) -> Dict[str, Any]:
         """格式化任务状态信息"""
         result = {
-            "task_id": task.task_id,
+            "request_id": task.request_id,
             "user_id": task.user_id,
             "style_id": task.style_id,
             "status": task.status,
@@ -114,7 +114,7 @@ class RPCFormatter:
     def format_transform_result(task, result_data) -> Dict[str, Any]:
         """格式化转换结果"""
         formatted_result = {
-            "task_id": task.task_id,
+            "request_id": task.request_id,
             "user_id": task.user_id,
             "style_id": task.style_id,
             "status": task.status,

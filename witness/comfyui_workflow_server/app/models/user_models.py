@@ -13,11 +13,10 @@ class UserContext(BaseModel):
 
 class UserTaskData(BaseModel):
     """用户任务数据"""
-    task_id: str = Field(..., description="任务ID")
+    request_id: str = Field(..., description="请求ID，作为主标识符")
     prompt_id: Optional[str] = None  # ComfyUI的prompt_id
     user_id: str = Field(..., description="用户ID")
     style_id: str = Field(..., description="风格ID")
-    request_id: str = Field(..., description="请求ID")
     status: str = Field(..., description="任务状态")
     progress: float = Field(..., description="进度(0-100)")
     created_at: float = Field(..., description="创建时间戳")
@@ -26,6 +25,11 @@ class UserTaskData(BaseModel):
     estimated_remaining: Optional[int] = Field(None, description="预估剩余时间(秒)")
     error_message: Optional[str] = Field(None, description="错误信息")
     result: Optional[Dict[str, Any]] = Field(None, description="任务结果")
+    
+    @property
+    def request_id(self) -> str:
+        """向后兼容属性，返回request_id"""
+        return self.request_id
     
     # 扩展字段 - 用于任务执行过程中的状态管理
     stage: Optional[str] = Field(None, description="任务阶段")
