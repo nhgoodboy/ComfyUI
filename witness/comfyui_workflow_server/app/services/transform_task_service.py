@@ -435,8 +435,32 @@ class TransformTaskService:
         
         # 更新任务结果
         task_data.result = result
+        task_data.status = "completed"
+        task_data.stage = "completed"
+        task_data.progress = 100.0
+        task_data.message = "转换完成"
         
-        logger.info(f"任务 {task_id} 收到ComfyUI结果")
+        # 从结果中提取文件信息并构造完整的结果数据
+        if 'files' in result and result['files']:
+            # 构造文件信息
+            files_info = {
+                'input': task_data.image_url,  # 原始输入图片URL
+                'output': result['files']  # ComfyUI生成的文件列表
+            }
+            
+            # 更新任务结果，包含文件信息
+            task_data.result = {
+                'status': 'completed',
+                'prompt_id': result.get('prompt_id'),
+                'timestamp': result.get('timestamp'),
+                'files': files_info,
+                'output_images': [{'url': url} for url in result['files']]  # 兼容旧格式
+            }
+        
+        logger.info(f"任务 {task_id} 完成，结果包含 {len(result.get('files', []))} 个文件")
+        
+        # 推送任务完成更新
+        asyncio.create_task(self._push_task_update(task_data))
     
     def cleanup_old_tasks(self, max_age_hours: int = 24):
         """清理旧任务"""
