@@ -1,10 +1,10 @@
 # ComfyUI Workflow Server (RPC Edition)
 
-基于RPC架构的ComfyUI工作流微服务，专注于图像风格转换和文件下载处理。
+基于RPC架构的ComfyUI工作流微服务，专注于图像风格转换和文件下载处理。支持一对一WebSocket连接架构，实现多用户任务隔离和精确消息推送。
 
 ## 项目概述
 
-这是一个采用JSON-RPC 2.0协议的微服务，为ComfyUI提供统一的RPC接口。支持从外部URL下载图片并进行风格转换，采用标准化的文件命名规范。
+这是一个采用JSON-RPC 2.0协议的微服务，为ComfyUI提供统一的RPC接口。支持从外部URL下载图片并进行风格转换，采用标准化的文件命名规范。通过基于user_id的精确消息路由，实现真正的多用户隔离。
 
 ## 主要特性
 
@@ -17,6 +17,9 @@
 - **错误分类**: 系统化的错误代码体系(1xxx-3xxx)
 - **request_id支持**: 端到端请求追踪和调试
 - **文件结果管理**: 自动获取ComfyUI生成结果并构造访问URL
+- **多用户隔离**: 基于user_id的完全任务和文件隔离
+- **精确消息推送**: 基于任务中的user_id进行精确WebSocket推送
+- **一对一连接支持**: 支持服务级别的WebSocket连接（如web_image_transform_service）
 
 ## RPC接口
 
@@ -41,11 +44,14 @@
 - `system.get_stats` - 获取系统统计信息
 
 ### WebSocket推送
-- `GET /ws/{user_id}` - 实时任务状态和进度推送
+- `GET /ws/{service_id}` - 实时任务状态和进度推送
+  - **服务连接**: `/ws/web_image_transform_service` - 服务级别连接
   - 支持任务状态变化通知
   - 实时进度更新（下载进度、转换进度）
   - 任务完成结果推送
   - 心跳保活机制
+  - **精确推送**: 基于任务中的user_id进行精确路由，不再广播
+  - **一对一连接**: 单一服务连接，高效消息路由
 
 ## RPC调用示例
 
@@ -205,8 +211,8 @@ class ComfyUIRPCClient:
 import websockets
 import json
 
-async def listen_updates(user_id: str):
-    uri = f"ws://localhost:8000/ws/{user_id}"
+async def listen_updates(service_id: str = "web_image_transform_service"):
+    uri = f"ws://localhost:8000/ws/{service_id}"
     async with websockets.connect(uri) as websocket:
         async for message in websocket:
             # 忽略心跳消息
@@ -296,7 +302,42 @@ app/
 }
 ```
 
+## WebSocket连接架构
+
+### 一对一连接模式
+支持服务级别的WebSocket连接，如 `web_image_transform_service`，实现高效的消息路由：
+
+```
+多个前端用户 ←→ web_image_transform ←→ comfyui_workflow_server
+(多对一)                    (一对一，基于user_id精确推送)
+```
+
+### 精确消息推送机制
+```python
+# 推送管理器根据任务中的user_id进行精确路由
+task_user_id = update_data.get("user_id")  # 从任务数据中获取用户ID
+
+# 查找目标连接
+if "web_image_transform_service" in active_connections:
+    # 推送到服务连接（一对一模式）
+    await websocket.send_json(message)
+```
+
+### 消息路由流程
+1. 任务状态更新时，从任务数据中提取 `user_id`
+2. 查找活跃的WebSocket连接
+3. 优先推送到服务级别连接（如 `web_image_transform_service`）
+4. 服务端接收后根据 `user_id` 路由到对应前端用户
+5. 实现精确推送，避免广播造成的资源浪费
+
 ## 更新日志
+
+### v3.2.0 - 一对一连接架构版本
+- **精确消息推送**: 基于任务中的user_id进行精确WebSocket推送，不再广播
+- **一对一连接支持**: 支持服务级别的WebSocket连接（如web_image_transform_service）
+- **消息路由优化**: 智能路由机制，优先推送到服务连接
+- **多用户隔离**: 完全基于user_id的任务和消息隔离
+- **连接管理优化**: 支持混合连接模式（直接用户连接+服务连接）
 
 ### v3.1.0 - 进度跟踪优化版本
 - **实时进度跟踪**: WebSocket实时推送ComfyUI采样进度

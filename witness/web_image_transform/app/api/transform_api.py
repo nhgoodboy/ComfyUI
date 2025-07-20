@@ -48,68 +48,68 @@ class ConnectionManager:
     """管理WebSocket连接"""
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
-        # 维护client_id到request_id的映射，支持一个客户端有多个任务
-        self.client_tasks: Dict[str, set] = {}  # client_id -> {request_id1, request_id2, ...}
-        # 维护request_id到client_id的反向映射
-        self.task_owners: Dict[str, str] = {}  # request_id -> client_id
+        # 维护user_id到request_id的映射，支持一个用户有多个任务
+        self.user_tasks: Dict[str, set] = {}  # user_id -> {request_id1, request_id2, ...}
+        # 维护request_id到user_id的反向映射
+        self.task_owners: Dict[str, str] = {}  # request_id -> user_id
 
-    async def connect(self, websocket: WebSocket, client_id: str):
+    async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
-        self.active_connections[client_id] = websocket
-        if client_id not in self.client_tasks:
-            self.client_tasks[client_id] = set()
-        logger.info(f"WebSocket client connected: {client_id}")
+        self.active_connections[user_id] = websocket
+        if user_id not in self.user_tasks:
+            self.user_tasks[user_id] = set()
+        logger.info(f"WebSocket user connected: {user_id}")
 
-    def disconnect(self, client_id: str):
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
+    def disconnect(self, user_id: str):
+        if user_id in self.active_connections:
+            del self.active_connections[user_id]
             # 清理任务映射
-            if client_id in self.client_tasks:
+            if user_id in self.user_tasks:
                 # 清理反向映射
-                for request_id in self.client_tasks[client_id]:
+                for request_id in self.user_tasks[user_id]:
                     if request_id in self.task_owners:
                         del self.task_owners[request_id]
-                del self.client_tasks[client_id]
-            logger.info(f"WebSocket client disconnected: {client_id}")
+                del self.user_tasks[user_id]
+            logger.info(f"WebSocket user disconnected: {user_id}")
 
-    def register_task(self, client_id: str, request_id: str):
+    def register_task(self, user_id: str, request_id: str):
         """注册任务归属关系"""
-        if client_id not in self.client_tasks:
-            self.client_tasks[client_id] = set()
-        self.client_tasks[client_id].add(request_id)
-        self.task_owners[request_id] = client_id
-        logger.info(f"Task {request_id} registered to client {client_id}")
+        if user_id not in self.user_tasks:
+            self.user_tasks[user_id] = set()
+        self.user_tasks[user_id].add(request_id)
+        self.task_owners[request_id] = user_id
+        logger.info(f"Task {request_id} registered to user {user_id}")
 
     def get_task_owner(self, request_id: str) -> Optional[str]:
-        """获取任务的所有者client_id"""
+        """获取任务的所有者user_id"""
         return self.task_owners.get(request_id)
 
-    async def send_json(self, client_id: str, data: dict):
-        if client_id in self.active_connections:
+    async def send_json(self, user_id: str, data: dict):
+        if user_id in self.active_connections:
             try:
-                await self.active_connections[client_id].send_json(data)
+                await self.active_connections[user_id].send_json(data)
                 return True
             except Exception as e:
-                logger.warning(f"Failed to send message to client {client_id}: {e}")
-                self.disconnect(client_id)
+                logger.warning(f"Failed to send message to user {user_id}: {e}")
+                self.disconnect(user_id)
                 return False
         else:
-            logger.warning(f"Attempted to send message to disconnected client: {client_id}")
+            logger.warning(f"Attempted to send message to disconnected user: {user_id}")
             return False
 
     async def send_to_task_owner(self, request_id: str, data: dict) -> bool:
         """发送消息给特定任务的所有者"""
-        owner_client_id = self.get_task_owner(request_id)
-        if owner_client_id:
-            logger.info(f"发送任务更新到所有者 {owner_client_id}: {request_id}")
-            return await self.send_json(owner_client_id, data)
+        owner_user_id = self.get_task_owner(request_id)
+        if owner_user_id:
+            logger.info(f"发送任务更新到所有者 {owner_user_id}: {request_id}")
+            return await self.send_json(owner_user_id, data)
         else:
             logger.warning(f"任务 {request_id} 没有找到所有者，当前任务映射: {dict(self.task_owners)}")
             return False
 
-    def is_connected(self, client_id: str) -> bool:
-        """检查客户端是否仍然连接"""
-        return client_id in self.active_connections
+    def is_connected(self, user_id: str) -> bool:
+        """检查用户是否仍然连接"""
+        return user_id in self.active_connections
 
 
 # 全局连接管理器
@@ -311,7 +311,7 @@ async def get_debug_connections():
     """调试端点：查看当前连接和任务映射状态"""
     return {
         "active_connections": list(manager.active_connections.keys()),
-        "client_tasks": {k: list(v) for k, v in manager.client_tasks.items()},
+        "user_tasks": {k: list(v) for k, v in manager.user_tasks.items()},
         "task_owners": dict(manager.task_owners),
         "total_connections": len(manager.active_connections),
         "total_tasks": len(manager.task_owners)

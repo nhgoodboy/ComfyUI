@@ -1,6 +1,6 @@
 # Web Image Transform (RPC Edition)
 
-基于RPC架构的Web图像转换应用，与ComfyUI Workflow Server (RPC Edition)集成。
+基于RPC架构的Web图像转换应用，与ComfyUI Workflow Server (RPC Edition)集成。采用一对一WebSocket连接架构，支持多用户隔离。
 
 ## 特性
 
@@ -14,25 +14,31 @@
 - 🚀 RPC单一端点架构
 - 📋 标准化文件命名，支持request_id追踪
 - 🖼️ 智能结果展示，自动获取生成文件
+- 👥 多用户支持，基于user_id的任务隔离
+- 🔗 一对一WebSocket连接，高效消息路由
 
 ## 系统架构
 
 ```
+多个前端用户 ←→ web_image_transform ←→ comfyui_workflow_server
+(多对一)                    (一对一，基于user_id精确推送)
+
 ┌─────────────────┐    WebSocket      ┌──────────────────────┐
 │  Web Frontend   │ ◄────────────────► │  Web Image Transform │
-│    (Browser)    │    HTTP/Upload     │      (FastAPI)       │
+│   (用户A/B/C)    │    HTTP/Upload     │      (FastAPI)       │
 └─────────────────┘                    └──────────────────────┘
                                                    │
-                                                   │ RPC Calls
-                                                   │ POST /rpc
+                                                   │ 单一WebSocket连接
+                                                   │ 单一RPC客户端
+                                                   │ 基于user_id路由
                                                    ▼
                                        ┌──────────────────────┐
                                        │ ComfyUI Workflow     │
                                        │   Server (RPC)       │
                                        │                      │
-                                       │ • File Download      │
-                                       │ • Style Transform    │
-                                       │ • Standard Naming    │
+                                       │ • 多用户任务隔离      │
+                                       │ • 精确消息推送       │
+                                       │ • 基于user_id路由    │
                                        └──────────────────────┘
 ```
 
@@ -119,21 +125,27 @@ GET /api/tasks/{request_id}/result
 
 ### WebSocket实时通信
 ```
-ws://localhost:8080/api/ws/{client_id}
+ws://localhost:8080/api/ws/{user_id}
 ```
 
 ## RPC集成说明
 
+### 一对一连接架构
+- web_image_transform 与 comfyui_workflow_server 之间保持单一WebSocket连接
+- 使用服务级别标识符：`web_image_transform_service`
+- 基于消息中的 `user_id` 进行精确路由和推送
+
 ### 文件处理流程
 1. 前端上传图片文件
 2. 后端保存文件并生成标准URL
-3. 调用RPC `transform.create` 方法
+3. 调用RPC `transform.create` 方法，传递实际的 `user_id`
 4. RPC服务下载图片并进行转换
-5. 通过WebSocket推送实时状态
+5. 通过单一WebSocket连接推送实时状态
+6. 根据消息中的 `user_id` 路由到对应前端用户
 
 ### 标准化文件命名
-- 输入文件：`{style_id}_{user_id}_input.{ext}`
-- 输出文件：`{style_id}_{user_id}_output.{ext}`
+- 输入文件：`{style_id}_{user_id}_{request_id}_input.{ext}`
+- 输出文件：`{style_id}_{user_id}_{request_id}_output.{ext}`
 - 支持多种图片格式：jpg, png, webp等
 
 ## 配置说明
@@ -176,18 +188,18 @@ web_image_transform/
 
 ## 开发说明
 
-### 会话管理
-- 每个浏览器会话自动分配唯一的 `session_id`
-- 使用 `session_id` 作为 `user_id` 与RPC服务通信
-- 确保不同用户的文件和任务隔离
+### 用户管理
+- 每个浏览器会话自动分配唯一的 `user_id`
+- 格式：`user_{timestamp}_{random_string}`
+- 确保不同用户的文件和任务完全隔离
 
-### WebSocket通信
-- 客户端连接: `/api/ws/{client_id}`
-- 服务器推送多阶段任务状态更新
-- 支持断线自动重连和心跳保活
-- 实时显示下载和转换进度
-- 精确反映ComfyUI采样进度，过滤无关步骤
-- 任务完成时自动推送结果文件信息
+### WebSocket通信架构
+- **前端连接**: `/api/ws/{user_id}` - 每个用户独立的WebSocket连接
+- **后端连接**: 单一WebSocket连接到 `comfyui_workflow_server`
+- **消息路由**: 基于消息中的 `user_id` 进行精确推送
+- **实时更新**: 多阶段任务状态和进度推送
+- **心跳保活**: 支持断线自动重连和连接保活
+- **精确进度**: 直接反映ComfyUI采样进度，过滤无关步骤
 
 ### 任务流程（RPC版本）
 1. 用户上传图片并选择风格
@@ -244,6 +256,15 @@ web_image_transform/
 - 查看标准化文件命名是否正确
 
 ## 版本历史
+
+- **v2.2.0 (一对一连接架构版)** - 多用户支持和精确消息推送
+  - **一对一WebSocket连接**: web_image_transform与comfyui_workflow_server之间保持单一连接
+  - **多用户隔离**: 基于user_id的完全任务和消息隔离
+  - **精确消息推送**: 根据消息中的user_id进行精确路由，不再广播
+  - **用户标识统一**: 将client_id概念升级为user_id，实现真正的多用户架构
+  - **服务级别连接**: 使用web_image_transform_service标识符连接后端
+  - **消息路由优化**: 智能消息路由机制，确保每个用户只收到自己的任务更新
+  - **连接管理优化**: ConnectionManager支持基于user_id的连接和任务管理
 
 - **v2.1.0 (进度跟踪优化版)** - 精确进度跟踪和用户体验优化
   - 精确ComfyUI采样进度跟踪，移除人工偏移

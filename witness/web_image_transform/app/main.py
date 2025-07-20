@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -70,17 +71,14 @@ def create_app() -> FastAPI:
         @app.get("/", response_class=HTMLResponse)
         async def serve_index(request: Request):
             """提供主页面"""
-            # 确保session中有session_id和client_id
-            if "session_id" not in request.session:
-                request.session["session_id"] = str(uuid.uuid4())
-            
-            if "client_id" not in request.session:
-                request.session["client_id"] = f"client_{request.session['session_id']}"
+            # 确保session中有user_id
+            if "user_id" not in request.session:
+                request.session["user_id"] = f"user_{int(time.time())}_{str(uuid.uuid4())[:8]}"
             
             return templates.TemplateResponse("index.html", {
                 "request": request,
                 "app_name": settings.APP_NAME,
-                "client_id": request.session["client_id"]
+                "user_id": request.session["user_id"]
             })
 
     return app

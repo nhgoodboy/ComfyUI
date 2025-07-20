@@ -31,8 +31,8 @@ class TransformService:
         # 连接管理器，用于向前端推送消息
         self.connection_manager = None
         
-        # 用户到前端客户端的映射
-        self.user_to_frontend: Dict[str, str] = {}  # user_id -> frontend_client_id
+        # 用户到前端用户的映射
+        self.user_to_frontend: Dict[str, str] = {}  # user_id -> frontend_user_id
         
         # 使用一个服务级别的标识符
         self.service_id = "web_image_transform_service"
@@ -76,10 +76,10 @@ class TransformService:
             logger.error(f"转换服务初始化失败: {e}")
             raise
     
-    def register_user(self, user_id: str, frontend_client_id: str):
-        """注册用户到前端客户端的映射"""
-        self.user_to_frontend[user_id] = frontend_client_id
-        logger.info(f"用户 {user_id} 已注册，映射到前端客户端 {frontend_client_id}")
+    def register_user(self, user_id: str, frontend_user_id: str):
+        """注册用户到前端用户的映射"""
+        self.user_to_frontend[user_id] = frontend_user_id
+        logger.info(f"用户 {user_id} 已注册，映射到前端用户 {frontend_user_id}")
     
     async def start_push_listener(self):
         """启动WebSocket推送监听器"""
@@ -132,17 +132,17 @@ class TransformService:
                 if task_data.get("status") == "completed" and "result" in task_data:
                     frontend_data["data"]["result"] = task_data["result"]
                 
-                # 根据任务中的user_id找到对应的前端客户端并发送消息
+                # 根据任务中的user_id找到对应的前端用户并发送消息
                 if task_user_id:
-                    frontend_client_id = self.user_to_frontend.get(task_user_id)
-                    if frontend_client_id:
-                        success = await self.connection_manager.send_json(frontend_client_id, frontend_data)
+                    frontend_user_id = self.user_to_frontend.get(task_user_id)
+                    if frontend_user_id:
+                        success = await self.connection_manager.send_json(frontend_user_id, frontend_data)
                         if success:
-                            logger.info(f"成功推送任务更新到用户 {task_user_id} 的前端客户端 {frontend_client_id}")
+                            logger.info(f"成功推送任务更新到用户 {task_user_id} 的前端用户 {frontend_user_id}")
                         else:
-                            logger.warning(f"推送任务更新失败: 用户 {task_user_id}, 前端客户端 {frontend_client_id}")
+                            logger.warning(f"推送任务更新失败: 用户 {task_user_id}, 前端用户 {frontend_user_id}")
                     else:
-                        logger.warning(f"找不到用户 {task_user_id} 对应的前端客户端")
+                        logger.warning(f"找不到用户 {task_user_id} 对应的前端用户")
                 else:
                     logger.warning("任务数据中缺少user_id，无法确定推送目标")
                 
@@ -174,11 +174,11 @@ class TransformService:
         if not self.connection_manager:
             return
         
-        # 获取所有连接的客户端ID并广播
-        for client_id in list(self.connection_manager.active_connections.keys()):
-            success = await self.connection_manager.send_json(client_id, data)
+        # 获取所有连接的用户ID并广播
+        for user_id in list(self.connection_manager.active_connections.keys()):
+            success = await self.connection_manager.send_json(user_id, data)
             if not success:
-                logger.warning(f"向客户端 {client_id} 发送消息失败")
+                logger.warning(f"向用户 {user_id} 发送消息失败")
     
     async def get_styles(self, user_id: str = None) -> List[Dict[str, Any]]:
         """获取所有可用风格"""
