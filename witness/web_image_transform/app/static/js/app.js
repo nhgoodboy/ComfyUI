@@ -16,6 +16,7 @@ class ImageTransformApp {
         this.styles = [];
         this.currentTask = null;
         this.apiBase = '/api';
+        this.originalImagePreviewUrl = null;  // 保存原始图片预览URL
         
         this.init();
     }
@@ -201,13 +202,15 @@ class ImageTransformApp {
             // 检查旧格式的output_images
             if (data.result.output_images && data.result.output_images.length > 0) {
                 const outputImage = data.result.output_images[0];
-                this.displayResultImage(outputImage.url, outputImage.url);
+                // 使用保存的原始图片预览URL
+                this.displayResultImage(this.originalImagePreviewUrl || data.result.files?.input || '', outputImage.url);
             } 
             // 检查新格式的files
             else if (data.result.files && data.result.files.output) {
                 const outputFiles = data.result.files.output;
                 if (outputFiles.length > 0) {
-                    this.displayResultImage(data.result.files.input || '', outputFiles[0]);
+                    // 使用保存的原始图片预览URL，而不是服务器的input URL
+                    this.displayResultImage(this.originalImagePreviewUrl || data.result.files.input || '', outputFiles[0]);
                 }
             }
             else {
@@ -379,6 +382,9 @@ class ImageTransformApp {
     displayImagePreview(file) {
         const reader = new FileReader();
         reader.onload = (e) => {
+            // 保存原始图片预览URL
+            this.originalImagePreviewUrl = e.target.result;
+            
             const previewContainer = document.getElementById('image-preview');
             if (previewContainer) {
                 previewContainer.style.display = 'block';
@@ -636,6 +642,9 @@ class ImageTransformApp {
         if (resultCard) {
             resultCard.style.display = 'none';
         }
+        
+        // 清理原始图片预览URL
+        this.originalImagePreviewUrl = null;
     }
 
     updateStatus(message, type = 'info') {

@@ -238,9 +238,9 @@ class TransformTaskService:
         task_data.status = "processing"
         task_data.stage = "transform"
         task_data.message = "正在进行风格转换..."
-        task_data.progress = 30.0
+        # 移除初始30%进度推送，等待ComfyUI的实际进度
         
-        await self._push_task_update(task_data)
+        # 不再推送初始进度，让ComfyUI进度回调来处理
         
         try:
             # 获取风格工作流
@@ -285,13 +285,8 @@ class TransformTaskService:
         timeout = 300  # 5分钟超时
         start_time = time.time()
         last_progress_update = start_time
-        estimated_progress = 10.0  # 开始时假设已完成10%
         
-        # 初始进度更新
-        task_data.progress = estimated_progress
-        task_data.stage = "transform"
-        task_data.message = "正在处理图像..."
-        await self._push_task_update(task_data)
+        # 移除初始进度更新，等待ComfyUI的实际进度回调
         
         while time.time() - start_time < timeout:
             # 检查任务状态
