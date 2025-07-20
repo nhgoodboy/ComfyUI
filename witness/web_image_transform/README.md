@@ -1,6 +1,6 @@
 # Web Image Transform (RPC Edition)
 
-基于RPC架构的Web图像转换应用，与ComfyUI Workflow Server (RPC Edition)集成。采用一对一WebSocket连接架构，支持多用户隔离。
+基于RPC架构的Web图像转换应用，与ComfyUI Workflow Server (RPC Edition)集成。采用一对一WebSocket连接架构，支持多用户隔离和精确消息推送。
 
 ## 特性
 
@@ -16,6 +16,8 @@
 - 🖼️ 智能结果展示，自动获取生成文件
 - 👥 多用户支持，基于user_id的任务隔离
 - 🔗 一对一WebSocket连接，高效消息路由
+- 🔐 统一用户ID格式，使用连字符 `user-{timestamp}-{random}`
+- 🎯 精确消息推送，基于user_id的智能路由
 
 ## 系统架构
 
@@ -190,8 +192,10 @@ web_image_transform/
 
 ### 用户管理
 - 每个浏览器会话自动分配唯一的 `user_id`
-- 格式：`user-{timestamp}-{random_string}`
+- 格式：`user-{timestamp}-{random_string}` （统一使用连字符）
 - 确保不同用户的文件和任务完全隔离
+- 支持会话重置和用户ID重新生成
+- 前后端用户ID格式完全一致
 
 ### WebSocket通信架构
 - **前端连接**: `/api/ws/{user_id}` - 每个用户独立的WebSocket连接
@@ -256,6 +260,15 @@ web_image_transform/
 - 查看标准化文件命名是否正确
 
 ## 版本历史
+
+- **v2.3.0 (用户ID格式统一版)** - 用户ID格式统一和连接优化
+  - **用户ID格式统一**: 统一使用连字符格式 `user-{timestamp}-{random}`，替代下划线格式
+  - **WebSocket连接修复**: 修复用户ID格式不一致导致的连接和推送问题
+  - **服务ID匹配**: 确保 `web_image_transform_service` 在推送服务中正确匹配
+  - **会话管理改进**: 支持会话重置和用户ID重新生成
+  - **调试工具增强**: 添加WebSocket连接测试页面和调试端点
+  - **连接自动注册**: WebSocket连接建立时自动注册用户到推送服务
+  - **错误处理优化**: 改进前端错误处理和重试机制
 
 - **v2.2.0 (一对一连接架构版)** - 多用户支持和精确消息推送
   - **一对一WebSocket连接**: web_image_transform与comfyui_workflow_server之间保持单一连接

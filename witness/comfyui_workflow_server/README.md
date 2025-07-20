@@ -9,6 +9,7 @@
 ## 主要特性
 
 - **RPC架构**: 单一端点(`/rpc`)，JSON-RPC 2.0协议
+- **安全认证**: 基于API密钥的安全认证系统
 - **文件下载**: 支持从外部URL下载图片，无需客户端上传
 - **标准化命名**: 文件按`{style_id}_{user_id}_{request_id}_{input/output}.{ext}`格式命名
 - **多阶段处理**: 下载→转换的完整生命周期管理
@@ -20,6 +21,7 @@
 - **多用户隔离**: 基于user_id的完全任务和文件隔离
 - **精确消息推送**: 基于任务中的user_id进行精确WebSocket推送
 - **一对一连接支持**: 支持服务级别的WebSocket连接（如web_image_transform_service）
+- **用户ID格式统一**: 使用连字符格式 `user-{timestamp}-{random}` 确保一致性
 
 ## RPC接口
 
@@ -52,6 +54,7 @@
   - 心跳保活机制
   - **精确推送**: 基于任务中的user_id进行精确路由，不再广播
   - **一对一连接**: 单一服务连接，高效消息路由
+  - **用户ID格式**: 统一使用连字符格式 `user-{timestamp}-{random}`
 
 ## RPC调用示例
 
@@ -331,6 +334,13 @@ if "web_image_transform_service" in active_connections:
 5. 实现精确推送，避免广播造成的资源浪费
 
 ## 更新日志
+
+### v3.3.0 - 用户ID格式统一版本
+- **用户ID格式统一**: 统一使用连字符格式 `user-{timestamp}-{random}`，替代下划线格式
+- **WebSocket连接优化**: 修复用户ID格式不一致导致的连接问题
+- **服务ID匹配**: 确保 `web_image_transform_service` 在推送服务中正确匹配
+- **调试工具增强**: 添加WebSocket连接测试页面和调试端点
+- **会话管理改进**: 支持会话重置和用户ID重新生成
 
 ### v3.2.0 - 一对一连接架构版本
 - **精确消息推送**: 基于任务中的user_id进行精确WebSocket推送，不再广播

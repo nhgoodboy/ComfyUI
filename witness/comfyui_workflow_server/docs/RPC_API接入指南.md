@@ -17,16 +17,17 @@
 
 ## 🚀 API 概览
 
-ComfyUI Workflow Server 提供了基于JSON-RPC的API接口，专注于AI图像风格转换和工作流管理。
+ComfyUI Workflow Server 提供了基于JSON-RPC 2.0的API接口，专注于AI图像风格转换和工作流管理。采用一对一WebSocket连接架构，支持多用户隔离和精确消息推送。
 
 ### 基础信息
 
 - **RPC端点**: `POST http://your-domain:8000/rpc`
-- **WebSocket**: `ws://your-domain:8000/ws/{user_id}`
+- **WebSocket**: `ws://your-domain:8000/ws/{service_id}`
 - **健康检查**: `GET http://your-domain:8000/health`
-- **数据格式**: JSON
-- **认证方式**: 无认证（简化微服务）
-- **用户隔离**: 基于参数 `user_id`
+- **数据格式**: JSON-RPC 2.0
+- **认证方式**: 基于API密钥的安全认证
+- **用户隔离**: 基于参数 `user_id` 的完全隔离
+- **连接模式**: 一对一服务连接（如 `web_image_transform_service`）
 
 ### 功能特性
 
@@ -130,11 +131,23 @@ curl -X POST "http://your-domain:8000/rpc" \
 ### 4. WebSocket连接
 
 ```javascript
-const ws = new WebSocket('ws://your-domain:8000/ws/alice');
+// 服务级别连接（推荐）
+const ws = new WebSocket('ws://your-domain:8000/ws/web_image_transform_service');
 
 ws.onmessage = (event) => {
+    // 忽略心跳消息
+    if (event.data === 'pong') {
+        return;
+    }
+    
     const data = JSON.parse(event.data);
     console.log('任务更新:', data);
+    
+    // 根据消息中的user_id进行路由
+    const taskUserId = data.data?.user_id;
+    if (taskUserId) {
+        console.log(`用户 ${taskUserId} 的任务更新:`, data);
+    }
 };
 ```
 
@@ -567,8 +580,18 @@ ws.onmessage = (event) => {
 
 ### 连接地址
 ```
-ws://your-domain:8000/ws/{user_id}
+ws://your-domain:8000/ws/{service_id}
 ```
+
+**推荐的服务级别连接**:
+```
+ws://your-domain:8000/ws/web_image_transform_service
+```
+
+**说明**: 
+- 使用服务级别的连接ID（如 `web_image_transform_service`）
+- 消息会根据任务中的 `user_id` 进行精确路由
+- 支持一对一连接架构，提高消息推送效率
 
 ### 消息格式
 
@@ -645,7 +668,8 @@ class ComfyUIRPCClient {
     }
     
     connectWebSocket() {
-        const wsUrl = `ws://${this.baseUrl.replace('http://', '')}/ws/${this.userId}`;
+        // 使用服务级别连接
+        const wsUrl = `ws://${this.baseUrl.replace('http://', '')}/ws/web_image_transform_service`;
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
@@ -1084,7 +1108,8 @@ class ComfyUIRPCClient {
     }
     
     connectWebSocket(messageHandler) {
-        const wsUrl = `ws://${this.baseUrl.replace('http://', '')}/ws/${this.userId}`;
+        // 使用服务级别连接
+        const wsUrl = `ws://${this.baseUrl.replace('http://', '')}/ws/web_image_transform_service`;
         this.ws = new WebSocket(wsUrl);
         
         this.ws.on('open', () => {
