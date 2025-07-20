@@ -183,6 +183,10 @@ class TransformService:
     async def get_styles(self, user_id: str = None) -> List[Dict[str, Any]]:
         """获取所有可用风格"""
         try:
+            # 确保RPC客户端已初始化
+            if not self.rpc_client:
+                await self.initialize()
+            
             # 使用单一的RPC客户端
             async with self.rpc_client:
                 result = await self.rpc_client.get_styles()
@@ -194,6 +198,10 @@ class TransformService:
     async def search_styles(self, user_id: str, query: str) -> List[Dict[str, Any]]:
         """搜索风格"""
         try:
+            # 确保RPC客户端已初始化
+            if not self.rpc_client:
+                await self.initialize()
+            
             # 使用单一的RPC客户端
             async with self.rpc_client:
                 result = await self.rpc_client.search_styles(query)
@@ -220,6 +228,10 @@ class TransformService:
             # request_id应该由调用者提供
             if not request_id:
                 raise ValueError("request_id是必需的")
+            
+            # 确保RPC客户端已初始化
+            if not self.rpc_client:
+                await self.initialize()
             
             # 获取文件扩展名
             file_ext = Path(filename).suffix.lower()
@@ -270,6 +282,10 @@ class TransformService:
             if not request_id:
                 raise ValueError("request_id是必需的")
             
+            # 确保RPC客户端已初始化
+            if not self.rpc_client:
+                await self.initialize()
+            
             # 使用单一的RPC客户端，但传递实际的user_id
             async with self.rpc_client:
                 # 传递实际的user_id给RPC客户端
@@ -290,6 +306,10 @@ class TransformService:
     async def get_task_status(self, user_id: str, request_id: str) -> Dict[str, Any]:
         """获取任务状态"""
         try:
+            # 确保RPC客户端已初始化
+            if not self.rpc_client:
+                await self.initialize()
+            
             # 使用单一的RPC客户端
             async with self.rpc_client:
                 return await self.rpc_client.get_task_status(request_id)
@@ -300,6 +320,10 @@ class TransformService:
     async def get_task_result(self, user_id: str, request_id: str) -> Dict[str, Any]:
         """获取任务结果"""
         try:
+            # 确保RPC客户端已初始化
+            if not self.rpc_client:
+                await self.initialize()
+            
             # 使用单一的RPC客户端
             async with self.rpc_client:
                 return await self.rpc_client.get_task_result(request_id)
@@ -310,6 +334,10 @@ class TransformService:
     async def list_user_tasks(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """获取用户任务列表"""
         try:
+            # 确保RPC客户端已初始化
+            if not self.rpc_client:
+                await self.initialize()
+            
             # 使用单一的RPC客户端
             async with self.rpc_client:
                 result = await self.rpc_client.list_tasks(limit=limit)
@@ -321,6 +349,10 @@ class TransformService:
     async def cancel_task(self, user_id: str, request_id: str) -> bool:
         """取消任务"""
         try:
+            # 确保RPC客户端已初始化
+            if not self.rpc_client:
+                await self.initialize()
+            
             # 使用单一的RPC客户端
             async with self.rpc_client:
                 result = await self.rpc_client.cancel_task(request_id)
@@ -332,6 +364,10 @@ class TransformService:
     async def get_system_health(self, user_id: str = None) -> Dict[str, Any]:
         """获取系统健康状态"""
         try:
+            # 确保RPC客户端已初始化
+            if not self.rpc_client:
+                await self.initialize()
+            
             # 使用单一的RPC客户端
             async with self.rpc_client:
                 return await self.rpc_client.get_system_health()
