@@ -238,9 +238,11 @@ class TransformTaskService:
         task_data.status = "processing"
         task_data.stage = "transform"
         task_data.message = "正在进行风格转换..."
-        # 移除初始30%进度推送，等待ComfyUI的实际进度
+        # 重置进度为0，只显示转换的实际进度
+        task_data.progress = 0.0
         
-        # 不再推送初始进度，让ComfyUI进度回调来处理
+        # 推送转换开始状态（进度为0）
+        await self._push_task_update(task_data)
         
         try:
             # 获取风格工作流
@@ -274,7 +276,8 @@ class TransformTaskService:
     def _on_transform_progress(self, task_data: UserTaskData, progress: float, message: str):
         """转换进度回调"""
         task_data.transform_progress = progress
-        task_data.progress = 30.0 + (progress * 0.7)  # 转换占总进度的70%
+        # 直接使用ComfyUI的实际进度，不再添加30%的基础偏移
+        task_data.progress = progress
         task_data.message = message
         
         # 异步推送进度
@@ -538,11 +541,15 @@ class TransformTaskService:
             total_steps = progress_data.get('total_steps', 1)
             node_id = progress_data.get('node', 'unknown')
             
-            # 将节点进度(0-100%)映射到任务整体进度(30-90%)
-            # 前30%是下载阶段，90-100%是完成阶段
-            overall_progress = 30.0 + (node_progress * 0.6)  # 节点进度占60%
-            task_data.progress = min(90.0, overall_progress)  # 最大90%，为完成留10%
-            task_data.stage = "transform"
+            # 只显示主要生成节点的进度（通常是多步骤的采样节点）
+            # 过滤掉单步骤的预处理节点
+            if total_steps > 1:  # 只有多步骤节点才更新进度
+                task_data.progress = node_progress  # 直接使用0-100%的真实进度
+                task_data.stage = "transform"
+            else:
+                # 单步骤节点不更新进度，避免进度跳跃
+                logger.debug(f"跳过单步骤节点 {node_id} 的进度更新: {node_progress}%")
+                return
             
             # 根据是否有详细步数信息来设置消息
             if 'current_step' in progress_data and 'total_steps' in progress_data:
