@@ -11,7 +11,7 @@
 class ImageTransformApp {
     constructor() {
         this.websocket = null;
-        this.clientId = null;
+        this.userId = null;
         this.isProcessing = false;
         this.styles = [];
         this.currentTask = null;
@@ -29,11 +29,7 @@ class ImageTransformApp {
         try {
             console.log('=== 应用初始化开始 ===');
             
-            // 生成客户端ID
-            this.clientId = 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            console.log('客户端ID:', this.clientId);
-            
-            // 获取会话信息
+            // 获取会话信息（包含用户ID）
             console.log('获取会话信息...');
             await this.getSessionInfo();
             
@@ -66,17 +62,21 @@ class ImageTransformApp {
             if (response.ok) {
                 const sessionInfo = await response.json();
                 console.log('会话信息:', sessionInfo);
-                this.sessionId = sessionInfo.session_id;
+                this.userId = sessionInfo.user_id;  // 使用user_id而不是session_id
+                console.log('用户ID:', this.userId);
             }
         } catch (error) {
             console.warn('获取会话信息失败:', error);
+            // 如果获取失败，生成一个临时用户ID
+            this.userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            console.log('生成临时用户ID:', this.userId);
         }
     }
 
     initWebSocket() {
         try {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}${this.apiBase}/ws/${this.clientId}`;
+            const wsUrl = `${wsProtocol}//${window.location.host}${this.apiBase}/ws/${this.userId}`;
             
             console.log('连接WebSocket:', wsUrl);
             this.websocket = new WebSocket(wsUrl);
@@ -442,6 +442,7 @@ class ImageTransformApp {
             formData.append('file', fileInput.files[0]);
             formData.append('style_id', styleSelect.value);
             formData.append('request_id', requestId);
+            formData.append('user_id', this.userId);  // 添加user_id
 
             this.updateStatus('正在提交转换任务...', 'info');
 

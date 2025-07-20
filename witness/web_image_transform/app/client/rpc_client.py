@@ -127,7 +127,7 @@ class ComfyUIRPCClient:
         return await self.call_rpc("styles.get", {"style_id": style_id})
     
     # 转换任务方法
-    async def create_transform(self, style_id: str, image_url: str, request_id: str = None) -> Dict[str, Any]:
+    async def create_transform(self, style_id: str, image_url: str, request_id: str = None, actual_user_id: str = None) -> Dict[str, Any]:
         """创建转换任务"""
         # 如果没有提供request_id，自动生成一个
         if not request_id:
@@ -137,7 +137,7 @@ class ComfyUIRPCClient:
             logger.debug(f"RPC客户端自动生成request_id: {request_id}")
         
         params = {
-            "user_id": self.user_id,
+            "user_id": actual_user_id or self.user_id,  # 使用实际的user_id或默认的
             "style_id": style_id,
             "image_url": image_url,
             "request_id": request_id  # 现在总是包含request_id

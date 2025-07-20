@@ -6,7 +6,7 @@
 
 import time
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -48,16 +48,41 @@ class ConnectionManager:
     """管理WebSocket连接"""
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
+        # 维护client_id到request_id的映射，支持一个客户端有多个任务
+        self.client_tasks: Dict[str, set] = {}  # client_id -> {request_id1, request_id2, ...}
+        # 维护request_id到client_id的反向映射
+        self.task_owners: Dict[str, str] = {}  # request_id -> client_id
 
     async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
         self.active_connections[client_id] = websocket
+        if client_id not in self.client_tasks:
+            self.client_tasks[client_id] = set()
         logger.info(f"WebSocket client connected: {client_id}")
 
     def disconnect(self, client_id: str):
         if client_id in self.active_connections:
             del self.active_connections[client_id]
+            # 清理任务映射
+            if client_id in self.client_tasks:
+                # 清理反向映射
+                for request_id in self.client_tasks[client_id]:
+                    if request_id in self.task_owners:
+                        del self.task_owners[request_id]
+                del self.client_tasks[client_id]
             logger.info(f"WebSocket client disconnected: {client_id}")
+
+    def register_task(self, client_id: str, request_id: str):
+        """注册任务归属关系"""
+        if client_id not in self.client_tasks:
+            self.client_tasks[client_id] = set()
+        self.client_tasks[client_id].add(request_id)
+        self.task_owners[request_id] = client_id
+        logger.info(f"Task {request_id} registered to client {client_id}")
+
+    def get_task_owner(self, request_id: str) -> Optional[str]:
+        """获取任务的所有者client_id"""
+        return self.task_owners.get(request_id)
 
     async def send_json(self, client_id: str, data: dict):
         if client_id in self.active_connections:
@@ -72,6 +97,16 @@ class ConnectionManager:
             logger.warning(f"Attempted to send message to disconnected client: {client_id}")
             return False
 
+    async def send_to_task_owner(self, request_id: str, data: dict) -> bool:
+        """发送消息给特定任务的所有者"""
+        owner_client_id = self.get_task_owner(request_id)
+        if owner_client_id:
+            logger.info(f"发送任务更新到所有者 {owner_client_id}: {request_id}")
+            return await self.send_json(owner_client_id, data)
+        else:
+            logger.warning(f"任务 {request_id} 没有找到所有者，当前任务映射: {dict(self.task_owners)}")
+            return False
+
     def is_connected(self, client_id: str) -> bool:
         """检查客户端是否仍然连接"""
         return client_id in self.active_connections
@@ -82,15 +117,14 @@ manager = ConnectionManager()
 
 
 @api_router.get("/styles", response_model=List[StyleInfo])
-async def get_styles(request: Request):
+async def get_styles(request: Request, user_id: str = None):
     """获取所有可用风格"""
     try:
-        # 确保session_id存在
-        if "session_id" not in request.session:
-            request.session["session_id"] = transform_service.get_session_id()
+        # 如果没有提供user_id，使用默认的
+        if not user_id:
+            user_id = "default_user"
         
-        await transform_service.initialize()
-        styles = await transform_service.get_styles()
+        styles = await transform_service.get_styles(user_id)
         return styles
     except Exception as e:
         logger.error(f"获取风格列表失败: {e}")
@@ -98,11 +132,14 @@ async def get_styles(request: Request):
 
 
 @api_router.get("/styles/search")
-async def search_styles(request: Request, q: str):
+async def search_styles(request: Request, q: str, user_id: str = None):
     """搜索风格"""
     try:
-        await transform_service.initialize()
-        styles = await transform_service.search_styles(q)
+        # 如果没有提供user_id，使用默认的
+        if not user_id:
+            user_id = "default_user"
+        
+        styles = await transform_service.search_styles(user_id, q)
         return {"styles": styles, "query": q}
     except Exception as e:
         logger.error(f"搜索风格失败: {e}")
@@ -114,7 +151,8 @@ async def create_transform_task(
     request: Request,
     style_id: str = Form(...),
     file: UploadFile = File(...),
-    request_id: str = Form(None)
+    request_id: str = Form(None),
+    user_id: str = Form(...)  # 改为user_id参数
 ):
     """
     创建图像转换任务
@@ -123,15 +161,12 @@ async def create_transform_task(
         style_id: 风格ID
         file: 上传的图片文件
         request_id: 请求ID (可选)
+        user_id: 用户ID (必需)
     
     Returns:
         TaskInfo: 任务信息
     """
     try:
-        # 确保session_id存在
-        if "session_id" not in request.session:
-            request.session["session_id"] = transform_service.get_session_id()
-        
         # 验证文件类型
         if not file.content_type or not file.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="文件必须是图片格式")
@@ -141,21 +176,26 @@ async def create_transform_task(
         if len(file_content) > 10 * 1024 * 1024:  # 10MB
             raise HTTPException(status_code=400, detail="文件大小不能超过10MB")
         
-        # 初始化服务
-        await transform_service.initialize()
+        # 初始化服务（如果尚未初始化）
+        if not transform_service.rpc_client:
+            await transform_service.initialize()
         
         # 设置连接管理器
         transform_service.set_connection_manager(manager)
         
+        # 注册用户到前端客户端的映射
+        transform_service.register_user(user_id, user_id)
+        
         # 执行转换
         task_info = await transform_service.transform_image(
+            user_id=user_id,
             file_content=file_content,
             filename=file.filename or "image.jpg",
             style_id=style_id,
             request_id=request_id
         )
         
-        logger.info(f"转换任务创建成功: {task_info.get('request_id')}")
+        logger.info(f"用户 {user_id} 的转换任务创建成功: {task_info.get('request_id')}")
         return task_info
         
     except HTTPException:
@@ -166,11 +206,14 @@ async def create_transform_task(
 
 
 @api_router.get("/tasks/{request_id}", response_model=TaskInfo)
-async def get_task_status(request_id: str):
+async def get_task_status(request_id: str, user_id: str = None):
     """获取任务状态"""
     try:
-        await transform_service.initialize()
-        task_info = await transform_service.get_task_status(request_id)
+        # 如果没有提供user_id，使用默认的
+        if not user_id:
+            user_id = "default_user"
+        
+        task_info = await transform_service.get_task_status(user_id, request_id)
         return task_info
     except Exception as e:
         logger.error(f"获取任务状态失败: {e}")
@@ -178,11 +221,14 @@ async def get_task_status(request_id: str):
 
 
 @api_router.get("/tasks/{request_id}/result")
-async def get_task_result(request_id: str):
+async def get_task_result(request_id: str, user_id: str = None):
     """获取任务结果"""
     try:
-        await transform_service.initialize()
-        result = await transform_service.get_task_result(request_id)
+        # 如果没有提供user_id，使用默认的
+        if not user_id:
+            user_id = "default_user"
+        
+        result = await transform_service.get_task_result(user_id, request_id)
         return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"获取任务结果失败: {e}")
@@ -193,11 +239,14 @@ async def get_task_result(request_id: str):
 
 
 @api_router.get("/tasks")
-async def list_tasks(limit: int = 50):
+async def list_tasks(limit: int = 50, user_id: str = None):
     """获取任务列表"""
     try:
-        await transform_service.initialize()
-        tasks = await transform_service.list_user_tasks(limit=limit)
+        # 如果没有提供user_id，使用默认的
+        if not user_id:
+            user_id = "default_user"
+        
+        tasks = await transform_service.list_user_tasks(user_id, limit=limit)
         return {"success": True, "data": {"tasks": tasks, "total": len(tasks)}}
     except Exception as e:
         logger.error(f"获取任务列表失败: {e}")
@@ -205,11 +254,14 @@ async def list_tasks(limit: int = 50):
 
 
 @api_router.delete("/tasks/{request_id}")
-async def cancel_task(request_id: str):
+async def cancel_task(request_id: str, user_id: str = None):
     """取消任务"""
     try:
-        await transform_service.initialize()
-        success = await transform_service.cancel_task(request_id)
+        # 如果没有提供user_id，使用默认的
+        if not user_id:
+            user_id = "default_user"
+        
+        success = await transform_service.cancel_task(user_id, request_id)
         
         if success:
             return {"success": True, "message": "任务已取消"}
@@ -227,7 +279,6 @@ async def cancel_task(request_id: str):
 async def get_health():
     """获取系统健康状态"""
     try:
-        await transform_service.initialize()
         health = await transform_service.get_system_health()
         return health
     except Exception as e:
@@ -242,9 +293,11 @@ async def get_health():
 @api_router.get("/session")
 async def get_session_info(request: Request):
     """获取会话信息"""
+    import uuid
+    
     # 确保session_id存在
     if "session_id" not in request.session:
-        request.session["session_id"] = transform_service.get_session_id()
+        request.session["session_id"] = f"user_{int(time.time())}_{str(uuid.uuid4())[:8]}"
     
     return {
         "session_id": request.session["session_id"],
@@ -253,10 +306,22 @@ async def get_session_info(request: Request):
     }
 
 
-@api_router.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
+@api_router.get("/debug/connections")
+async def get_debug_connections():
+    """调试端点：查看当前连接和任务映射状态"""
+    return {
+        "active_connections": list(manager.active_connections.keys()),
+        "client_tasks": {k: list(v) for k, v in manager.client_tasks.items()},
+        "task_owners": dict(manager.task_owners),
+        "total_connections": len(manager.active_connections),
+        "total_tasks": len(manager.task_owners)
+    }
+
+
+@api_router.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """WebSocket端点，用于实时通信"""
-    await manager.connect(websocket, client_id)
+    await manager.connect(websocket, user_id)
     try:
         while True:
             # 等待来自客户端的消息
@@ -270,4 +335,4 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     except WebSocketDisconnect:
         pass
     finally:
-        manager.disconnect(client_id)
+        manager.disconnect(user_id)
