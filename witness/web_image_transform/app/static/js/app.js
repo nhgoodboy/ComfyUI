@@ -188,7 +188,7 @@ class ImageTransformApp {
 
     handleTaskCompleted(data) {
         this.updateStatus('转换完成！', 'success');
-        this.updateProgressUI({ progress: 100, message: '转换完成' });
+        this.updateProgressUI({ progress: 100, stage: 'completed', message: '转换完成' });
         
         // 调试：打印data内容
         console.log('handleTaskCompleted 收到的data:', data);
@@ -201,16 +201,26 @@ class ImageTransformApp {
             // 检查旧格式的output_images
             if (data.result.output_images && data.result.output_images.length > 0) {
                 const outputImage = data.result.output_images[0];
-                this.displayResult(outputImage.url);
-            } else {
-                // 新的RPC架构下，任务已完成，显示完成状态
-                console.log('任务已完成，无需额外获取结果');
+                this.displayResultImage(outputImage.url, outputImage.url);
+            } 
+            // 检查新格式的files
+            else if (data.result.files && data.result.files.output) {
+                const outputFiles = data.result.files.output;
+                if (outputFiles.length > 0) {
+                    this.displayResultImage(data.result.files.input || '', outputFiles[0]);
+                }
+            }
+            else {
+                // 任务完成但没有图片结果
+                console.log('任务已完成，无图片结果');
                 this.updateStatus('图像转换完成！请查看输出目录', 'success');
+                this.hideProgress();
             }
         } else {
             // 如果WebSocket消息中没有结果，显示完成状态
-            console.log('任务已完成');
+            console.log('任务已完成，无结果数据');
             this.updateStatus('图像转换完成！请查看输出目录', 'success');
+            this.hideProgress();
         }
         
         this.isProcessing = false;
@@ -485,6 +495,32 @@ class ImageTransformApp {
             resultContainer.style.display = 'block';
         }
     }
+    
+    displayResultImage(originalUrl, resultUrl) {
+        const resultCard = document.getElementById('result-card');
+        const originalImage = document.getElementById('original-image');
+        const resultImage = document.getElementById('result-image');
+        const downloadLink = document.getElementById('download-link');
+        
+        if (originalImage && originalUrl) {
+            originalImage.src = originalUrl;
+        }
+        
+        if (resultImage && resultUrl) {
+            resultImage.src = resultUrl;
+        }
+        
+        if (downloadLink && resultUrl) {
+            downloadLink.href = resultUrl;
+        }
+        
+        if (resultCard) {
+            resultCard.style.display = 'block';
+        }
+        
+        // 隐藏进度卡片
+        this.hideProgress();
+    }
 
     downloadImage(imageUrl) {
         const link = document.createElement('a');
@@ -496,27 +532,37 @@ class ImageTransformApp {
     }
 
     updateProgressUI(data) {
-        const progressBar = document.getElementById('progress-bar');
+        // 修复进度条ID匹配问题
+        const progressBar = document.getElementById('progress-fill');
         const progressText = document.getElementById('progress-text');
+        const taskInfo = document.getElementById('task-info');
 
         if (progressBar) {
             progressBar.style.width = `${data.progress || 0}%`;
         }
 
         if (progressText) {
+            progressText.textContent = `${Math.round(data.progress || 0)}%`;
+        }
+        
+        if (taskInfo) {
             let stageText = '';
             switch (data.stage) {
                 case 'download':
                     stageText = '下载阶段';
                     break;
                 case 'transform':
+                case 'processing':
                     stageText = '转换阶段';
+                    break;
+                case 'completed':
+                    stageText = '完成';
                     break;
                 default:
                     stageText = data.stage || '';
             }
             
-            progressText.textContent = `${stageText} - ${Math.round(data.progress || 0)}% - ${data.message || ''}`;
+            taskInfo.textContent = `${stageText} - ${data.message || ''}`;
         }
     }
 
@@ -564,14 +610,15 @@ class ImageTransformApp {
     }
 
     showProgress() {
-        const progressContainer = document.getElementById('progress-container');
+        // 修复容器ID匹配问题
+        const progressContainer = document.getElementById('status-card');
         if (progressContainer) {
             progressContainer.style.display = 'block';
         }
     }
 
     hideProgress() {
-        const progressContainer = document.getElementById('progress-container');
+        const progressContainer = document.getElementById('status-card');
         if (progressContainer) {
             progressContainer.style.display = 'none';
         }
@@ -582,6 +629,12 @@ class ImageTransformApp {
         if (resultContainer) {
             resultContainer.style.display = 'none';
             resultContainer.innerHTML = '';
+        }
+        
+        // 同时清理新的结果卡片
+        const resultCard = document.getElementById('result-card');
+        if (resultCard) {
+            resultCard.style.display = 'none';
         }
     }
 
