@@ -247,7 +247,7 @@ ws.onmessage = (event) => {
 ```json
 {
   "result": {
-    "request_id": "task_12345",
+    "request_id": "req123",
     "user_id": "alice",
     "style_id": "clay_style",
     "status": "pending",
@@ -273,7 +273,7 @@ ws.onmessage = (event) => {
   "method": "transform.get_status",
   "params": {
     "user_id": "alice",
-    "request_id": "task_12345"
+    "request_id": "req123"
   },
   "id": "req_005"
 }
@@ -285,7 +285,7 @@ ws.onmessage = (event) => {
 ```json
 {
   "result": {
-    "request_id": "task_12345",
+    "request_id": "req123",
     "user_id": "alice",
     "style_id": "clay_style", 
     "status": "downloading",
@@ -307,7 +307,7 @@ ws.onmessage = (event) => {
 ```json
 {
   "result": {
-    "request_id": "task_12345",
+    "request_id": "req123",
     "user_id": "alice", 
     "style_id": "clay_style",
     "status": "processing",
