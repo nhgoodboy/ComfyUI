@@ -12,8 +12,11 @@
 - **文件下载**: 支持从外部URL下载图片，无需客户端上传
 - **标准化命名**: 文件按`{style_id}_{user_id}_{request_id}_{input/output}.{ext}`格式命名
 - **多阶段处理**: 下载→转换的完整生命周期管理
-- **实时推送**: WebSocket支持任务状态实时更新
+- **实时进度**: WebSocket支持任务状态和进度实时更新
+- **进度精确跟踪**: 真实反映ComfyUI采样进度，过滤无关步骤
 - **错误分类**: 系统化的错误代码体系(1xxx-3xxx)
+- **request_id支持**: 端到端请求追踪和调试
+- **文件结果管理**: 自动获取ComfyUI生成结果并构造访问URL
 
 ## RPC接口
 
@@ -38,7 +41,11 @@
 - `system.get_stats` - 获取系统统计信息
 
 ### WebSocket推送
-- `GET /ws/{user_id}` - 实时任务状态推送
+- `GET /ws/{user_id}` - 实时任务状态和进度推送
+  - 支持任务状态变化通知
+  - 实时进度更新（下载进度、转换进度）
+  - 任务完成结果推送
+  - 心跳保活机制
 
 ## RPC调用示例
 
@@ -202,8 +209,26 @@ async def listen_updates(user_id: str):
     uri = f"ws://localhost:8000/ws/{user_id}"
     async with websockets.connect(uri) as websocket:
         async for message in websocket:
+            # 忽略心跳消息
+            if message == 'pong':
+                continue
+                
             data = json.loads(message)
-            print(f"任务更新: {data}")
+            if data.get('type') == 'task_update':
+                task_id = data.get('task_id')
+                task_data = data.get('data', {})
+                status = task_data.get('status')
+                progress = task_data.get('progress', 0)
+                message = task_data.get('message', '')
+                
+                print(f"任务 {task_id}: {status} ({progress}%) - {message}")
+                
+                # 处理任务完成
+                if status == 'completed' and 'result' in task_data:
+                    result = task_data['result']
+                    if 'files' in result:
+                        output_files = result['files'].get('output', [])
+                        print(f"生成文件: {output_files}")
 ```
 
 ## 目录结构
@@ -242,7 +267,44 @@ app/
 └── main.py              # 应用入口
 ```
 
+## 实时进度跟踪
+
+### 进度处理优化
+- **精确进度映射**: 直接使用ComfyUI报告的真实进度，不添加人工偏移
+- **多步骤节点过滤**: 只显示主要生成节点（采样）的进度，过滤单步预处理节点
+- **平滑进度体验**: 避免进度跳跃，确保0%→100%的连续进度显示
+
+### WebSocket消息格式
+```json
+{
+  "type": "task_update",
+  "task_id": "abc123",
+  "data": {
+    "status": "processing",
+    "progress": 45.6,
+    "message": "生成进度: 12/25 (45.6%) - 节点: 73",
+    "stage": "transform",
+    "request_id": "req123",
+    "timestamp": 1752982316.123,
+    "result": {
+      "files": {
+        "input": "http://host:port/uploads/input.jpg",
+        "output": ["http://host:port/view?filename=output.png"]
+      }
+    }
+  }
+}
+```
+
 ## 更新日志
+
+### v3.1.0 - 进度跟踪优化版本
+- **实时进度跟踪**: WebSocket实时推送ComfyUI采样进度
+- **进度精确映射**: 直接使用ComfyUI真实进度，移除30%基础偏移
+- **多节点过滤**: 只显示主要生成节点进度，过滤预处理步骤
+- **结果自动获取**: 任务完成时自动获取ComfyUI历史记录和文件
+- **request_id追踪**: 端到端请求ID支持，便于调试和监控
+- **心跳机制**: WebSocket连接保活，避免连接断开
 
 ### v3.0.0 - RPC版本
 - 完全重构为RPC架构
@@ -251,7 +313,7 @@ app/
 - 标准化文件命名规范
 - 多阶段任务生命周期
 - 系统化错误代码体系
-- 实时WebSocket状态推送
+- 基础WebSocket状态推送
 
 ### v2.0.0 - 简化版本
 - 移除复杂的认证系统

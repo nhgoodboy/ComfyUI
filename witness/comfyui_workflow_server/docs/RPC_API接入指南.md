@@ -33,8 +33,11 @@ ComfyUI Workflow Server 提供了基于JSON-RPC的API接口，专注于AI图像�
 - 🎨 **风格管理**: 风格发现、搜索和查询
 - 🔄 **一体化转换**: 自动下载图片 + 风格转换
 - 📁 **规范化命名**: `{style_id}_{user_id}_{request_id}_{input/output}.{ext}`
-- 🔌 **实时推送**: WebSocket 任务状态和进度更新
-- 📊 **多阶段跟踪**: 下载阶段 + 转换阶段进度监控
+- 🔌 **实时推送**: WebSocket 任务状态和进度更新，支持心跳保活
+- 📊 **精确进度跟踪**: 直接反映ComfyUI采样进度，过滤无关步骤
+- 📈 **多阶段监控**: 下载阶段 + 转换阶段完整生命周期
+- 🔍 **端到端追踪**: request_id支持完整请求链路追踪
+- 🎯 **智能结果处理**: 自动获取ComfyUI历史记录和生成文件
 - ⚡ **批量支持**: 支持批量RPC请求
 
 ### 🏗️ 文件命名规范
@@ -569,49 +572,65 @@ ws://your-domain:8000/ws/{user_id}
 
 ### 消息格式
 
-**任务状态更新**:
+**标准消息结构**:
 ```json
 {
+  "type": "task_update",
   "task_id": "task_12345",
-  "user_id": "alice",
-  "style_id": "clay_style",
-  "status": "downloading", 
-  "stage": "download",
-  "progress": 45.2,
-  "message": "正在下载图片... 45.2%",
-  "files": {
-    "input": "clay_style_alice_req123_input.jpg",
-    "output": "clay_style_alice_req123_output.png"
-  },
-  "timestamp": 1640995250.123
+  "data": {
+    "user_id": "alice",
+    "style_id": "clay_style",
+    "status": "processing",
+    "stage": "transform",
+    "progress": 45.6,
+    "message": "生成进度: 12/25 (45.6%) - 节点: 73",
+    "request_id": "req123",
+    "timestamp": 1640995250.123,
+    "files": {
+      "input": "clay_style_alice_req123_input.jpg",
+      "output": "clay_style_alice_req123_output.png"
+    }
+  }
 }
 ```
 
 **任务完成消息**:
 ```json
 {
-  "task_id": "task_12345",
-  "user_id": "alice", 
-  "style_id": "clay_style",
-  "status": "completed",
-  "stage": "completed",
-  "progress": 100.0,
-  "message": "转换完成",
-  "files": {
-    "input": "clay_style_alice_req123_input.jpg",
-    "output": "clay_style_alice_req123_output.png"
-  },
-  "result": {
-    "output_images": [
-      {
-        "filename": "clay_style_alice_req123_output.png",
-        "url": "http://127.0.0.1:8188/view?filename=clay_style_alice_req123_output.png&type=output"
-      }
-    ]
-  },
-  "timestamp": 1640995350.456
+  "type": "task_update",
+  "task_id": "task_12345", 
+  "data": {
+    "user_id": "alice",
+    "style_id": "clay_style",
+    "status": "completed",
+    "stage": "completed",
+    "progress": 100.0,
+    "message": "转换完成",
+    "request_id": "req123",
+    "timestamp": 1640995350.456,
+    "result": {
+      "status": "completed",
+      "prompt_id": "6bed9e06-f08c-4a7d-b204-4c4f54ea33cb",
+      "files": {
+        "input": "http://host:port/uploads/input.jpg",
+        "output": ["http://127.0.0.1:8188/view?filename=clay_style_alice_req123_output.png"]
+      },
+      "output_images": [
+        {
+          "url": "http://127.0.0.1:8188/view?filename=clay_style_alice_req123_output.png"
+        }
+      ],
+      "history": { /* ComfyUI完整历史记录用于调试 */ }
+    }
+  }
 }
 ```
+
+**心跳消息**:
+```
+pong
+```
+*注意：客户端应忽略心跳消息，不尝试JSON解析*
 
 ### JavaScript 示例
 
@@ -634,8 +653,15 @@ class ComfyUIRPCClient {
         };
         
         this.ws.onmessage = (event) => {
+            // 忽略心跳消息
+            if (event.data === 'pong') {
+                return;
+            }
+            
             const data = JSON.parse(event.data);
-            this.handleTaskUpdate(data);
+            if (data.type === 'task_update') {
+                this.handleTaskUpdate(data);
+            }
         };
         
         this.ws.onclose = () => {
@@ -701,18 +727,26 @@ class ComfyUIRPCClient {
     }
     
     handleTaskUpdate(data) {
-        console.log(`任务 ${data.task_id}: ${data.status} (${data.progress}%) - ${data.message}`);
+        const taskData = data.data;
+        console.log(`任务 ${data.task_id}: ${taskData.status} (${taskData.progress}%) - ${taskData.message}`);
         
-        if (data.status === 'completed') {
-            this.handleTaskCompleted(data);
-        } else if (data.status === 'download_failed' || data.status === 'processing_failed') {
-            this.handleTaskFailed(data);
+        if (taskData.status === 'completed') {
+            this.handleTaskCompleted(taskData);
+        } else if (taskData.status === 'download_failed' || taskData.status === 'processing_failed') {
+            this.handleTaskFailed(taskData);
         }
     }
     
-    handleTaskCompleted(data) {
-        if (data.result && data.result.output_images) {
-            const outputImage = data.result.output_images[0];
+    handleTaskCompleted(taskData) {
+        if (taskData.result && taskData.result.files && taskData.result.files.output) {
+            const outputFiles = taskData.result.files.output;
+            console.log('任务完成，输出文件:', outputFiles);
+            if (outputFiles.length > 0) {
+                this.displayResult(outputFiles[0]);
+            }
+        } else if (taskData.result && taskData.result.output_images) {
+            // 兼容旧格式
+            const outputImage = taskData.result.output_images[0];
             console.log('任务完成，输出文件:', outputImage.url);
             this.displayResult(outputImage.url);
         }
@@ -958,12 +992,22 @@ async def main():
         
         # 定义消息处理器
         async def handle_message(data):
-            print(f"任务 {data['task_id']}: {data['status']} ({data['progress']}%)")
-            
-            if data['status'] == 'completed':
-                # 获取结果
-                result = await client.get_task_result(data['task_id'])
-                print("任务完成，输出文件:", result["output_images"])
+            if data.get('type') == 'task_update':
+                task_data = data.get('data', {})
+                print(f"任务 {data['task_id']}: {task_data['status']} ({task_data['progress']}%)")
+                
+                if task_data['status'] == 'completed':
+                    # 检查结果数据
+                    if 'result' in task_data and task_data['result']:
+                        result = task_data['result']
+                        if 'files' in result and result['files']['output']:
+                            print("任务完成，输出文件:", result['files']['output'])
+                        elif 'output_images' in result:
+                            print("任务完成，输出文件:", result['output_images'])
+                    else:
+                        # 如果WebSocket没有结果，主动获取
+                        result = await client.get_task_result(data['task_id'])
+                        print("任务完成，输出文件:", result["output_images"])
         
         # 启动WebSocket监听（这会一直运行）
         await client.listen_websocket(handle_message)
@@ -1048,11 +1092,18 @@ class ComfyUIRPCClient {
         });
         
         this.ws.on('message', (data) => {
+            // 忽略心跳消息
+            if (data === 'pong') {
+                return;
+            }
+            
             const message = JSON.parse(data);
-            if (messageHandler) {
-                messageHandler(message);
-            } else {
-                console.log('任务更新:', message);
+            if (message.type === 'task_update') {
+                if (messageHandler) {
+                    messageHandler(message);
+                } else {
+                    console.log('任务更新:', message);
+                }
             }
         });
         
@@ -1087,12 +1138,20 @@ async function main() {
         
         // 监听WebSocket消息
         client.connectWebSocket(async (data) => {
-            console.log(`任务 ${data.task_id}: ${data.status} (${data.progress}%)`);
-            
-            if (data.status === 'completed') {
-                // 获取结果
-                const result = await client.getTaskResult(data.task_id);
-                console.log('任务完成，输出文件:', result.output_images);
+            if (data.type === 'task_update') {
+                const taskData = data.data;
+                console.log(`任务 ${data.task_id}: ${taskData.status} (${taskData.progress}%)`);
+                
+                if (taskData.status === 'completed') {
+                    // 检查结果数据
+                    if (taskData.result && taskData.result.files && taskData.result.files.output) {
+                        console.log('任务完成，输出文件:', taskData.result.files.output);
+                    } else {
+                        // 如果WebSocket没有结果，主动获取
+                        const result = await client.getTaskResult(data.task_id);
+                        console.log('任务完成，输出文件:', result.output_images);
+                    }
+                }
             }
         });
         
@@ -1181,9 +1240,9 @@ class TaskMonitor {
     async startMonitoring() {
         // 启动WebSocket监听
         this.client.connectWebSocket((data) => {
-            if (data.task_id === this.taskId) {
+            if (data.type === 'task_update' && data.task_id === this.taskId) {
                 this.wsConnected = true;
-                this.handleUpdate(data);
+                this.handleUpdate(data.data);
             }
         });
         
@@ -1307,6 +1366,10 @@ class ConnectionManager {
 - **连接复用**: 复用HTTP连接和WebSocket连接
 - **错误重试**: 实现指数退避重试机制
 - **超时设置**: 为每个请求设置合理的超时时间
+- **心跳处理**: 正确过滤WebSocket心跳消息，避免JSON解析错误
+- **进度优化**: 只关注多步骤节点的进度，获得平滑的进度体验
+- **结果处理**: 优先使用WebSocket推送的结果，必要时主动获取
+- **request_id追踪**: 使用request_id进行端到端请求跟踪和调试
 
 ---
 
