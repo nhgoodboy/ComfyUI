@@ -142,7 +142,7 @@ class RPCFormatter:
                         output_images.append({
                             "filename": filename,
                             "url": f"/view?filename={filename}&subfolder={img_data.get('subfolder', '')}&type={img_data.get('type', 'output')}",
-                            "size": 0  # 暂时无法获取文件大小
+                            "size": 0
                         })
             
             formatted_result["output_images"] = output_images

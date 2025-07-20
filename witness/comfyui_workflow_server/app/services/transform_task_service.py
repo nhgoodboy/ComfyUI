@@ -286,7 +286,7 @@ class TransformTaskService:
         start_time = time.time()
         last_progress_update = start_time
         
-        # 移除初始进度更新，等待ComfyUI的实际进度回调
+
         
         while time.time() - start_time < timeout:
             # 检查任务状态
@@ -469,7 +469,7 @@ class TransformTaskService:
                     'input': task_data.image_url,
                     'output': output_files
                 },
-                'output_images': [{'url': url} for url in output_files],  # 兼容旧格式
+                'output_images': [{'url': url} for url in output_files],
                 'history': history  # 包含完整历史记录用于调试
             }
             

@@ -121,7 +121,7 @@ class FileNamingUtils:
     @classmethod
     def parse_filename(cls, filename: str) -> Tuple[str, str, str, str, str]:
         """
-        解析文件名 (原始方法保持向后兼容)
+        解析文件名
         
         Args:
             filename: 文件名

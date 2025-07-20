@@ -364,19 +364,7 @@ class ComfyUIService:
         else:
             logger.warning("TransformTaskService未注入，无法处理完成更新")
 
-    async def _find_task_by_prompt_id(self, prompt_id: str) -> Optional[str]:
-        """根据prompt_id查找请求ID (此逻辑已移至TransformTaskService)"""
-        # 这个函数现在是多余的，可以被移除，但为了安全暂时保留
-        if self.transform_task_service and hasattr(self.transform_task_service, 'prompt_to_request'):
-            return self.transform_task_service.prompt_to_request.get(prompt_id)
-        return None
 
-    async def _poll_history(self, request_id: str, prompt_id: str):
-        """
-        (已废弃) 轮询历史记录以获取结果。
-        此方法将被新的WebSocket事件驱动模型取代。
-        """
-        pass # 保留为空，不再使用
 
     async def _wait_until_view_ready(self, url: str, timeout: int = 10, interval: float = 0.5) -> bool:
         """等待直到/view端点返回有效的图像数据"""

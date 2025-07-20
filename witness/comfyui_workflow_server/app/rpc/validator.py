@@ -61,16 +61,6 @@ class RPCValidator:
             )
     
     @staticmethod
-    def validate_request_id(request_id: Any):
-        """验证请求ID"""
-        if not request_id or not isinstance(request_id, str) or not request_id.strip():
-            raise RPCInvalidParams(
-                message="请求ID不能为空",
-                field="request_id",
-                value=request_id
-            )
-    
-    @staticmethod
     def validate_image_url(image_url: Any):
         """验证图片URL"""
         if not image_url or not isinstance(image_url, str):

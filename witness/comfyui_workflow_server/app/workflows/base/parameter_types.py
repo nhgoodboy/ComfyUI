@@ -137,7 +137,7 @@ class ParameterValidator:
         if not isinstance(value, list):
             raise ValueError(f"参数必须是数组类型，实际类型: {type(value)}")
         
-        # TODO: 添加数组元素类型验证
+
         return value
     
     @staticmethod

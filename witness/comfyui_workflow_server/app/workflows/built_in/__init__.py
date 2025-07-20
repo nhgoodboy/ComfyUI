@@ -12,9 +12,9 @@
 - 更多风格可通过配置文件轻松添加...
 
 未来计划：
-- text_to_image: 文本生成图像工作流（待实现）
-- image_upscale: 图像放大工作流（待实现）
-- background_removal: 背景移除工作流（待实现）
+- text_to_image: 文本生成图像工作流
+- image_upscale: 图像放大工作流
+- background_removal: 背景移除工作流
 """
 
 from .universal_style_transform import UniversalStyleTransformWorkflow

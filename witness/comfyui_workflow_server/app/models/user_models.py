@@ -26,11 +26,7 @@ class UserTaskData(BaseModel):
     error_message: Optional[str] = Field(None, description="错误信息")
     result: Optional[Dict[str, Any]] = Field(None, description="任务结果")
     
-    @property
-    def request_id(self) -> str:
-        """向后兼容属性，返回request_id"""
-        return self.request_id
-    
+
     # 扩展字段 - 用于任务执行过程中的状态管理
     stage: Optional[str] = Field(None, description="任务阶段")
     message: Optional[str] = Field(None, description="状态消息")

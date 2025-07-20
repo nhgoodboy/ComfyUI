@@ -131,13 +131,3 @@ class StyleRegistry:
                 results.append(style)
         
         return results
-
-# 创建全局风格注册实例 - 这将被移除
-# try:
-#     style_registry = StyleRegistry("configs/style_configs.yaml")
-# except Exception as e:
-#     logger.error(f"初始化风格注册系统失败: {e}")
-#     # 创建空的注册系统以避免导入错误
-#     style_registry = StyleRegistry.__new__(StyleRegistry)
-#     style_registry.styles = {}
-#     style_registry.config_file = Path("configs/style_configs.yaml") 
