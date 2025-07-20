@@ -64,12 +64,37 @@ class ImageTransformApp {
                 console.log('会话信息:', sessionInfo);
                 this.userId = sessionInfo.user_id;  // 使用user_id而不是session_id
                 console.log('用户ID:', this.userId);
+            } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
         } catch (error) {
-            console.warn('获取会话信息失败:', error);
-            // 如果获取失败，生成一个临时用户ID（不使用下划线）
-            this.userId = 'user-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
-            console.log('生成临时用户ID:', this.userId);
+            console.error('获取会话信息失败:', error);
+            // 如果获取失败，重试一次
+            try {
+                console.log('重试获取会话信息...');
+                const retryResponse = await fetch(`${this.apiBase}/session`);
+                if (retryResponse.ok) {
+                    const sessionInfo = await retryResponse.json();
+                    console.log('重试成功，会话信息:', sessionInfo);
+                    this.userId = sessionInfo.user_id;
+                    console.log('用户ID:', this.userId);
+                } else {
+                    throw new Error('重试也失败了');
+                }
+            } catch (retryError) {
+                console.error('重试获取会话信息也失败:', retryError);
+                // 最后的备用方案：生成临时ID并尝试通过重置端点同步到后端
+                this.userId = 'user-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+                console.log('生成临时用户ID:', this.userId);
+                
+                // 尝试通过重置端点同步到后端
+                try {
+                    await fetch(`${this.apiBase}/session/reset`);
+                    console.log('已尝试同步用户ID到后端');
+                } catch (syncError) {
+                    console.warn('同步用户ID到后端失败:', syncError);
+                }
+            }
         }
     }
 

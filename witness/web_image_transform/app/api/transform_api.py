@@ -8,7 +8,7 @@ import time
 import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
@@ -54,11 +54,16 @@ class ConnectionManager:
         self.task_owners: Dict[str, str] = {}  # request_id -> user_id
 
     async def connect(self, websocket: WebSocket, user_id: str):
+        logger.info(f"WebSocket连接请求: user_id={user_id}")
         await websocket.accept()
         self.active_connections[user_id] = websocket
         if user_id not in self.user_tasks:
             self.user_tasks[user_id] = set()
-        logger.info(f"WebSocket user connected: {user_id}")
+        
+        # 注册用户到推送服务
+        transform_service.register_user(user_id, user_id)
+        
+        logger.info(f"WebSocket用户已连接: {user_id}, 当前连接数: {len(self.active_connections)}")
 
     def disconnect(self, user_id: str):
         if user_id in self.active_connections:
@@ -333,6 +338,72 @@ async def get_debug_connections():
         "total_connections": len(manager.active_connections),
         "total_tasks": len(manager.task_owners)
     }
+
+
+@api_router.get("/debug/websocket-test")
+async def websocket_test():
+    """WebSocket连接测试页面"""
+    html_content = """<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket连接测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .error { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket连接测试</h1>
+    <button onclick="testConnection()">测试WebSocket连接</button>
+    <button onclick="clearLog()">清除日志</button>
+    <div id="log"></div>
+    <script>
+        let ws = null;
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log ' + type;
+            entry.textContent = new Date().toLocaleTimeString() + ': ' + message;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+        async function testConnection() {
+            try {
+                log('正在获取会话信息...');
+                const response = await fetch('/api/session');
+                const sessionInfo = await response.json();
+                log('会话信息: ' + JSON.stringify(sessionInfo), 'success');
+                const userId = sessionInfo.user_id;
+                log('正在连接WebSocket: ws://' + window.location.host + '/api/ws/' + userId);
+                if (ws) { ws.close(); }
+                ws = new WebSocket('ws://' + window.location.host + '/api/ws/' + userId);
+                ws.onopen = function() {
+                    log('WebSocket连接成功！', 'success');
+                    ws.send('ping');
+                };
+                ws.onmessage = function(event) {
+                    log('收到消息: ' + event.data, 'success');
+                };
+                ws.onclose = function(event) {
+                    log('WebSocket连接关闭: code=' + event.code + ', reason=' + event.reason, 'error');
+                };
+                ws.onerror = function(error) {
+                    log('WebSocket错误: ' + error, 'error');
+                };
+            } catch (error) {
+                log('测试失败: ' + error.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
 
 
 @api_router.websocket("/ws/{user_id}")

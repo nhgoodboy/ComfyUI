@@ -35,7 +35,7 @@ class TransformService:
         self.user_to_frontend: Dict[str, str] = {}  # user_id -> frontend_user_id
         
         # 使用一个服务级别的标识符（仅用于WebSocket连接）
-        self.service_id = "webimagetransformservice"
+        self.service_id = "web_image_transform_service"
         
         # 确保目录存在
         self.uploads_dir = Path(settings.UPLOAD_DIR)
