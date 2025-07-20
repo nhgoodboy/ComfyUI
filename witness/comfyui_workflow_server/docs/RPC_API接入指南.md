@@ -823,7 +823,7 @@ client.createTransform('clay_style', 'https://external.com/clay_style_alice_req1
 | 3001 | 风格不存在 | 指定的风格ID不存在 |
 | 3002 | ComfyUI服务不可用 | ComfyUI后端服务连接失败 |
 | 3003 | 转换处理失败 | 图像转换过程中出现错误 |
-| 3004 | 任务不存在 | 指定的任务ID不存在 |
+| 3004 | 任务不存在 | 指定的请求ID不存在 |
 | 3005 | 任务已取消 | 任务已被用户取消 |
 
 ### 错误处理示例

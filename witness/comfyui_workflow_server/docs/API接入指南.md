@@ -262,7 +262,7 @@ graph LR
 
 **路径参数**:
 - `user_id` (string, required): 用户标识符
-- `request_id` (string, required): 任务ID
+- `request_id` (string, required): 请求ID
 
 **响应**: 与任务列表中的单个任务相同格式
 
@@ -581,7 +581,7 @@ const wsClient = new ComfyUIWebSocketClient(userId);
 |------|------|----------|
 | FILE_TOO_LARGE | 文件过大 | 压缩文件至10MB以下 |
 | INVALID_FILE_TYPE | 文件类型不支持 | 使用支持的图片格式 |
-| TASK_NOT_FOUND | 任务不存在 | 检查任务ID和用户ID |
+| TASK_NOT_FOUND | 任务不存在 | 检查请求ID和用户ID |
 | STYLE_NOT_FOUND | 风格不存在 | 检查风格ID |
 | USER_NOT_FOUND | 用户不存在 | 检查用户ID参数 |
 

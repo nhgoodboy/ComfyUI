@@ -52,10 +52,10 @@ class RPCValidator:
     
     @staticmethod
     def validate_request_id(request_id: Any):
-        """验证任务ID"""
+        """验证请求ID"""
         if not request_id or not isinstance(request_id, str) or not request_id.strip():
             raise RPCInvalidParams(
-                message="任务ID不能为空",
+                message="请求ID不能为空",
                 field="request_id",
                 value=request_id
             )

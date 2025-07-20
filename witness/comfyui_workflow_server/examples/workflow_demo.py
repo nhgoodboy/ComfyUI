@@ -129,7 +129,7 @@ async def demo_clay_style_transform():
         }
         
         request_id = await client.execute_workflow("clay_style_transform", parameters)
-        print(f"任务已提交，任务ID: {request_id}")
+        print(f"任务已提交，请求ID: {request_id}")
         
         # 4. 等待完成
         print("\n4. 等待任务完成...")

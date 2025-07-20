@@ -13,7 +13,7 @@ sequenceDiagram
     API->>TaskMgr: 创建任务
     TaskMgr-->>API: 返回request_id
     API-->>Backend: 返回{request_id, status: "pending"}
-    Backend-->>APP: 返回任务ID
+    Backend-->>APP: 返回请求ID
     
     Note over API,ComfyUI: 后台异步处理开始
     

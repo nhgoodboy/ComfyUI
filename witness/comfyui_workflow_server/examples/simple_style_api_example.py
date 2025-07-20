@@ -171,7 +171,7 @@ async def demo_basic_usage():
                     )
                     
                     if request_id:
-                        print(f"   任务ID: {request_id}")
+                        print(f"   请求ID: {request_id}")
                         
                         # 4. 等待完成
                         print("\n4. 等待任务完成...")

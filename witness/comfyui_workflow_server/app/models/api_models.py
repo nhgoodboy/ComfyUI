@@ -33,13 +33,13 @@ class TransformRequest(BaseModel):
 class TransformResponse(BaseModel):
     """风格转换响应模型"""
     success: bool = Field(..., description="是否成功")
-    request_id: str = Field(..., description="任务ID")
+    request_id: str = Field(..., description="请求ID")
     user_id: str = Field(..., description="用户ID")
     estimated_time: int = Field(..., description="预估处理时间(秒)")
 
 class TaskStatusData(BaseModel):
     """任务状态数据模型"""
-    request_id: str = Field(..., description="任务ID")
+    request_id: str = Field(..., description="请求ID")
     user_id: str = Field(..., description="用户ID")
     style_id: str = Field(..., description="风格ID")
     status: TaskStatus = Field(..., description="任务状态")
