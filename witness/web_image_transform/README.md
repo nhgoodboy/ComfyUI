@@ -190,7 +190,7 @@ web_image_transform/
 
 ### 用户管理
 - 每个浏览器会话自动分配唯一的 `user_id`
-- 格式：`user_{timestamp}_{random_string}`
+- 格式：`user-{timestamp}-{random_string}`
 - 确保不同用户的文件和任务完全隔离
 
 ### WebSocket通信架构

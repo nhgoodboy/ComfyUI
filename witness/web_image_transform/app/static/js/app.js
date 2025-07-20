@@ -17,38 +17,38 @@ class ImageTransformApp {
         this.currentTask = null;
         this.apiBase = '/api';
         this.originalImagePreviewUrl = null;  // 保存原始图片预览URL
-        
+
         this.init();
     }
 
     generateRequestId() {
-        return 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        return 'req-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
     }
 
     async init() {
         try {
             console.log('=== 应用初始化开始 ===');
-            
+
             // 获取会话信息（包含用户ID）
             console.log('获取会话信息...');
             await this.getSessionInfo();
-            
+
             // 初始化WebSocket连接
             console.log('初始化WebSocket连接...');
             this.initWebSocket();
-            
+
             // 加载可用风格
             console.log('加载可用风格...');
             await this.loadStyles();
-            
+
             // 绑定事件
             console.log('绑定事件...');
             this.bindEvents();
-            
+
             // 初始化按钮状态
             console.log('初始化按钮状态...');
             this.updateSubmitButton();
-            
+
             console.log('=== 应用初始化成功 ===');
         } catch (error) {
             console.error('=== 应用初始化失败 ===', error);
@@ -67,8 +67,8 @@ class ImageTransformApp {
             }
         } catch (error) {
             console.warn('获取会话信息失败:', error);
-            // 如果获取失败，生成一个临时用户ID
-            this.userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            // 如果获取失败，生成一个临时用户ID（不使用下划线）
+            this.userId = 'user-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
             console.log('生成临时用户ID:', this.userId);
         }
     }
@@ -77,7 +77,7 @@ class ImageTransformApp {
         try {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}${this.apiBase}/ws/${this.userId}`;
-            
+
             console.log('连接WebSocket:', wsUrl);
             this.websocket = new WebSocket(wsUrl);
 
@@ -92,7 +92,7 @@ class ImageTransformApp {
                     if (event.data === 'pong') {
                         return;
                     }
-                    
+
                     const data = JSON.parse(event.data);
                     console.log('收到WebSocket消息:', data);
                     this.handleWebSocketMessage(data);
@@ -104,7 +104,7 @@ class ImageTransformApp {
             this.websocket.onclose = (event) => {
                 console.log('WebSocket连接已关闭:', event.code, event.reason);
                 this.updateConnectionStatus(false);
-                
+
                 // 如果不是正常关闭，尝试重连
                 if (event.code !== 1000) {
                     setTimeout(() => {
@@ -142,11 +142,11 @@ class ImageTransformApp {
         const taskData = data.data;
         const requestId = taskData.request_id;
         console.log(`任务更新 - ${data.request_id} (request_id: ${requestId}): ${taskData.status} (${taskData.progress}%) - ${taskData.message}`);
-        
+
         // 将request_id添加到taskData中，方便后续方法使用
         taskData.request_id = data.request_id;
         console.log('DEBUG: 设置taskData.request_id为:', taskData.request_id);
-        
+
         // 更新当前任务状态
         if (this.currentTask && this.currentTask.request_id === data.request_id) {
             this.currentTask = { ...this.currentTask, ...taskData };
@@ -160,28 +160,28 @@ class ImageTransformApp {
             case 'downloading':
                 this.updateStatus(`下载中: ${taskData.message}`, 'info');
                 break;
-            
+
             case 'downloaded':
                 this.updateStatus('图片下载完成，开始转换...', 'info');
                 break;
-            
+
             case 'processing':
                 this.updateStatus(`转换中: ${taskData.message}`, 'info');
                 break;
-            
+
             case 'completed':
                 console.log('URGENT DEBUG: 调用handleTaskCompleted，taskData.request_id =', taskData.request_id);
                 this.handleTaskCompleted(taskData);
                 break;
-            
+
             case 'download_failed':
                 this.handleTaskFailed(taskData, '图片下载失败');
                 break;
-            
+
             case 'processing_failed':
                 this.handleTaskFailed(taskData, '图像转换失败');
                 break;
-            
+
             default:
                 this.updateStatus(taskData.message || '任务状态未知', 'info');
         }
@@ -190,21 +190,21 @@ class ImageTransformApp {
     handleTaskCompleted(data) {
         this.updateStatus('转换完成！', 'success');
         this.updateProgressUI({ progress: 100, stage: 'completed', message: '转换完成' });
-        
+
         // 调试：打印data内容
         console.log('handleTaskCompleted 收到的data:', data);
         console.log('data.request_id:', data.request_id);
-        
+
         // 检查是否有结果数据
         if (data.result) {
             console.log('收到任务结果:', data.result);
-            
+
             // 检查旧格式的output_images
             if (data.result.output_images && data.result.output_images.length > 0) {
                 const outputImage = data.result.output_images[0];
                 // 使用保存的原始图片预览URL
                 this.displayResultImage(this.originalImagePreviewUrl || data.result.files?.input || '', outputImage.url);
-            } 
+            }
             // 检查新格式的files
             else if (data.result.files && data.result.files.output) {
                 const outputFiles = data.result.files.output;
@@ -225,7 +225,7 @@ class ImageTransformApp {
             this.updateStatus('图像转换完成！请查看输出目录', 'success');
             this.hideProgress();
         }
-        
+
         this.isProcessing = false;
         this.updateSubmitButton();
     }
@@ -234,7 +234,7 @@ class ImageTransformApp {
         const errorMessage = `${errorType}: ${data.message || '未知错误'}`;
         this.updateStatus(errorMessage, 'error');
         this.showError(errorMessage);
-        
+
         this.isProcessing = false;
         this.updateSubmitButton();
         this.hideProgress();
@@ -244,19 +244,19 @@ class ImageTransformApp {
         try {
             console.log('开始加载风格列表...');
             this.showLoading('正在加载风格列表...');
-            
+
             const response = await fetch(`${this.apiBase}/styles`);
             console.log('风格API响应状态:', response.status);
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            
+
             this.styles = await response.json();
             console.log('获取到风格数据:', this.styles);
             this.populateStyleSelect();
             this.hideLoading();
-            
+
             console.log('风格列表加载完成:', this.styles.length, '个风格');
         } catch (error) {
             console.error('加载风格列表失败:', error);
@@ -270,7 +270,7 @@ class ImageTransformApp {
         if (!styleSelect) return;
 
         styleSelect.innerHTML = '<option value="">请选择风格</option>';
-        
+
         this.styles.forEach(style => {
             const option = document.createElement('option');
             option.value = style.id;
@@ -328,7 +328,7 @@ class ImageTransformApp {
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('drag-over');
-            
+
             const files = e.dataTransfer.files;
             if (files.length > 0) {
                 const fileInput = document.getElementById('image-input');
@@ -344,7 +344,7 @@ class ImageTransformApp {
         console.log('=== 文件选择事件触发 ===');
         const file = event.target.files[0];
         console.log('选择的文件:', file);
-        
+
         if (!file) {
             console.log('没有选择文件');
             return;
@@ -384,7 +384,7 @@ class ImageTransformApp {
         reader.onload = (e) => {
             // 保存原始图片预览URL
             this.originalImagePreviewUrl = e.target.result;
-            
+
             const previewContainer = document.getElementById('image-preview');
             if (previewContainer) {
                 previewContainer.style.display = 'block';
@@ -398,7 +398,7 @@ class ImageTransformApp {
                     </div>
                 `;
             }
-            
+
             // 同时更新文件名显示
             const fileNameSpan = document.getElementById('file-name');
             if (fileNameSpan) {
@@ -502,29 +502,29 @@ class ImageTransformApp {
             resultContainer.style.display = 'block';
         }
     }
-    
+
     displayResultImage(originalUrl, resultUrl) {
         const resultCard = document.getElementById('result-card');
         const originalImage = document.getElementById('original-image');
         const resultImage = document.getElementById('result-image');
         const downloadLink = document.getElementById('download-link');
-        
+
         if (originalImage && originalUrl) {
             originalImage.src = originalUrl;
         }
-        
+
         if (resultImage && resultUrl) {
             resultImage.src = resultUrl;
         }
-        
+
         if (downloadLink && resultUrl) {
             downloadLink.href = resultUrl;
         }
-        
+
         if (resultCard) {
             resultCard.style.display = 'block';
         }
-        
+
         // 隐藏进度卡片
         this.hideProgress();
     }
@@ -551,7 +551,7 @@ class ImageTransformApp {
         if (progressText) {
             progressText.textContent = `${Math.round(data.progress || 0)}%`;
         }
-        
+
         if (taskInfo) {
             let stageText = '';
             switch (data.stage) {
@@ -568,7 +568,7 @@ class ImageTransformApp {
                 default:
                     stageText = data.stage || '';
             }
-            
+
             taskInfo.textContent = `${stageText} - ${data.message || ''}`;
         }
     }
@@ -637,13 +637,13 @@ class ImageTransformApp {
             resultContainer.style.display = 'none';
             resultContainer.innerHTML = '';
         }
-        
+
         // 同时清理新的结果卡片
         const resultCard = document.getElementById('result-card');
         if (resultCard) {
             resultCard.style.display = 'none';
         }
-        
+
         // 清理原始图片预览URL
         this.originalImagePreviewUrl = null;
     }
@@ -653,7 +653,7 @@ class ImageTransformApp {
         if (statusElement) {
             statusElement.textContent = message;
             statusElement.className = `status-message status-${type}`;
-            
+
             // 自动隐藏成功消息
             if (type === 'success') {
                 setTimeout(() => {
@@ -667,7 +667,7 @@ class ImageTransformApp {
 
     showError(message) {
         this.updateStatus(message, 'error');
-        
+
         // 也可以使用更明显的错误提示
         if (window.alert) {
             alert('错误: ' + message);
@@ -691,7 +691,7 @@ class ImageTransformApp {
         if (this.websocket) {
             this.websocket.close();
         }
-        
+
         if (this.heartbeatInterval) {
             clearInterval(this.heartbeatInterval);
         }

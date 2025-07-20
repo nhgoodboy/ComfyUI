@@ -27,3 +27,6 @@ uv.lock
 *.png
 *.jpg
 *.webq
+
+witness/comfyui_workflow_server/uploads/*
+witness/web_image_transform/uploads*

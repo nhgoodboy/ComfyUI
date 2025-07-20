@@ -298,13 +298,13 @@ async def get_session_info(request: Request):
     """获取会话信息"""
     import uuid
     
-    # 确保session_id存在
-    if "session_id" not in request.session:
-        request.session["session_id"] = f"user_{int(time.time())}_{str(uuid.uuid4())[:8]}"
+    # 确保user_id存在（与main.py保持一致）
+    if "user_id" not in request.session:
+        request.session["user_id"] = f"user-{int(time.time())}-{str(uuid.uuid4())[:8]}"
     
     return {
-        "session_id": request.session["session_id"],
-        "user_id": request.session["session_id"],
+        "session_id": request.session["user_id"],  # 为了向后兼容
+        "user_id": request.session["user_id"],
         "message": "会话信息"
     }
 
