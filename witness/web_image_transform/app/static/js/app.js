@@ -137,6 +137,9 @@ class ImageTransformApp {
         const requestId = taskData.request_id;
         console.log(`任务更新 - ${data.task_id} (request_id: ${requestId}): ${taskData.status} (${taskData.progress}%) - ${taskData.message}`);
         
+        // 将task_id添加到taskData中，方便后续方法使用
+        taskData.task_id = data.task_id;
+        
         // 更新当前任务状态
         if (this.currentTask && this.currentTask.task_id === data.task_id) {
             this.currentTask = { ...this.currentTask, ...taskData };
@@ -180,12 +183,22 @@ class ImageTransformApp {
         this.updateStatus('转换完成！', 'success');
         this.updateProgressUI({ progress: 100, message: '转换完成' });
         
-        // 获取转换结果
-        if (data.result && data.result.output_images && data.result.output_images.length > 0) {
-            const outputImage = data.result.output_images[0];
-            this.displayResult(outputImage.url);
+        // 检查是否有结果数据
+        if (data.result) {
+            console.log('收到任务结果:', data.result);
+            
+            // 检查旧格式的output_images
+            if (data.result.output_images && data.result.output_images.length > 0) {
+                const outputImage = data.result.output_images[0];
+                this.displayResult(outputImage.url);
+            } else {
+                // 新的RPC架构下，尝试主动获取结果
+                console.log('WebSocket结果格式不匹配，主动获取任务结果');
+                this.getTaskResult(data.task_id);
+            }
         } else {
             // 如果WebSocket消息中没有结果，主动获取
+            console.log('WebSocket消息中没有结果数据，主动获取任务结果');
             this.getTaskResult(data.task_id);
         }
         

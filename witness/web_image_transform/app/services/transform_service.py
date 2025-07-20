@@ -89,24 +89,29 @@ class TransformService:
             
             # 转发消息给前端客户端
             if self.connection_manager:
-                # 添加一些前端需要的字段
+                # 提取实际的任务数据 - 数据在data.data中
+                task_data = data.get("data", {})
+                
+                # 构造前端期待的嵌套数据结构
                 frontend_data = {
                     "type": "task_update",
-                    "task_id": data.get("task_id"),
-                    "status": data.get("status"),
-                    "progress": data.get("progress", 0),
-                    "message": data.get("message", ""),
-                    "stage": data.get("stage", "unknown"),
-                    "timestamp": data.get("timestamp"),
-                    "files": data.get("files", {}),
-                    "style_id": data.get("style_id"),
-                    "user_id": data.get("user_id"),
-                    "request_id": data.get("request_id")
+                    "task_id": data.get("task_id"),  # task_id在顶层
+                    "data": {
+                        "status": task_data.get("status"),
+                        "progress": task_data.get("progress", 0),
+                        "message": task_data.get("message", ""),
+                        "stage": task_data.get("stage", "unknown"),
+                        "timestamp": task_data.get("timestamp"),
+                        "files": task_data.get("files", {}),
+                        "style_id": task_data.get("style_id"),
+                        "user_id": task_data.get("user_id"),
+                        "request_id": task_data.get("request_id")
+                    }
                 }
                 
                 # 如果任务完成，添加结果信息
-                if data.get("status") == "completed" and "result" in data:
-                    frontend_data["result"] = data["result"]
+                if task_data.get("status") == "completed" and "result" in task_data:
+                    frontend_data["data"]["result"] = task_data["result"]
                 
                 # 广播给所有连接的前端客户端
                 await self._broadcast_to_clients(frontend_data)
