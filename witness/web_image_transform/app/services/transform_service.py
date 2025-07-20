@@ -34,8 +34,8 @@ class TransformService:
         # 用户到前端用户的映射
         self.user_to_frontend: Dict[str, str] = {}  # user_id -> frontend_user_id
         
-        # 使用一个服务级别的标识符
-        self.service_id = "web_image_transform_service"
+        # 使用一个服务级别的标识符（仅用于WebSocket连接）
+        self.service_id = "webimagetransformservice"
         
         # 确保目录存在
         self.uploads_dir = Path(settings.UPLOAD_DIR)
@@ -55,7 +55,7 @@ class TransformService:
             # 创建单一的RPC客户端（使用服务级别标识符）
             self.rpc_client = ComfyUIRPCClient(
                 base_url=settings.COMFYUI_WORKFLOW_SERVER_URL,
-                user_id=self.service_id
+                service_id=self.service_id
             )
             
             # 测试连接
@@ -238,13 +238,14 @@ class TransformService:
             if not file_ext:
                 file_ext = ".jpg"
             
-            # 使用单一的RPC客户端生成符合规范的文件名
+            # 使用单一的RPC客户端生成符合规范的文件名，传递实际的user_id
             async with self.rpc_client:
                 filename_info = await self.rpc_client.build_filename(
                     style_id=style_id,
                     request_id=request_id,
                     file_type="input",
-                    extension=file_ext[1:]  # 去掉点号
+                    extension=file_ext[1:],  # 去掉点号
+                    actual_user_id=user_id  # 传递实际的用户ID用于文件命名
                 )
             
             standard_filename = filename_info["filename"]
@@ -312,7 +313,7 @@ class TransformService:
             
             # 使用单一的RPC客户端
             async with self.rpc_client:
-                return await self.rpc_client.get_task_status(request_id)
+                return await self.rpc_client.get_task_status(request_id, actual_user_id=user_id)
         except Exception as e:
             logger.error(f"获取任务状态失败: {e}")
             raise
@@ -326,7 +327,7 @@ class TransformService:
             
             # 使用单一的RPC客户端
             async with self.rpc_client:
-                return await self.rpc_client.get_task_result(request_id)
+                return await self.rpc_client.get_task_result(request_id, actual_user_id=user_id)
         except Exception as e:
             logger.error(f"获取任务结果失败: {e}")
             raise
@@ -340,7 +341,7 @@ class TransformService:
             
             # 使用单一的RPC客户端
             async with self.rpc_client:
-                result = await self.rpc_client.list_tasks(limit=limit)
+                result = await self.rpc_client.list_tasks(limit=limit, actual_user_id=user_id)
                 return result.get("tasks", [])
         except Exception as e:
             logger.error(f"获取任务列表失败: {e}")
@@ -355,7 +356,7 @@ class TransformService:
             
             # 使用单一的RPC客户端
             async with self.rpc_client:
-                result = await self.rpc_client.cancel_task(request_id)
+                result = await self.rpc_client.cancel_task(request_id, actual_user_id=user_id)
                 return result.get("success", False)
         except Exception as e:
             logger.error(f"取消任务失败: {e}")

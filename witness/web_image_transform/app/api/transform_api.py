@@ -186,6 +186,9 @@ async def create_transform_task(
         # 注册用户到前端客户端的映射
         transform_service.register_user(user_id, user_id)
         
+        # 添加调试日志
+        logger.info(f"API接收到的user_id: {user_id}")
+        
         # 执行转换
         task_info = await transform_service.transform_image(
             user_id=user_id,
