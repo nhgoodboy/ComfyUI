@@ -87,6 +87,11 @@ class ImageTransformApp {
 
             this.websocket.onmessage = (event) => {
                 try {
+                    // 忽略心跳消息
+                    if (event.data === 'pong') {
+                        return;
+                    }
+                    
                     const data = JSON.parse(event.data);
                     console.log('收到WebSocket消息:', data);
                     this.handleWebSocketMessage(data);
@@ -139,6 +144,7 @@ class ImageTransformApp {
         
         // 将task_id添加到taskData中，方便后续方法使用
         taskData.task_id = data.task_id;
+        console.log('DEBUG: 设置taskData.task_id为:', taskData.task_id);
         
         // 更新当前任务状态
         if (this.currentTask && this.currentTask.task_id === data.task_id) {
@@ -163,6 +169,7 @@ class ImageTransformApp {
                 break;
             
             case 'completed':
+                console.log('URGENT DEBUG: 调用handleTaskCompleted，taskData.task_id =', taskData.task_id);
                 this.handleTaskCompleted(taskData);
                 break;
             
@@ -183,6 +190,10 @@ class ImageTransformApp {
         this.updateStatus('转换完成！', 'success');
         this.updateProgressUI({ progress: 100, message: '转换完成' });
         
+        // 调试：打印data内容
+        console.log('handleTaskCompleted 收到的data:', data);
+        console.log('data.task_id:', data.task_id);
+        
         // 检查是否有结果数据
         if (data.result) {
             console.log('收到任务结果:', data.result);
@@ -192,14 +203,14 @@ class ImageTransformApp {
                 const outputImage = data.result.output_images[0];
                 this.displayResult(outputImage.url);
             } else {
-                // 新的RPC架构下，尝试主动获取结果
-                console.log('WebSocket结果格式不匹配，主动获取任务结果');
-                this.getTaskResult(data.task_id);
+                // 新的RPC架构下，任务已完成，显示完成状态
+                console.log('任务已完成，无需额外获取结果');
+                this.updateStatus('图像转换完成！请查看输出目录', 'success');
             }
         } else {
-            // 如果WebSocket消息中没有结果，主动获取
-            console.log('WebSocket消息中没有结果数据，主动获取任务结果');
-            this.getTaskResult(data.task_id);
+            // 如果WebSocket消息中没有结果，显示完成状态
+            console.log('任务已完成');
+            this.updateStatus('图像转换完成！请查看输出目录', 'success');
         }
         
         this.isProcessing = false;
