@@ -300,12 +300,26 @@ async def get_session_info(request: Request):
     
     # 确保user_id存在（与main.py保持一致）
     if "user_id" not in request.session:
-        request.session["user_id"] = f"user-{int(time.time())}-{str(uuid.uuid4())[:8]}"
+        request.session["user_id"] = f"user-{int(time.time())}-{str(uuid.uuid4()).replace('-', '')[:8]}"
     
     return {
         "session_id": request.session["user_id"],  # 为了向后兼容
         "user_id": request.session["user_id"],
         "message": "会话信息"
+    }
+
+
+@api_router.get("/session/reset")
+async def reset_session(request: Request):
+    """重置会话信息 - 强制生成新的用户ID"""
+    import uuid
+    
+    # 强制重新生成用户ID
+    request.session["user_id"] = f"user-{int(time.time())}-{str(uuid.uuid4()).replace('-', '')[:8]}"
+    
+    return {
+        "message": "会话已重置",
+        "new_user_id": request.session["user_id"]
     }
 
 
