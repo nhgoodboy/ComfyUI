@@ -141,6 +141,12 @@ async def get_transform_result(params: Dict[str, Any], request: Request) -> Dict
         # 获取转换任务服务
         transform_service: TransformTaskService = request.app.state.transform_task_service
         
+        # 调试：记录当前存储的所有用户和任务
+        logger.info(f"查找任务: user_id={user_id}, task_id={task_id}")
+        logger.info(f"当前存储的用户: {list(transform_service.user_tasks.keys())}")
+        for uid, tasks in transform_service.user_tasks.items():
+            logger.info(f"用户 {uid} 的任务: {list(tasks.keys())}")
+        
         # 获取任务数据
         task_data = transform_service.get_user_task(user_id, task_id)
         if not task_data:

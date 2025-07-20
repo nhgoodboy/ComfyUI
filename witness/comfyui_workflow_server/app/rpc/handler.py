@@ -38,7 +38,7 @@ class RPCHandler:
             handler = rpc_router.get_handler(rpc_request.method)
             
             # 执行方法
-            logger.info(f"执行RPC方法: {rpc_request.method}, 请求ID: {request_id}")
+            logger.info(f"执行RPC方法: {rpc_request.method}, 请求ID: {request_id}, 参数: {rpc_request.params}")
             result = await self._execute_method(handler, rpc_request.params, request)
             
             # 格式化成功响应

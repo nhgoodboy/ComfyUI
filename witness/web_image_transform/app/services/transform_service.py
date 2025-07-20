@@ -26,7 +26,9 @@ class TransformService:
     def __init__(self):
         self.rpc_client: Optional[ComfyUIRPCClient] = None
         self.ws_client: Optional[ComfyUIWebSocketClient] = None
-        self.session_id = str(uuid.uuid4())  # 使用session_id作为user_id
+        # 使用固定的user_id以避免重启后找不到任务的问题
+        # 注意：不使用下划线，因为后端会清理掉下划线
+        self.session_id = "webimagetransformuser"
         
         # 连接管理器，用于向前端推送消息
         self.connection_manager = None
