@@ -433,34 +433,66 @@ class TransformTaskService:
             logger.warning(f"任务数据不存在: {task_id}")
             return
         
-        # 更新任务结果
-        task_data.result = result
-        task_data.status = "completed"
-        task_data.stage = "completed"
-        task_data.progress = 100.0
-        task_data.message = "转换完成"
+        # 更新任务结果 - 先记录原始结果用于调试
+        logger.info(f"任务 {task_id} 收到ComfyUI原始结果: {result}")
         
-        # 从结果中提取文件信息并构造完整的结果数据
-        if 'files' in result and result['files']:
-            # 构造文件信息
-            files_info = {
-                'input': task_data.image_url,  # 原始输入图片URL
-                'output': result['files']  # ComfyUI生成的文件列表
-            }
+        # 异步获取完整的历史记录信息
+        asyncio.create_task(self._process_completion_result(task_data, prompt_id, result))
+    
+    async def _process_completion_result(self, task_data: 'UserTaskData', prompt_id: str, result: Dict[str, Any]):
+        """处理完成结果，获取完整的历史记录信息"""
+        try:
+            # 获取完整的历史记录
+            logger.info(f"任务 {task_data.task_id} 获取历史记录信息...")
+            history = await self.comfyui_service.get_result(prompt_id)
+            logger.info(f"任务 {task_data.task_id} 获取到历史记录: {history}")
             
-            # 更新任务结果，包含文件信息
+            # 更新任务状态
+            task_data.status = "completed"
+            task_data.stage = "completed" 
+            task_data.progress = 100.0
+            task_data.message = "转换完成"
+            
+            # 从历史记录中提取输出文件
+            output_files = []
+            if 'outputs' in history:
+                for node_id, node_output in history['outputs'].items():
+                    if 'images' in node_output:
+                        for image_info in node_output['images']:
+                            # 构造文件访问URL
+                            filename = image_info.get('filename')
+                            if filename:
+                                file_url = f"http://{self.comfyui_service.server_address}:{self.comfyui_service.port}/view?filename={filename}"
+                                output_files.append(file_url)
+                                logger.info(f"任务 {task_data.task_id} 找到输出文件: {file_url}")
+            
+            # 构造完整的结果数据
             task_data.result = {
                 'status': 'completed',
-                'prompt_id': result.get('prompt_id'),
+                'prompt_id': prompt_id,
                 'timestamp': result.get('timestamp'),
-                'files': files_info,
-                'output_images': [{'url': url} for url in result['files']]  # 兼容旧格式
+                'files': {
+                    'input': task_data.image_url,
+                    'output': output_files
+                },
+                'output_images': [{'url': url} for url in output_files],  # 兼容旧格式
+                'history': history  # 包含完整历史记录用于调试
             }
-        
-        logger.info(f"任务 {task_id} 完成，结果包含 {len(result.get('files', []))} 个文件")
-        
-        # 推送任务完成更新
-        asyncio.create_task(self._push_task_update(task_data))
+            
+            logger.info(f"任务 {task_data.task_id} 完成，生成了 {len(output_files)} 个文件")
+            
+            # 推送任务完成更新
+            await self._push_task_update(task_data)
+            
+        except Exception as e:
+            logger.error(f"处理任务 {task_data.task_id} 完成结果失败: {e}", exc_info=True)
+            # 即使获取历史记录失败，也要标记任务为完成
+            task_data.status = "completed"
+            task_data.stage = "completed"
+            task_data.progress = 100.0
+            task_data.message = "转换完成（结果获取失败）"
+            task_data.result = result
+            await self._push_task_update(task_data)
     
     def cleanup_old_tasks(self, max_age_hours: int = 24):
         """清理旧任务"""
