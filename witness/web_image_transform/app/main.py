@@ -73,7 +73,7 @@ def create_app() -> FastAPI:
             """提供主页面"""
             # 确保session中有user_id
             if "user_id" not in request.session:
-                request.session["user_id"] = f"user-{int(time.time())}-{str(uuid.uuid4()).replace('-', '')[:8]}"
+                request.session["user_id"] = f"user-{int(time.time())}-{str(uuid.uuid4())[:8]}"
             
             return templates.TemplateResponse("index.html", {
                 "request": request,
