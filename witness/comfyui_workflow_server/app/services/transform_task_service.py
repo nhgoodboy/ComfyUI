@@ -306,15 +306,12 @@ class TransformTaskService:
                     task_id=task_data.task_id
                 )
             
-            # 如果超过5秒没有收到ComfyUI的进度更新，模拟进度增长
+            # 检查是否收到ComfyUI的进度更新
             current_time = time.time()
-            if current_time - last_progress_update > 5:
-                estimated_progress = min(90.0, estimated_progress + 10.0)  # 最大增长到90%
-                task_data.progress = estimated_progress
-                task_data.message = f"处理中... ({estimated_progress:.0f}%)"
-                await self._push_task_update(task_data)
+            if current_time - last_progress_update > 10:
+                # 超过10秒没有进度更新，记录调试信息但不强制模拟进度
+                logger.debug(f"任务 {task_data.task_id} 超过10秒没有收到进度更新")
                 last_progress_update = current_time
-                logger.info(f"模拟进度更新: {estimated_progress:.0f}%")
             
             await asyncio.sleep(1)
         
@@ -483,29 +480,58 @@ class TransformTaskService:
             return
         
         # 更新任务进度
-        if 'value' in progress_data and 'max' in progress_data:
-            max_val = progress_data['max']
-            current_val = progress_data['value']
-            if max_val > 0:
-                # ComfyUI的进度是针对当前节点的，我们需要映射到整体进度
-                node_progress = (current_val / max_val) * 100
-                # 假设ComfyUI执行占总进度的80%（10%-90%），前面10%是下载，最后10%是完成
-                overall_progress = 10.0 + (node_progress * 0.8)
+        if 'value' in progress_data:
+            # WebSocket客户端已经处理了进度计算，value是0-100的百分比
+            node_progress = progress_data['value']
+            current_step = progress_data.get('current_step', 0)
+            total_steps = progress_data.get('total_steps', 1)
+            node_id = progress_data.get('node', 'unknown')
+            
+            # 将节点进度(0-100%)映射到任务整体进度(30-90%)
+            # 前30%是下载阶段，90-100%是完成阶段
+            overall_progress = 30.0 + (node_progress * 0.6)  # 节点进度占60%
+            task_data.progress = min(90.0, overall_progress)  # 最大90%，为完成留10%
+            task_data.stage = "transform"
+            
+            # 根据是否有详细步数信息来设置消息
+            if 'current_step' in progress_data and 'total_steps' in progress_data:
+                task_data.message = f"生成进度: {current_step}/{total_steps} ({task_data.progress:.1f}%) - 节点: {node_id}"
+            else:
+                task_data.message = f"生成进度: {task_data.progress:.1f}% - 节点: {node_id}"
                 
-                task_data.progress = min(90.0, overall_progress)  # 最大90%，为完成留10%
+            logger.info(f"任务 {task_id} ComfyUI进度更新: 节点{node_progress:.1f}% -> 总体{task_data.progress:.1f}% (步骤: {current_step}/{total_steps})")
+            
+            # 推送进度更新
+            asyncio.create_task(self._push_task_update(task_data))
+        elif 'status' in progress_data:
+            # 处理状态更新 (如开始、执行等)
+            status = progress_data['status']
+            
+            if status == "started":
+                # 任务开始执行，设置进度为30% (下载完成，开始转换)
+                task_data.progress = 30.0
                 task_data.stage = "transform"
-                task_data.message = f"生成进度: {current_val}/{max_val} ({task_data.progress:.1f}%)"
-                logger.info(f"任务 {task_id} ComfyUI进度更新: 节点{node_progress:.1f}% -> 总体{task_data.progress:.1f}%")
+                task_data.message = "开始图像转换..."
+                logger.info(f"任务 {task_id} 开始转换")
+                asyncio.create_task(self._push_task_update(task_data))
                 
-                # 推送进度更新
+            elif status == "executing_node":
+                # 节点开始执行
+                node_id = progress_data.get('node', 'unknown')
+                task_data.stage = "transform"
+                task_data.message = f"正在执行节点: {node_id}"
+                logger.info(f"任务 {task_id} 执行节点: {node_id}")
+                asyncio.create_task(self._push_task_update(task_data))
+                
+            else:
+                # 其他状态更新
+                task_data.stage = "transform"
+                task_data.message = f"状态: {status}"
+                logger.info(f"任务 {task_id} 状态更新: {status}")
                 asyncio.create_task(self._push_task_update(task_data))
         else:
-            # 即使没有具体进度值，也可以推送一般状态更新
-            if 'status' in progress_data:
-                task_data.stage = "transform"
-                task_data.message = f"状态: {progress_data['status']}"
-                logger.info(f"任务 {task_id} 状态更新: {progress_data['status']}")
-                asyncio.create_task(self._push_task_update(task_data))
+            # 没有可处理的进度或状态信息
+            logger.debug(f"任务 {task_id} 收到无法处理的进度数据: {progress_data}")
     
     async def handle_completion_update(self, prompt_id: str, result_data: Dict[str, Any]):
         """处理ComfyUI完成事件"""

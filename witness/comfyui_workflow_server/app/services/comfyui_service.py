@@ -133,21 +133,33 @@ class ComfyUIService:
             self._loop = asyncio.get_running_loop()
 
             # 通过线程安全方式把协程投递到主事件循环
-            def _safe_call(coro_func):
+            def _safe_call_async(coro_func):
                 def _wrapper(*args, **kwargs):
                     try:
-                        # 移除 prompt_id, payload 的固定参数签名
-                        # 使用*args, **kwargs使其更通用
+                        # 对于async函数，使用run_coroutine_threadsafe
                         fut = asyncio.run_coroutine_threadsafe(
                             coro_func(*args, **kwargs), self._loop
                         )
-                        # 可选择忽略返回值
+                        # 等待结果以确保执行完成
+                        try:
+                            fut.result(timeout=30)  # 30秒超时
+                        except Exception as e:
+                            logger.error(f"协程执行失败: {e}")
                     except Exception as e:
                         logger.error(f"调度回调失败: {e}")
                 return _wrapper
+            
+            def _safe_call_sync(sync_func):
+                def _wrapper(*args, **kwargs):
+                    try:
+                        # 对于同步函数，使用call_soon_threadsafe
+                        self._loop.call_soon_threadsafe(sync_func, *args, **kwargs)
+                    except Exception as e:
+                        logger.error(f"调度同步回调失败: {e}")
+                return _wrapper
 
-            self.ws_client.set_progress_callback(_safe_call(self._on_progress))
-            self.ws_client.set_completion_callback(_safe_call(self._on_completion))
+            self.ws_client.set_progress_callback(_safe_call_sync(self._on_progress))
+            self.ws_client.set_completion_callback(_safe_call_async(self._on_completion))
             
             self.health_status = True
             self.last_health_check = time.time()
@@ -336,7 +348,7 @@ class ComfyUIService:
         logger.info(f"任务 {task_id} 已提交到ComfyUI, prompt_id: {prompt_id}")
         return prompt_id
 
-    async def _on_progress(self, prompt_id: str, progress_data: Dict[str, Any]):
+    def _on_progress(self, prompt_id: str, progress_data: Dict[str, Any]):
         """处理进度更新事件"""
         logger.info(f"ComfyUIService收到进度事件: prompt_id={prompt_id}, data={progress_data}")
         if self.transform_task_service:
