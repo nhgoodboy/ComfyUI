@@ -139,7 +139,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# RPC端点不需要静态文件服务（ComfyUI自己提供文件访问）
+# 添加静态文件服务用于输出图片访问
+from fastapi.staticfiles import StaticFiles
+import os
+
+# 确保输出目录存在
+outputs_dir = "outputs"
+if not os.path.exists(outputs_dir):
+    os.makedirs(outputs_dir)
+
+# 挂载输出目录为静态文件服务
+app.mount("/outputs", StaticFiles(directory=outputs_dir), name="outputs")
+
+# 注册文件访问API
+from .api.files import router as files_router
+app.include_router(files_router)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

@@ -301,6 +301,12 @@ class ImageTransformApp {
             option.value = style.id;
             option.textContent = `${style.name} (预计${style.estimated_time}秒)`;
             option.title = style.description;
+            
+            // 默认选中黏土模型
+            if (style.id === 'clay_style_transform') {
+                option.selected = true;
+            }
+            
             styleSelect.appendChild(option);
         });
     }

@@ -251,6 +251,9 @@ class TransformTaskService:
                 "output_filename": task_data.output_filename
             }
             
+            # 设置期望的输出文件名到工作流实例
+            workflow.expected_output_filename = task_data.output_filename
+            
             # 执行工作流
             prompt_id = await workflow.execute_async(
                 self.comfyui_service,

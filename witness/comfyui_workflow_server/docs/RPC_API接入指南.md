@@ -39,6 +39,7 @@ ComfyUI Workflow Server 提供了基于JSON-RPC 2.0的API接口，专注于AI图
 - 📈 **多阶段监控**: 下载阶段 + 转换阶段完整生命周期
 - 🔍 **端到端追踪**: request_id支持完整请求链路追踪
 - 🎯 **智能结果处理**: 自动获取ComfyUI历史记录和生成文件
+- 📦 **本地图片存储**: 自动下载ComfyUI生成的图片到本地，提供统一访问接口
 - ⚡ **批量支持**: 支持批量RPC请求
 
 ### 🏗️ 文件命名规范
@@ -366,8 +367,10 @@ ws.onmessage = (event) => {
     "output_images": [
       {
         "filename": "clay_style_alice_req123_output.png",
-        "url": "http://127.0.0.1:8188/view?filename=clay_style_alice_req123_output.png&type=output",
-        "size": 2048000
+        "url": "http://127.0.0.1:8000/outputs/clay_style_alice_req123_output.png",
+        "local_path": "/path/to/outputs/clay_style_alice_req123_output.png",
+        "size": 2048000,
+        "original_comfyui_filename": "ComfyUI_temp_dtdkb_00002_.png"
       }
     ],
     "duration": 95.5,
@@ -636,11 +639,14 @@ ws://your-domain:8000/ws/web_image_transform_service
       "prompt_id": "6bed9e06-f08c-4a7d-b204-4c4f54ea33cb",
       "files": {
         "input": "http://host:port/uploads/input.jpg",
-        "output": ["http://127.0.0.1:8188/view?filename=clay_style_alice_req123_output.png"]
+        "output": ["http://127.0.0.1:8000/outputs/clay_style_alice_req123_output.png"]
       },
       "output_images": [
         {
-          "url": "http://127.0.0.1:8188/view?filename=clay_style_alice_req123_output.png"
+          "filename": "clay_style_alice_req123_output.png",
+          "url": "http://127.0.0.1:8000/outputs/clay_style_alice_req123_output.png",
+          "local_path": "/path/to/outputs/clay_style_alice_req123_output.png",
+          "original_comfyui_filename": "ComfyUI_temp_dtdkb_00002_.png"
         }
       ],
       "history": { /* ComfyUI完整历史记录用于调试 */ }
@@ -1187,6 +1193,136 @@ async function main() {
 
 main();
 ```
+
+---
+
+## � 本地图片存储功能
+
+### 功能概述
+
+ComfyUI Workflow Server 现在会自动下载ComfyUI生成的图片并保存到本地，提供统一的访问接口。这解决了网络隔离和文件管理的问题。
+
+### 工作流程
+
+```
+1. ComfyUI生成图片: ComfyUI_temp_dtdkb_00002_.png (临时文件名)
+2. 工作流服务器下载: 从 http://127.0.0.1:8188/view?filename=ComfyUI_temp_dtdkb_00002_.png
+3. 保存到本地: outputs/clay_style_alice_req123_output.png (标准文件名)
+4. 返回本地URL: http://127.0.0.1:8000/outputs/clay_style_alice_req123_output.png
+5. 客户端访问: 通过工作流服务器访问图片
+```
+
+### 访问方式
+
+#### 1. 静态文件访问（推荐）
+```
+GET http://127.0.0.1:8000/outputs/{filename}
+```
+
+示例：
+```
+GET http://127.0.0.1:8000/outputs/clay_style_alice_req123_output.png
+```
+
+#### 2. API访问
+```
+GET http://127.0.0.1:8000/api/files/output/{filename}
+```
+
+示例：
+```
+GET http://127.0.0.1:8000/api/files/output/clay_style_alice_req123_output.png
+```
+
+#### 3. 文件信息查询
+```
+GET http://127.0.0.1:8000/api/files/output/{filename}/info
+```
+
+响应示例：
+```json
+{
+  "filename": "clay_style_alice_req123_output.png",
+  "size": 2048000,
+  "created_time": 1640995295.678,
+  "modified_time": 1640995295.678,
+  "extension": ".png",
+  "url": "/api/files/output/clay_style_alice_req123_output.png",
+  "static_url": "/outputs/clay_style_alice_req123_output.png"
+}
+```
+
+### 返回数据结构变化
+
+#### 新增字段说明
+
+在 `output_images` 数组中，每个图片对象现在包含：
+
+```json
+{
+  "filename": "clay_style_alice_req123_output.png",           // 标准文件名
+  "url": "http://127.0.0.1:8000/outputs/clay_style_alice_req123_output.png",  // 本地访问URL
+  "local_path": "/path/to/outputs/clay_style_alice_req123_output.png",         // 本地文件路径
+  "size": 2048000,                                           // 文件大小
+  "original_comfyui_filename": "ComfyUI_temp_dtdkb_00002_.png"  // 原始ComfyUI文件名
+}
+```
+
+#### 向后兼容性
+
+- 保持了 `url` 字段，但现在指向本地服务器
+- 保持了 `filename` 字段，使用标准命名格式
+- 新增了 `local_path` 和 `original_comfyui_filename` 字段用于调试和管理
+
+### 错误处理
+
+#### 下载失败处理
+
+如果从ComfyUI下载图片失败，系统会：
+
+1. 记录详细错误日志
+2. 返回备用的ComfyUI直接访问URL
+3. 在响应中添加错误信息
+
+失败时的响应示例：
+```json
+{
+  "filename": "ComfyUI_temp_dtdkb_00002_.png",
+  "url": "http://127.0.0.1:8188/view?filename=ComfyUI_temp_dtdkb_00002_.png&type=output",
+  "error": "Failed to download from ComfyUI"
+}
+```
+
+#### 文件访问错误
+
+- **404**: 文件不存在
+- **400**: 不支持的文件类型
+- **500**: 服务器内部错误
+
+### 配置要求
+
+#### 目录权限
+- `outputs/` 目录需要写权限
+- 确保有足够的磁盘空间
+
+#### 依赖包
+- `aiofiles`: 异步文件操作
+- `aiohttp`: HTTP客户端（用于下载）
+
+### 优势
+
+1. **网络隔离**: 客户端不需要直接访问ComfyUI服务器
+2. **统一管理**: 所有图片通过工作流服务器统一访问
+3. **标准命名**: 使用规范的文件命名格式
+4. **缓存优化**: 本地文件访问更快
+5. **访问控制**: 可以在文件访问层添加权限控制
+
+### 注意事项
+
+1. **存储空间**: 需要考虑本地存储空间的管理
+2. **文件清理**: 建议定期清理旧文件
+3. **并发下载**: 多个任务同时完成时的资源管理
+4. **网络超时**: 从ComfyUI下载大文件时的超时处理
 
 ---
 
