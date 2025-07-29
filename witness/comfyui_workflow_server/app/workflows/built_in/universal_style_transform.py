@@ -256,44 +256,47 @@ class UniversalStyleTransformWorkflow(BaseWorkflow):
                 }
             }
             
-            # 处理输出图片
-            if "images" in workflow_result:
-                for image_info in workflow_result["images"]:
-                    comfyui_filename = image_info.get("filename", "")
-                    if comfyui_filename:
-                        # 获取期望的标准文件名
-                        expected_filename = getattr(self, 'expected_output_filename', None)
-                        if not expected_filename:
-                            # 如果没有预设的输出文件名，生成一个
-                            import time
-                            expected_filename = f"output_{int(time.time())}.png"
-                        
-                        # 下载并保存图片
-                        success, local_path = await self._download_and_save_image(
-                            comfyui_filename, expected_filename
-                        )
-                        
-                        if success:
-                            # 生成本地访问URL
-                            local_url = f"{self._get_server_base_url()}/outputs/{expected_filename}"
-                            processed_result["output_images"].append({
-                                "filename": expected_filename,
-                                "url": local_url,
-                                "local_path": local_path,
-                                "original_comfyui_filename": comfyui_filename,
-                                "type": f"{style_name}_style_image"
-                            })
-                            self.logger.info(f"图片保存成功: {expected_filename}")
-                        else:
-                            # 保存失败，使用原始ComfyUI URL作为备用
-                            fallback_url = f"{self.comfyui_service.client.base_url}/view?filename={comfyui_filename}&type=output"
-                            processed_result["output_images"].append({
-                                "filename": comfyui_filename,
-                                "url": fallback_url,
-                                "error": "Failed to download from ComfyUI",
-                                "type": f"{style_name}_style_image"
-                            })
-                            self.logger.warning(f"图片保存失败，使用备用URL: {comfyui_filename}")
+            # 处理输出图片 - 从历史记录中提取
+            history = workflow_result.get("history", {})
+            if "outputs" in history:
+                for node_id, node_output in history["outputs"].items():
+                    if "images" in node_output:
+                        for image_info in node_output["images"]:
+                            comfyui_filename = image_info.get("filename", "")
+                            if comfyui_filename:
+                                # 获取期望的标准文件名
+                                expected_filename = getattr(self, 'expected_output_filename', None)
+                                if not expected_filename:
+                                    # 如果没有预设的输出文件名，生成一个
+                                    import time
+                                    expected_filename = f"output_{int(time.time())}.png"
+                                
+                                # 下载并保存图片
+                                success, local_path = await self._download_and_save_image(
+                                    comfyui_filename, expected_filename
+                                )
+                                
+                                if success:
+                                    # 生成本地访问URL
+                                    local_url = f"{self._get_server_base_url()}/outputs/{expected_filename}"
+                                    processed_result["output_images"].append({
+                                        "filename": expected_filename,
+                                        "url": local_url,
+                                        "local_path": local_path,
+                                        "original_comfyui_filename": comfyui_filename,
+                                        "type": f"{style_name}_style_image"
+                                    })
+                                    self.logger.info(f"图片保存成功: {expected_filename}")
+                                else:
+                                    # 保存失败，使用原始ComfyUI URL作为备用
+                                    fallback_url = f"{self.comfyui_service.client.base_url}/view?filename={comfyui_filename}&type=output"
+                                    processed_result["output_images"].append({
+                                        "filename": comfyui_filename,
+                                        "url": fallback_url,
+                                        "error": "Failed to download from ComfyUI",
+                                        "type": f"{style_name}_style_image"
+                                    })
+                                    self.logger.warning(f"图片保存失败，使用备用URL: {comfyui_filename}")
             
             self.logger.info(f"{self.style_config.get('name', 'Unknown')} 后处理完成，保存了 {len(processed_result['output_images'])} 张图片")
             return processed_result

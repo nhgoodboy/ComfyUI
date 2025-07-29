@@ -444,39 +444,37 @@ class TransformTaskService:
             history = await self.comfyui_service.get_result(prompt_id)
             logger.info(f"任务 {task_data.request_id} 获取到历史记录: {history}")
             
+            # 获取工作流实例进行后处理
+            workflow = self.style_registry.workflows[task_data.style_id]
+            
+            # 构造工作流结果数据
+            workflow_result = {
+                'status': 'completed',
+                'prompt_id': prompt_id,
+                'timestamp': result.get('timestamp'),
+                'history': history
+            }
+            
+            # 调用工作流的后处理方法（下载图片并保存到本地）
+            logger.info(f"任务 {task_data.request_id} 开始后处理...")
+            processed_result = await workflow.post_process(workflow_result)
+            logger.info(f"任务 {task_data.request_id} 后处理完成: {processed_result}")
+            
             # 更新任务状态
             task_data.status = "completed"
             task_data.stage = "completed" 
             task_data.progress = 100.0
             task_data.message = "转换完成"
             
-            # 从历史记录中提取输出文件
-            output_files = []
-            if 'outputs' in history:
-                for node_id, node_output in history['outputs'].items():
-                    if 'images' in node_output:
-                        for image_info in node_output['images']:
-                            # 构造文件访问URL
-                            filename = image_info.get('filename')
-                            if filename:
-                                file_url = f"http://{self.comfyui_service.server_address}:{self.comfyui_service.port}/view?filename={filename}"
-                                output_files.append(file_url)
-                                logger.info(f"任务 {task_data.request_id} 找到输出文件: {file_url}")
+            # 使用后处理的结果
+            task_data.result = processed_result
             
-            # 构造完整的结果数据
-            task_data.result = {
-                'status': 'completed',
-                'prompt_id': prompt_id,
-                'timestamp': result.get('timestamp'),
-                'files': {
-                    'input': task_data.image_url,
-                    'output': output_files
-                },
-                'output_images': [{'url': url} for url in output_files],
-                'history': history  # 包含完整历史记录用于调试
-            }
+            # 统计输出文件数量
+            output_count = 0
+            if processed_result and 'output_images' in processed_result:
+                output_count = len(processed_result['output_images'])
             
-            logger.info(f"任务 {task_data.request_id} 完成，生成了 {len(output_files)} 个文件")
+            logger.info(f"任务 {task_data.request_id} 完成，生成了 {output_count} 个文件")
             
             # 推送任务完成更新
             await self._push_task_update(task_data)

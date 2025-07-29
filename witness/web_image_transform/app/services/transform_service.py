@@ -76,6 +76,27 @@ class TransformService:
             logger.error(f"转换服务初始化失败: {e}")
             raise
     
+    async def check_and_reconnect_if_needed(self):
+        """检查连接状态，如果需要则重连"""
+        try:
+            # 检查WebSocket连接状态
+            if not self.ws_client or not self.ws_client.connected:
+                logger.warning("WebSocket连接已断开，尝试重新连接...")
+                await self.start_push_listener()
+            
+            # 检查RPC连接状态
+            if self.rpc_client:
+                async with self.rpc_client:
+                    await self.rpc_client.get_system_health()
+                    
+        except Exception as e:
+            logger.warning(f"连接检查失败，尝试重新初始化: {e}")
+            try:
+                await self.initialize()
+            except Exception as init_e:
+                logger.error(f"重新初始化失败: {init_e}")
+                raise
+    
     def register_user(self, user_id: str, frontend_user_id: str):
         """注册用户到前端用户的映射"""
         self.user_to_frontend[user_id] = frontend_user_id
@@ -193,6 +214,13 @@ class TransformService:
                 return result.get("styles", [])
         except Exception as e:
             logger.error(f"获取风格列表失败: {e}")
+            # 如果是连接错误，尝试重新初始化
+            if "网络连接失败" in str(e) or "Connection" in str(e):
+                logger.info("检测到连接问题，尝试重新初始化服务...")
+                try:
+                    await self.initialize()
+                except Exception as init_e:
+                    logger.error(f"重新初始化失败: {init_e}")
             raise
     
     async def search_styles(self, user_id: str, query: str) -> List[Dict[str, Any]]:

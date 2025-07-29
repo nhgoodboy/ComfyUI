@@ -35,8 +35,8 @@ class PushConnectionManager:
         # 从任务数据中获取user_id来确定推送目标
         task_user_id = update_data.get("user_id")
         
-        logger.info(f"准备推送任务更新: request_id={request_id}, target_user={task_user_id}, 连接数={len(self.active_connections)}")
-        logger.info(f"推送消息内容: {message}")
+        # logger.info(f"准备推送任务更新: request_id={request_id}, target_user={task_user_id}, 连接数={len(self.active_connections)}")
+        # logger.info(f"推送消息内容: {message}")
         
         if not task_user_id:
             logger.warning(f"任务 {request_id} 缺少user_id，无法确定推送目标")
@@ -65,7 +65,7 @@ class PushConnectionManager:
         for client_id, websocket in target_connections:
             try:
                 await websocket.send_json(message)
-                logger.info(f"成功推送任务更新到客户端 {client_id}: {request_id} (target_user: {task_user_id})")
+                # logger.info(f"成功推送任务更新到客户端 {client_id}: {request_id} (target_user: {task_user_id})")
             except Exception as e:
                 logger.warning(f"推送消息失败，客户端 {client_id}: {e}")
                 disconnected_clients.append(client_id)

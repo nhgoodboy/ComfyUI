@@ -14,6 +14,20 @@ from app.config import settings
 from app.api.transform_api import api_router
 from app.services.transform_service import transform_service
 
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def health_check_task():
+    """定期健康检查任务"""
+    while True:
+        try:
+            await asyncio.sleep(30)  # 每30秒检查一次
+            await transform_service.check_and_reconnect_if_needed()
+        except Exception as e:
+            logger.error(f"健康检查任务异常: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理器"""
@@ -24,10 +38,23 @@ async def lifespan(app: FastAPI):
     await transform_service.start_push_listener()
     print("✅ 推送监听器已启动")
     
+    # 启动健康检查任务
+    health_task = asyncio.create_task(health_check_task())
+    print("✅ 健康检查任务已启动")
+    
     yield
     
     # 关闭时的操作
     print("🔄 关闭 Web Image Transform 应用...")
+    
+    # 停止健康检查任务
+    health_task.cancel()
+    try:
+        await health_task
+    except asyncio.CancelledError:
+        pass
+    print("✅ 健康检查任务已停止")
+    
     await transform_service.stop_push_listener()
     print("✅ 推送监听器已停止")
 

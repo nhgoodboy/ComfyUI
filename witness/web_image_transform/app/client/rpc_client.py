@@ -215,8 +215,9 @@ class ComfyUIWebSocketClient:
         self.websocket = None
         self.connected = False
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 5
-        self.reconnect_delay = 3
+        self.max_reconnect_attempts = 10  # 增加重连次数
+        self.reconnect_delay = 5  # 增加初始延迟
+        self.reconnect_task = None  # 重连任务
     
     async def connect(self):
         """连接WebSocket"""
@@ -259,13 +260,17 @@ class ComfyUIWebSocketClient:
         """处理重连"""
         if self.reconnect_attempts < self.max_reconnect_attempts:
             self.reconnect_attempts += 1
-            delay = self.reconnect_delay * (2 ** (self.reconnect_attempts - 1))
-            logger.info(f"WebSocket重连尝试 {self.reconnect_attempts}/{self.max_reconnect_attempts}，{delay}秒后重试")
+            # 对于服务重启，使用更长的延迟
+            delay = min(self.reconnect_delay * (1.5 ** (self.reconnect_attempts - 1)), 60)  # 最大60秒
+            logger.info(f"WebSocket重连尝试 {self.reconnect_attempts}/{self.max_reconnect_attempts}，{delay:.1f}秒后重试")
             
             await asyncio.sleep(delay)
             await self.connect()
         else:
-            logger.error("WebSocket重连失败，已达到最大重试次数")
+            logger.warning("WebSocket重连达到最大次数，启动持续重连模式")
+            # 启动持续重连任务
+            if not self.reconnect_task or self.reconnect_task.done():
+                self.reconnect_task = asyncio.create_task(self._continuous_reconnect())
     
     async def send_message(self, message: dict):
         """发送消息"""
@@ -276,6 +281,28 @@ class ComfyUIWebSocketClient:
                 logger.error(f"WebSocket发送消息失败: {e}")
                 self.connected = False
     
+    async def _continuous_reconnect(self):
+        """持续重连模式 - 用于服务重启后的长期重连"""
+        logger.info("启动持续重连模式，每60秒尝试一次")
+        while not self.connected:
+            try:
+                await asyncio.sleep(60)  # 每60秒尝试一次
+                logger.info("持续重连模式：尝试重新连接...")
+                
+                import websockets
+                self.websocket = await websockets.connect(self.ws_url)
+                self.connected = True
+                self.reconnect_attempts = 0  # 重置重连计数
+                logger.info(f"持续重连成功: {self.ws_url}")
+                
+                # 重新启动消息监听
+                asyncio.create_task(self._listen_messages())
+                break
+                
+            except Exception as e:
+                logger.debug(f"持续重连失败: {e}")
+                continue
+    
     async def send_heartbeat(self):
         """发送心跳"""
         if self.connected:
@@ -283,6 +310,10 @@ class ComfyUIWebSocketClient:
     
     async def close(self):
         """关闭连接"""
+        # 停止持续重连任务
+        if self.reconnect_task and not self.reconnect_task.done():
+            self.reconnect_task.cancel()
+        
         if self.websocket:
             await self.websocket.close()
             self.connected = False
