@@ -160,14 +160,16 @@ async def log_requests(request: Request, call_next):
     """请求日志中间件"""
     start_time = time.time()
     
-    # 记录请求
-    logger.info(f"请求开始: {request.method} {request.url}")
+    # 记录请求（过滤健康检查请求）
+    if not (request.url.path == "/rpc" and request.method == "POST"):
+        logger.info(f"请求开始: {request.method} {request.url}")
     
     response = await call_next(request)
     
-    # 记录响应
+    # 记录响应（过滤健康检查请求）
     process_time = time.time() - start_time
-    logger.info(f"请求完成: {request.method} {request.url} - {response.status_code} - {process_time:.3f}s")
+    if not (request.url.path == "/rpc" and request.method == "POST"):
+        logger.info(f"请求完成: {request.method} {request.url} - {response.status_code} - {process_time:.3f}s")
     
     return response
 

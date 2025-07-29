@@ -107,7 +107,7 @@ class ComfyUIWebSocketClient:
                                 "prompt_id": prompt_id
                             }
                             
-                            self.logger.info(f"采样器进度更新 {prompt_id}: {current_value}/{max_value} ({progress_percent:.1f}%) - 节点: {node_id}")
+                            # self.logger.info(f"采样器进度更新 {prompt_id}: {current_value}/{max_value} ({progress_percent:.1f}%) - 节点: {node_id}")
                             self.progress_callback(prompt_id, progress_data)
                             
                         else:

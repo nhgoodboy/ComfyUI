@@ -86,7 +86,7 @@ class ImageTransformApp {
                 // 最后的备用方案：生成临时ID并尝试通过重置端点同步到后端
                 this.userId = 'user-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
                 console.log('生成临时用户ID:', this.userId);
-                
+
                 // 尝试通过重置端点同步到后端
                 try {
                     await fetch(`${this.apiBase}/session/reset`);
@@ -301,12 +301,12 @@ class ImageTransformApp {
             option.value = style.id;
             option.textContent = `${style.name} (预计${style.estimated_time}秒)`;
             option.title = style.description;
-            
+
             // 默认选中黏土模型
             if (style.id === 'clay_style_transform') {
                 option.selected = true;
             }
-            
+
             styleSelect.appendChild(option);
         });
     }
@@ -675,8 +675,8 @@ class ImageTransformApp {
             resultCard.style.display = 'none';
         }
 
-        // 清理原始图片预览URL
-        this.originalImagePreviewUrl = null;
+        // 注意：不要清理 originalImagePreviewUrl，因为在显示结果时还需要用到
+        // this.originalImagePreviewUrl = null;
     }
 
     updateStatus(message, type = 'info') {
