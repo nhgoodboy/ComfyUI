@@ -84,6 +84,75 @@ async def create_transform(params: Dict[str, Any], request: Request) -> Dict[str
         )
 
 
+@rpc_method("transform.create_dual_image_task")
+async def create_dual_image_transform(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
+    """创建双图片转换任务（下载 + 转换）"""
+    try:
+        # 验证必需参数
+        RPCValidator.validate_required_fields(params, ["user_id", "style_id", "image1_url", "image2_url"])
+        
+        user_id = params["user_id"]
+        style_id = params["style_id"]
+        image1_url = params["image1_url"]
+        image2_url = params["image2_url"]
+        request_id = params.get("request_id", None)  # 可选参数
+        
+        # 验证参数
+        RPCValidator.validate_user_id(user_id)
+        RPCValidator.validate_style_id(style_id)
+        RPCValidator.validate_image_url(image1_url)
+        RPCValidator.validate_image_url(image2_url)
+        
+        if request_id is not None:
+            from ...utils.file_naming import FileNamingUtils
+            request_id = FileNamingUtils.validate_request_id(request_id)
+        
+        # 获取转换任务服务
+        transform_service: TransformTaskService = request.app.state.transform_task_service
+        
+        # 创建双图片转换任务
+        request_id = await transform_service.create_dual_image_transform_task(
+            user_id=user_id,
+            style_id=style_id,
+            image1_url=image1_url,
+            image2_url=image2_url,
+            request_id=request_id
+        )
+        
+        # 获取任务信息 - 需要使用清理后的user_id
+        from ...utils.file_naming import FileNamingUtils
+        cleaned_user_id = FileNamingUtils.validate_user_id(user_id)
+        cleaned_style_id = FileNamingUtils.validate_style_id(style_id)
+        
+        task_data = transform_service.get_user_task(cleaned_user_id, request_id)
+        if not task_data:
+            raise RPCError(
+                code=ErrorCodes.INTERNAL_ERROR,
+                message="任务创建后无法获取任务信息"
+            )
+        
+        # 格式化任务状态
+        result = RPCFormatter.format_task_status(task_data)
+        
+        # 添加估算时间
+        style_registry = request.app.state.style_registry
+        if style_id in style_registry.styles:
+            style_config = style_registry.styles[style_id]
+            result["estimated_time"] = getattr(style_config, 'estimated_time', 60)
+        
+        return result
+        
+    except RPCError:
+        raise
+    except Exception as e:
+        logger.error(f"创建双图片转换任务失败: {e}", exc_info=True)
+        raise RPCError(
+            code=ErrorCodes.INTERNAL_ERROR,
+            message="创建双图片转换任务失败",
+            data={"error": str(e)}
+        )
+
+
 @rpc_method("transform.get_status")
 async def get_transform_status(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
     """获取转换任务状态"""

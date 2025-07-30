@@ -11,6 +11,7 @@ import logging
 from ..models.api_models import StyleInfo
 from ..services.comfyui_service import ComfyUIService
 from ..workflows.built_in import UniversalStyleTransformWorkflow
+from ..workflows.built_in.person_scene_merge_workflow import PersonSceneMergeWorkflow
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class StyleRegistry:
         self.config_file = Path(config_file)
         self.comfyui_service = comfyui_service
         self.styles: Dict[str, StyleInfo] = {}
-        self.workflows: Dict[str, UniversalStyleTransformWorkflow] = {}
+        self.workflows: Dict[str, any] = {}
         self._load_styles()
     
     def _load_styles(self):
@@ -53,15 +54,25 @@ class StyleRegistry:
                         name=style_data['name'],
                         description=style_data['description'],
                         estimated_time=style_data['estimated_time'],
-                        tags=style_data.get('tags', [])
+                        tags=style_data.get('tags', []),
+                        image_count=style_data.get('image_count', 1),
+                        requires_dual_images=style_data.get('requires_dual_images', False)
                     )
                     
                     # 创建可执行的工作流实例
-                    self.workflows[style_id] = UniversalStyleTransformWorkflow(
-                        style_id=style_id,
-                        style_config=style_data,
-                        comfyui_service=self.comfyui_service
-                    )
+                    if style_id == 'person_scene_merge':
+                        # 使用专门的双图片工作流
+                        self.workflows[style_id] = PersonSceneMergeWorkflow(
+                            style_config=style_data,
+                            comfyui_service=self.comfyui_service
+                        )
+                    else:
+                        # 使用通用风格转换工作流
+                        self.workflows[style_id] = UniversalStyleTransformWorkflow(
+                            style_id=style_id,
+                            style_config=style_data,
+                            comfyui_service=self.comfyui_service
+                        )
                     
                     logger.info(f"成功加载风格: {style_id}")
                     
@@ -82,7 +93,7 @@ class StyleRegistry:
         """获取特定风格"""
         return self.styles.get(style_id)
     
-    def get_workflow(self, style_id: str) -> Optional[UniversalStyleTransformWorkflow]:
+    def get_workflow(self, style_id: str) -> Optional[any]:
         """获取可执行的工作流实例"""
         return self.workflows.get(style_id)
     

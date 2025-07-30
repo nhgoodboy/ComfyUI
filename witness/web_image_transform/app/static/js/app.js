@@ -17,6 +17,9 @@ class ImageTransformApp {
         this.currentTask = null;
         this.apiBase = '/api';
         this.originalImagePreviewUrl = null;  // 保存原始图片预览URL
+        this.originalImage1PreviewUrl = null; // 保存第一张图片预览URL
+        this.originalImage2PreviewUrl = null; // 保存第二张图片预览URL
+        this.currentUploadMode = 'single'; // 'single' 或 'dual'
 
         this.init();
     }
@@ -47,6 +50,7 @@ class ImageTransformApp {
 
             // 初始化按钮状态
             console.log('初始化按钮状态...');
+            this.updateUploadMode(); // 添加这行来初始化上传模式
             this.updateSubmitButton();
 
             console.log('=== 应用初始化成功 ===');
@@ -301,6 +305,11 @@ class ImageTransformApp {
             option.value = style.id;
             option.textContent = `${style.name} (预计${style.estimated_time}秒)`;
             option.title = style.description;
+            
+            // 添加数据属性标识是否需要双图片
+            if (style.id === 'person_scene_merge') {
+                option.setAttribute('data-dual-image', 'true');
+            }
 
             // 默认选中黏土模型
             if (style.id === 'clay_style_transform') {
@@ -312,11 +321,26 @@ class ImageTransformApp {
     }
 
     bindEvents() {
-        // 文件选择事件
+        // 单图片文件选择事件
         const fileInput = document.getElementById('image-input');
         if (fileInput) {
             fileInput.addEventListener('change', (e) => {
-                this.handleFileSelect(e);
+                this.handleFileSelect(e, 'single');
+            });
+        }
+
+        // 双图片文件选择事件
+        const file1Input = document.getElementById('image1-input');
+        if (file1Input) {
+            file1Input.addEventListener('change', (e) => {
+                this.handleFileSelect(e, 'dual', 1);
+            });
+        }
+
+        const file2Input = document.getElementById('image2-input');
+        if (file2Input) {
+            file2Input.addEventListener('change', (e) => {
+                this.handleFileSelect(e, 'dual', 2);
             });
         }
 
@@ -333,19 +357,26 @@ class ImageTransformApp {
         const styleSelect = document.getElementById('style-select');
         if (styleSelect) {
             styleSelect.addEventListener('change', () => {
+                this.updateUploadMode();
                 this.updateSubmitButton();
                 this.updateStyleInfo();
             });
         }
 
-        // 拖放事件
-        const dropZone = document.querySelector('.upload-area');
-        if (dropZone) {
-            this.initDropZone(dropZone);
-        }
+        // 拖放事件 - 为所有上传区域初始化
+        const dropZones = document.querySelectorAll('.upload-area');
+        dropZones.forEach((dropZone, index) => {
+            if (dropZone.getAttribute('for') === 'image-input') {
+                this.initDropZone(dropZone, 'single');
+            } else if (dropZone.getAttribute('for') === 'image1-input') {
+                this.initDropZone(dropZone, 'dual', 1);
+            } else if (dropZone.getAttribute('for') === 'image2-input') {
+                this.initDropZone(dropZone, 'dual', 2);
+            }
+        });
     }
 
-    initDropZone(dropZone) {
+    initDropZone(dropZone, mode = 'single', imageIndex = null) {
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             dropZone.classList.add('drag-over');
@@ -362,17 +393,81 @@ class ImageTransformApp {
 
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                const fileInput = document.getElementById('image-input');
+                let fileInput;
+                if (mode === 'single') {
+                    fileInput = document.getElementById('image-input');
+                } else if (mode === 'dual') {
+                    fileInput = document.getElementById(`image${imageIndex}-input`);
+                }
+                
                 if (fileInput) {
                     fileInput.files = files;
-                    this.handleFileSelect({ target: fileInput });
+                    this.handleFileSelect({ target: fileInput }, mode, imageIndex);
                 }
             }
         });
     }
 
-    handleFileSelect(event) {
+    updateUploadMode() {
+        const styleSelect = document.getElementById('style-select');
+        const selectedOption = styleSelect.selectedOptions[0];
+        
+        if (selectedOption && selectedOption.getAttribute('data-dual-image') === 'true') {
+            this.currentUploadMode = 'dual';
+            // 显示双图片上传区域，隐藏单图片区域
+            document.getElementById('single-upload-group').style.display = 'none';
+            document.getElementById('dual-upload-group').style.display = 'block';
+        } else {
+            this.currentUploadMode = 'single';
+            // 显示单图片上传区域，隐藏双图片区域
+            document.getElementById('single-upload-group').style.display = 'block';
+            document.getElementById('dual-upload-group').style.display = 'none';
+        }
+        
+        // 清理之前的文件选择
+        this.clearAllFileSelections();
+    }
+
+    clearAllFileSelections() {
+        // 清理所有文件输入
+        const inputs = ['image-input', 'image1-input', 'image2-input'];
+        inputs.forEach(id => {
+            const input = document.getElementById(id);
+            if (input) {
+                input.value = '';
+            }
+        });
+        
+        // 清理文件名显示
+        const fileNames = ['file-name', 'file1-name', 'file2-name'];
+        fileNames.forEach(id => {
+            const span = document.getElementById(id);
+            if (span) {
+                span.textContent = '';
+                span.style.color = '';
+                span.style.fontWeight = '';
+            }
+        });
+        
+        // 清理预览图片
+        const previews = ['image-preview', 'image1-preview', 'image2-preview'];
+        previews.forEach(id => {
+            const preview = document.getElementById(id);
+            if (preview) {
+                preview.style.display = 'none';
+                preview.innerHTML = '';
+            }
+        });
+        
+        // 清理预览URL
+        this.originalImagePreviewUrl = null;
+        this.originalImage1PreviewUrl = null;
+        this.originalImage2PreviewUrl = null;
+    }
+
+    handleFileSelect(event, mode = 'single', imageIndex = null) {
         console.log('=== 文件选择事件触发 ===');
+        console.log('模式:', mode, '图片索引:', imageIndex);
         const file = event.target.files[0];
         console.log('选择的文件:', file);
 
@@ -404,19 +499,35 @@ class ImageTransformApp {
 
         console.log('文件验证通过，显示预览...');
         // 显示预览
-        this.displayImagePreview(file);
+        this.displayImagePreview(file, mode, imageIndex);
         this.updateSubmitButton();
 
         console.log('文件选择处理完成 ✓');
     }
 
-    displayImagePreview(file) {
+    displayImagePreview(file, mode = 'single', imageIndex = null) {
         const reader = new FileReader();
         reader.onload = (e) => {
-            // 保存原始图片预览URL
-            this.originalImagePreviewUrl = e.target.result;
+            let previewContainer, fileNameSpan;
+            
+            if (mode === 'single') {
+                // 保存原始图片预览URL
+                this.originalImagePreviewUrl = e.target.result;
+                previewContainer = document.getElementById('image-preview');
+                fileNameSpan = document.getElementById('file-name');
+            } else if (mode === 'dual') {
+                // 保存双图片预览URL
+                if (imageIndex === 1) {
+                    this.originalImage1PreviewUrl = e.target.result;
+                    previewContainer = document.getElementById('image1-preview');
+                    fileNameSpan = document.getElementById('file1-name');
+                } else if (imageIndex === 2) {
+                    this.originalImage2PreviewUrl = e.target.result;
+                    previewContainer = document.getElementById('image2-preview');
+                    fileNameSpan = document.getElementById('file2-name');
+                }
+            }
 
-            const previewContainer = document.getElementById('image-preview');
             if (previewContainer) {
                 previewContainer.style.display = 'block';
                 previewContainer.innerHTML = `
@@ -430,8 +541,7 @@ class ImageTransformApp {
                 `;
             }
 
-            // 同时更新文件名显示
-            const fileNameSpan = document.getElementById('file-name');
+            // 更新文件名显示
             if (fileNameSpan) {
                 fileNameSpan.textContent = `已选择: ${file.name}`;
                 fileNameSpan.style.color = '#28a745';
@@ -446,17 +556,36 @@ class ImageTransformApp {
             return;
         }
 
-        const fileInput = document.getElementById('image-input');
         const styleSelect = document.getElementById('style-select');
-
-        if (!fileInput.files[0]) {
-            this.showError('请选择图片文件');
-            return;
-        }
-
         if (!styleSelect.value) {
             this.showError('请选择转换风格');
             return;
+        }
+
+        // 根据上传模式检查文件
+        let files = [];
+        if (this.currentUploadMode === 'single') {
+            const fileInput = document.getElementById('image-input');
+            if (!fileInput.files[0]) {
+                this.showError('请选择图片文件');
+                return;
+            }
+            files.push(fileInput.files[0]);
+        } else if (this.currentUploadMode === 'dual') {
+            const file1Input = document.getElementById('image1-input');
+            const file2Input = document.getElementById('image2-input');
+            
+            if (!file1Input.files[0]) {
+                this.showError('请上传第一张图片');
+                return;
+            }
+            if (!file2Input.files[0]) {
+                this.showError('请上传第二张图片');
+                return;
+            }
+            
+            files.push(file1Input.files[0]);
+            files.push(file2Input.files[0]);
         }
 
         try {
@@ -470,7 +599,15 @@ class ImageTransformApp {
             console.log('生成request_id:', requestId);
 
             const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+            
+            // 根据模式添加文件
+            if (this.currentUploadMode === 'single') {
+                formData.append('file', files[0]);
+            } else if (this.currentUploadMode === 'dual') {
+                formData.append('file1', files[0]);
+                formData.append('file2', files[1]);
+            }
+            
             formData.append('style_id', styleSelect.value);
             formData.append('request_id', requestId);
             formData.append('user_id', this.userId);  // 添加user_id
@@ -540,8 +677,17 @@ class ImageTransformApp {
         const resultImage = document.getElementById('result-image');
         const downloadLink = document.getElementById('download-link');
 
-        if (originalImage && originalUrl) {
-            originalImage.src = originalUrl;
+        // 根据当前上传模式显示原始图片
+        let displayOriginalUrl = originalUrl;
+        if (this.currentUploadMode === 'dual') {
+            // 对于双图片模式，显示合并后的预览或使用第一张图片
+            displayOriginalUrl = this.originalImage1PreviewUrl || originalUrl;
+        } else {
+            displayOriginalUrl = this.originalImagePreviewUrl || originalUrl;
+        }
+
+        if (originalImage && displayOriginalUrl) {
+            originalImage.src = displayOriginalUrl;
         }
 
         if (resultImage && resultUrl) {
@@ -606,13 +752,23 @@ class ImageTransformApp {
 
     updateSubmitButton() {
         const submitBtn = document.getElementById('submit-btn');
-        const fileInput = document.getElementById('image-input');
         const styleSelect = document.getElementById('style-select');
 
         if (submitBtn) {
-            const hasFile = fileInput && fileInput.files[0];
+            let hasRequiredFiles = false;
             const hasStyle = styleSelect && styleSelect.value;
-            const canSubmit = hasFile && hasStyle && !this.isProcessing;
+            
+            if (this.currentUploadMode === 'single') {
+                const fileInput = document.getElementById('image-input');
+                hasRequiredFiles = fileInput && fileInput.files[0];
+            } else if (this.currentUploadMode === 'dual') {
+                const file1Input = document.getElementById('image1-input');
+                const file2Input = document.getElementById('image2-input');
+                hasRequiredFiles = file1Input && file1Input.files[0] && 
+                                 file2Input && file2Input.files[0];
+            }
+            
+            const canSubmit = hasRequiredFiles && hasStyle && !this.isProcessing;
 
             submitBtn.disabled = !canSubmit;
             submitBtn.textContent = this.isProcessing ? '处理中...' : '开始转换';

@@ -404,16 +404,18 @@ class TransformService:
             logger.error(f"获取系统健康状态失败: {e}")
             return {"status": "unhealthy", "error": str(e)}
     
-    async def transform_image(self, user_id: str, file_content: bytes, filename: str, style_id: str, request_id: str = None) -> Dict[str, Any]:
+    async def transform_image(self, user_id: str, file_contents: List[bytes], file_names: List[str], 
+                             style_id: str, request_id: str = None, mode: str = 'single') -> Dict[str, Any]:
         """
         完整的图像转换流程（上传文件 + 创建任务）
         
         Args:
             user_id: 用户ID
-            file_content: 文件内容
-            filename: 文件名
+            file_contents: 文件内容列表
+            file_names: 文件名列表
             style_id: 风格ID
             request_id: 请求ID (可选)
+            mode: 上传模式 ('single' 或 'dual')
         
         Returns:
             Dict: 任务信息
@@ -424,19 +426,111 @@ class TransformService:
                 request_id = f"req_{int(time.time())}_{str(uuid.uuid4())[:8]}"
                 logger.info(f"生成统一request_id: {request_id}")
             
+            logger.info(f"开始图像转换流程 - user_id: {user_id}, mode: {mode}, 文件数量: {len(file_contents)}")
+            
             # 1. 保存文件并生成标准URL
-            image_url = await self.save_uploaded_file(user_id, file_content, filename, style_id, request_id)
+            file_urls = []
+            for idx, (content, filename) in enumerate(zip(file_contents, file_names)):
+                # 生成唯一文件名
+                file_ext = Path(filename).suffix.lower() or '.jpg'
+                if mode == 'dual':
+                    unique_filename = f"{request_id}_image{idx + 1}{file_ext}"
+                else:
+                    unique_filename = f"{request_id}{file_ext}"
+                
+                file_path = self.uploads_dir / unique_filename
+                
+                # 异步保存文件
+                async with aiofiles.open(file_path, 'wb') as f:
+                    await f.write(content)
+                
+                # 生成标准URL
+                file_url = urljoin(settings.BASE_URL, f"/static/uploads/{unique_filename}")
+                file_urls.append(file_url)
+                logger.info(f"文件{idx + 1}已保存: {unique_filename} -> {file_url}")
             
-            # 2. 创建转换任务
-            task_info = await self.create_transform_task(user_id, style_id, image_url, request_id)
+            # 2. 调用RPC接口创建转换任务
+            task_data = await self._create_transform_task_rpc(
+                user_id=user_id,
+                file_urls=file_urls,
+                style_id=style_id,
+                request_id=request_id,
+                mode=mode
+            )
             
-            # 3. 添加文件信息到响应
-            task_info["image_url"] = image_url
-            
-            return task_info
+            logger.info(f"转换任务创建成功: {task_data}")
+            return task_data
             
         except Exception as e:
             logger.error(f"图像转换失败: {e}")
+            raise
+    
+    async def _create_transform_task_rpc(self, user_id: str, file_urls: List[str], style_id: str, 
+                                        request_id: str, mode: str) -> Dict[str, Any]:
+        """
+        通过RPC创建转换任务
+        
+        Args:
+            user_id: 用户ID
+            file_urls: 文件URL列表
+            style_id: 风格ID
+            request_id: 请求ID
+            mode: 上传模式
+        
+        Returns:
+            Dict: 任务信息
+        """
+        try:
+            # 确保RPC客户端和WebSocket已初始化
+            if not self.rpc_client:
+                await self.initialize()
+            
+            # 检查连接状态
+            await self.check_and_reconnect_if_needed()
+            
+            # 注册任务到连接管理器
+            if self.connection_manager:
+                self.connection_manager.register_task(user_id, request_id)
+            
+            # 准备RPC调用参数
+            if mode == 'dual' and len(file_urls) >= 2:
+                # 双图片模式
+                params = {
+                    "method": "transform.create_dual_image_task",
+                    "params": {
+                        "user_id": user_id,
+                        "image1_url": file_urls[0],
+                        "image2_url": file_urls[1],
+                        "style_id": style_id,
+                        "request_id": request_id
+                    }
+                }
+            else:
+                # 单图片模式
+                params = {
+                    "method": "transform.create_task",
+                    "params": {
+                        "user_id": user_id,
+                        "image_url": file_urls[0],
+                        "style_id": style_id,
+                        "request_id": request_id
+                    }
+                }
+            
+            logger.info(f"发送RPC请求: {params}")
+            
+            # 发送RPC请求
+            async with self.rpc_client:
+                result = await self.rpc_client.call_method(
+                    method=params["method"],
+                    params=params["params"]
+                )
+            
+            logger.info(f"RPC响应: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"RPC调用失败: {e}")
             raise
     
     def cleanup_user(self, user_id: str):

@@ -592,3 +592,163 @@ class TransformTaskService:
         """处理ComfyUI完成事件"""
         # 这个方法与on_comfyui_result类似，我们可以直接调用它
         self.on_comfyui_result(prompt_id, result_data)
+    
+    async def create_dual_image_transform_task(
+        self, 
+        user_id: str, 
+        style_id: str, 
+        image1_url: str,
+        image2_url: str,
+        request_id: Optional[str] = None,
+        progress_callback: Optional[Callable] = None
+    ) -> str:
+        """
+        创建双图片转换任务（下载 + 转换）
+        
+        Args:
+            user_id: 用户ID
+            style_id: 风格ID
+            image1_url: 第一张图片URL
+            image2_url: 第二张图片URL
+            request_id: 请求ID (可选，如果不提供则自动生成)
+            progress_callback: 进度回调函数
+        
+        Returns:
+            str: 请求ID (request_id)
+        """
+        # 验证参数
+        user_id = self.file_naming.validate_user_id(user_id)
+        style_id = self.file_naming.validate_style_id(style_id)
+        
+        # 生成或验证request_id
+        if request_id is None:
+            request_id = str(uuid.uuid4())
+        else:
+            request_id = self.file_naming.validate_request_id(request_id)
+        
+        # 验证风格存在
+        if style_id not in self.style_registry.styles:
+            raise RPCTransformError(
+                code=ErrorCodes.STYLE_NOT_FOUND,
+                message=f"风格不存在: {style_id}",
+                details=f"可用风格: {list(self.style_registry.styles.keys())}"
+            )
+        
+        # 验证工作流存在
+        if style_id not in self.style_registry.workflows:
+            raise RPCTransformError(
+                code=ErrorCodes.WORKFLOW_NOT_FOUND,
+                message=f"工作流文件不存在: {style_id}",
+                details=f"可用工作流: {list(self.style_registry.workflows.keys())}"
+            )
+        
+        # 验证风格是否支持双图片
+        style_config = self.style_registry.styles[style_id]
+        if not getattr(style_config, 'requires_dual_images', False):
+            raise RPCTransformError(
+                code=ErrorCodes.INVALID_PARAMS,
+                message=f"风格 {style_id} 不支持双图片输入",
+                details="请使用支持双图片的风格，如 person_scene_merge"
+            )
+        
+        logger.info(f"开始双图片转换任务: user_id={user_id}, style_id={style_id}, request_id={request_id}")
+        
+        # 创建任务数据
+        task_data = UserTaskData(
+            request_id=request_id,
+            user_id=user_id,
+            style_id=style_id,
+            status="pending",
+            stage="pending",
+            progress=0.0,
+            message="任务初始化",
+            created_at=time.time()
+        )
+        
+        # 存储任务数据
+        if user_id not in self.user_tasks:
+            self.user_tasks[user_id] = {}
+        self.user_tasks[user_id][request_id] = task_data
+        self.request_to_user[request_id] = user_id
+        
+        # 推送初始状态
+        await self._push_task_update(task_data)
+        
+        # 异步执行转换任务
+        asyncio.create_task(self._execute_dual_image_transform_task(
+            task_data, image1_url, image2_url, progress_callback
+        ))
+        
+        return request_id
+    
+    async def _execute_dual_image_transform_task(
+        self, 
+        task_data: UserTaskData, 
+        image1_url: str,
+        image2_url: str,
+        progress_callback: Optional[Callable] = None
+    ):
+        """执行双图片转换任务"""
+        try:
+            logger.info(f"开始执行双图片转换任务: {task_data.request_id}")
+            
+            # 阶段1: 下载第一张图片
+            task_data.status = "downloading"
+            task_data.stage = "download"
+            task_data.progress = 5.0
+            task_data.message = "正在下载第一张图片..."
+            await self._push_task_update(task_data)
+            
+            # 下载第一张图片
+            image1_path = await self.download_service.download_image(
+                image1_url, 
+                task_data.request_id,
+                f"{task_data.request_id}_image1"
+            )
+            
+            # 阶段2: 下载第二张图片
+            task_data.progress = 15.0
+            task_data.message = "正在下载第二张图片..."
+            await self._push_task_update(task_data)
+            
+            # 下载第二张图片
+            image2_path = await self.download_service.download_image(
+                image2_url,
+                task_data.request_id, 
+                f"{task_data.request_id}_image2"
+            )
+            
+            # 阶段3: 准备转换
+            task_data.status = "downloaded"
+            task_data.stage = "prepare"
+            task_data.progress = 25.0
+            task_data.message = "双图片下载完成，准备转换..."
+            await self._push_task_update(task_data)
+            
+            # 获取工作流
+            workflow = self.style_registry.workflows[task_data.style_id]
+            
+            # 修改工作流参数以使用双图片
+            workflow_params = await workflow.prepare_dual_image_params(
+                image1_path, image2_path, task_data.request_id
+            )
+            
+            # 阶段4: 开始转换
+            task_data.status = "processing"
+            task_data.stage = "transform"  
+            task_data.progress = 30.0
+            task_data.message = "开始双图片转换..."
+            await self._push_task_update(task_data)
+            
+            # 提交到ComfyUI
+            prompt_id = await self.comfyui_service.queue_prompt(workflow_params)
+            self.prompt_to_request[prompt_id] = task_data.request_id
+            
+            logger.info(f"双图片转换任务 {task_data.request_id} 已提交到ComfyUI，prompt_id: {prompt_id}")
+            
+            # 等待转换完成（通过回调处理）
+            await self._wait_for_completion(task_data)
+            
+        except Exception as e:
+            logger.error(f"双图片转换任务执行失败: {e}", exc_info=True)
+            await self._fail_task(task_data, str(e))

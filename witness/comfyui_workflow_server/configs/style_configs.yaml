@@ -8,6 +8,8 @@ styles:
     workflow_file: "clay_style_transform.json"
     estimated_time: 45
     tags: ["黏土风格", "3D效果", "可爱"]
+    image_count: 1
+    requires_dual_images: false
   
   anime_style_transform:
     name: "动漫风格转换"
@@ -15,6 +17,17 @@ styles:
     workflow_file: "anime_style_transform.json"
     estimated_time: 45
     tags: ["动漫风格", "漫画", "动画"]
+    image_count: 1
+    requires_dual_images: false
+  
+  person_scene_merge:
+    name: "人物场景融合"
+    description: "将人物图片与场景图片融合，创造新的合成图像"
+    workflow_file: "person_scene_merge.json"
+    estimated_time: 60
+    tags: ["人物融合", "场景合成", "图像融合"]
+    image_count: 2
+    requires_dual_images: true
 
 # 扩展示例（添加新风格只需要这几行配置）
 # watercolor_style_transform:

@@ -155,7 +155,9 @@ async def search_styles(request: Request, q: str, user_id: str = None):
 async def create_transform_task(
     request: Request,
     style_id: str = Form(...),
-    file: UploadFile = File(...),
+    file: UploadFile = File(None),  # 单图片模式，可选
+    file1: UploadFile = File(None), # 双图片模式的第一张图
+    file2: UploadFile = File(None), # 双图片模式的第二张图
     request_id: str = Form(None),
     user_id: str = Form(...)  # 改为user_id参数
 ):
@@ -164,7 +166,9 @@ async def create_transform_task(
     
     Args:
         style_id: 风格ID
-        file: 上传的图片文件
+        file: 上传的图片文件 (单图片模式)
+        file1: 上传的第一张图片 (双图片模式)
+        file2: 上传的第二张图片 (双图片模式)
         request_id: 请求ID (可选)
         user_id: 用户ID (必需)
     
@@ -172,14 +176,45 @@ async def create_transform_task(
         TaskInfo: 任务信息
     """
     try:
-        # 验证文件类型
-        if not file.content_type or not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="文件必须是图片格式")
+        # 确定使用的文件和模式
+        files = []
+        if file1 and file2:
+            # 双图片模式
+            files = [file1, file2]
+            mode = 'dual'
+            logger.info(f"检测到双图片模式: {file1.filename}, {file2.filename}")
+        elif file:
+            # 单图片模式
+            files = [file]
+            mode = 'single'
+            logger.info(f"检测到单图片模式: {file.filename}")
+        else:
+            raise HTTPException(status_code=400, detail="必须提供至少一张图片")
         
-        # 验证文件大小
-        file_content = await file.read()
-        if len(file_content) > 10 * 1024 * 1024:  # 10MB
-            raise HTTPException(status_code=400, detail="文件大小不能超过10MB")
+        # 验证风格是否支持对应模式
+        if style_id == 'person_scene_merge' and mode != 'dual':
+            raise HTTPException(status_code=400, detail="人物场景融合风格需要两张图片")
+        
+        # 验证文件类型和大小
+        for idx, upload_file in enumerate(files):
+            if not upload_file.content_type or not upload_file.content_type.startswith('image/'):
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"文件{idx + 1}必须是图片格式"
+                )
+        
+        # 读取文件内容
+        file_contents = []
+        file_names = []
+        for idx, upload_file in enumerate(files):
+            content = await upload_file.read()
+            if len(content) > 10 * 1024 * 1024:  # 10MB
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"文件{idx + 1}大小不能超过10MB"
+                )
+            file_contents.append(content)
+            file_names.append(upload_file.filename or f"image{idx + 1}.jpg")
         
         # 初始化服务（如果尚未初始化）
         if not transform_service.rpc_client:
@@ -192,15 +227,16 @@ async def create_transform_task(
         transform_service.register_user(user_id, user_id)
         
         # 添加调试日志
-        logger.info(f"API接收到的user_id: {user_id}")
+        logger.info(f"API接收到的user_id: {user_id}, mode: {mode}")
         
-        # 执行转换
+        # 执行转换 - 传递模式和文件列表
         task_info = await transform_service.transform_image(
             user_id=user_id,
-            file_content=file_content,
-            filename=file.filename or "image.jpg",
+            file_contents=file_contents,
+            file_names=file_names,
             style_id=style_id,
-            request_id=request_id
+            request_id=request_id,
+            mode=mode
         )
         
         logger.info(f"用户 {user_id} 的转换任务创建成功: {task_info.get('request_id')}")

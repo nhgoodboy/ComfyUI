@@ -24,6 +24,8 @@ class StyleInfo(BaseModel):
     description: str = Field(..., description="风格描述")
     estimated_time: int = Field(..., description="预估处理时间(秒)")
     tags: List[str] = Field(default=[], description="风格标签")
+    image_count: int = Field(default=1, description="需要的图片数量")
+    requires_dual_images: bool = Field(default=False, description="是否需要双图片输入")
 
 class TransformRequest(BaseModel):
     """风格转换请求模型"""

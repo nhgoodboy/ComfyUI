@@ -195,6 +195,24 @@ class BaseWorkflow(ABC):
         """
         return workflow_result
     
+    async def prepare_dual_image_params(self, image1_path: str, image2_path: str, request_id: str) -> Dict[str, Any]:
+        """准备双图片工作流参数（可选重写）
+        
+        为双图片工作流准备参数，修改工作流JSON中的图片输入节点。
+        
+        Args:
+            image1_path: 第一张图片的本地路径
+            image2_path: 第二张图片的本地路径  
+            request_id: 请求ID
+            
+        Returns:
+            Dict[str, Any]: 修改后的工作流参数
+            
+        Raises:
+            NotImplementedError: 如果工作流不支持双图片输入
+        """
+        raise NotImplementedError(f"工作流 {self.metadata.id} 不支持双图片输入")
+    
     def validate_requirements(self) -> List[str]:
         """验证工作流运行环境要求（可选重写）
         
