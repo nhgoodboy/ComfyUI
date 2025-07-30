@@ -284,7 +284,7 @@ class TransformService:
                 await f.write(file_content)
             
             # 生成访问URL
-            file_url = f"http://{settings.PUBLIC_HOST}:{settings.APP_PORT}/uploads/{standard_filename}"
+            file_url = urljoin(settings.BASE_URL, f"/uploads/{standard_filename}")
             
             logger.info(f"文件已保存: {standard_filename} -> {file_url}")
             return file_url
@@ -445,7 +445,7 @@ class TransformService:
                     await f.write(content)
                 
                 # 生成标准URL
-                file_url = urljoin(settings.BASE_URL, f"/static/uploads/{unique_filename}")
+                file_url = urljoin(settings.BASE_URL, f"/uploads/{unique_filename}")
                 file_urls.append(file_url)
                 logger.info(f"文件{idx + 1}已保存: {unique_filename} -> {file_url}")
             

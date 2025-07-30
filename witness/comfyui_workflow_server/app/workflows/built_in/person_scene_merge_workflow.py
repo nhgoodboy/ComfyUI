@@ -110,6 +110,52 @@ class PersonSceneMergeWorkflow(BaseWorkflow):
         
         return validated_params
     
+    async def pre_process(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """预处理步骤：上传图片到ComfyUI"""
+        processed_params = parameters.copy()
+        
+        # 处理第一张图片
+        if "image1_path" in parameters:
+            image1_path = parameters["image1_path"]
+            self.logger.info(f"开始上传第一张图片到ComfyUI: {image1_path}")
+            
+            # 读取图片文件
+            try:
+                with open(image1_path, 'rb') as f:
+                    image1_data = f.read()
+                
+                # 上传到ComfyUI
+                image1_filename = Path(image1_path).name
+                uploaded_filename1 = await self.comfyui_service.upload_image(image1_data, image1_filename)
+                processed_params["image1_filename"] = uploaded_filename1
+                self.logger.info(f"第一张图片上传完成: {uploaded_filename1}")
+                
+            except Exception as e:
+                self.logger.error(f"第一张图片上传失败: {e}")
+                raise RuntimeError(f"图片1上传失败: {str(e)}")
+        
+        # 处理第二张图片
+        if "image2_path" in parameters:
+            image2_path = parameters["image2_path"]
+            self.logger.info(f"开始上传第二张图片到ComfyUI: {image2_path}")
+            
+            # 读取图片文件
+            try:
+                with open(image2_path, 'rb') as f:
+                    image2_data = f.read()
+                
+                # 上传到ComfyUI
+                image2_filename = Path(image2_path).name
+                uploaded_filename2 = await self.comfyui_service.upload_image(image2_data, image2_filename)
+                processed_params["image2_filename"] = uploaded_filename2
+                self.logger.info(f"第二张图片上传完成: {uploaded_filename2}")
+                
+            except Exception as e:
+                self.logger.error(f"第二张图片上传失败: {e}")
+                raise RuntimeError(f"图片2上传失败: {str(e)}")
+        
+        return processed_params
+    
     def _load_workflow_json(self) -> Dict[str, Any]:
         """加载工作流JSON文件"""
         if self._workflow_json_cache is not None:
@@ -143,11 +189,10 @@ class PersonSceneMergeWorkflow(BaseWorkflow):
         # 加载基础工作流JSON
         workflow_json = copy.deepcopy(self._load_workflow_json())
         
-        # 根据参数类型处理图片输入
-        if "image1_path" in parameters and "image2_path" in parameters:
-            # 使用本地文件路径
-            image1_filename = Path(parameters["image1_path"]).name
-            image2_filename = Path(parameters["image2_path"]).name
+        # 使用上传后的文件名设置工作流
+        if "image1_filename" in parameters and "image2_filename" in parameters:
+            image1_filename = parameters["image1_filename"]
+            image2_filename = parameters["image2_filename"]
             
             # 修改工作流中的图片文件名
             if "30" in workflow_json and "inputs" in workflow_json["30"]:
@@ -158,32 +203,25 @@ class PersonSceneMergeWorkflow(BaseWorkflow):
                 
             self.logger.info(f"工作流配置完成: image1={image1_filename}, image2={image2_filename}")
         
+        elif "image1_path" in parameters and "image2_path" in parameters:
+            # 兼容本地路径方式（主要用于测试）
+            image1_filename = Path(parameters["image1_path"]).name
+            image2_filename = Path(parameters["image2_path"]).name
+            
+            # 修改工作流中的图片文件名
+            if "30" in workflow_json and "inputs" in workflow_json["30"]:
+                workflow_json["30"]["inputs"]["image"] = image1_filename
+                
+            if "31" in workflow_json and "inputs" in workflow_json["31"]:
+                workflow_json["31"]["inputs"]["image"] = image2_filename
+                
+            self.logger.info(f"工作流配置完成（本地路径）: image1={image1_filename}, image2={image2_filename}")
+        
         elif "image1_url" in parameters and "image2_url" in parameters:
             # 使用URL方式（需要先下载）
             # 这种情况下，下载服务会处理文件并设置正确的文件名
             # 工作流在执行时会被进一步修改
             pass
-        
-        return workflow_json
-    
-    async def prepare_dual_image_params(self, image1_path: str, image2_path: str, request_id: str) -> Dict[str, Any]:
-        """准备双图片工作流参数"""
-        self.logger.info(f"准备双图片参数: image1={image1_path}, image2={image2_path}")
-        
-        # 设置参数
-        parameters = {
-            "image1_path": image1_path,
-            "image2_path": image2_path,
-            "output_filename": f"{request_id}_output.png"
-        }
-        
-        # 验证参数
-        validated_params = self.validate_parameters(parameters)
-        
-        # 构建工作流
-        workflow_json = await self.build_workflow(validated_params)
-        
-        self.logger.info(f"双图片工作流参数准备完成，request_id: {request_id}")
         
         return workflow_json
     
@@ -205,28 +243,56 @@ class PersonSceneMergeWorkflow(BaseWorkflow):
             # 查找输出图片（通常在SaveImage节点中）
             output_images = []
             
-            for prompt_id, prompt_data in history.items():
-                if 'outputs' in prompt_data:
-                    for node_id, node_output in prompt_data['outputs'].items():
-                        if 'images' in node_output:
-                            for image_info in node_output['images']:
-                                # 构建图片信息
-                                output_image = {
-                                    'filename': image_info.get('filename', ''),
-                                    'subfolder': image_info.get('subfolder', ''),
-                                    'type': image_info.get('type', 'output'),
-                                    'node_id': node_id
-                                }
+            # 检查历史记录结构
+            if 'outputs' in history:
+                # 直接访问outputs节点
+                outputs = history['outputs']
+                for node_id, node_output in outputs.items():
+                    if 'images' in node_output:
+                        for image_info in node_output['images']:
+                            # 构建图片信息
+                            output_image = {
+                                'filename': image_info.get('filename', ''),
+                                'subfolder': image_info.get('subfolder', ''),
+                                'type': image_info.get('type', 'output'),
+                                'node_id': node_id
+                            }
+                            
+                            # 构建完整URL
+                            if output_image['filename']:
+                                base_url = self.comfyui_service.base_url.rstrip('/')
+                                if output_image['subfolder']:
+                                    output_image['url'] = f"{base_url}/view?filename={output_image['filename']}&subfolder={output_image['subfolder']}&type={output_image['type']}"
+                                else:
+                                    output_image['url'] = f"{base_url}/view?filename={output_image['filename']}&type={output_image['type']}"
                                 
-                                # 构建完整URL
-                                if output_image['filename']:
-                                    base_url = self.comfyui_service.base_url.rstrip('/')
-                                    if output_image['subfolder']:
-                                        output_image['url'] = f"{base_url}/view?filename={output_image['filename']}&subfolder={output_image['subfolder']}&type={output_image['type']}"
-                                    else:
-                                        output_image['url'] = f"{base_url}/view?filename={output_image['filename']}&type={output_image['type']}"
+                                self.logger.info(f"找到输出图片: {output_image['filename']} (节点 {node_id})")
+                                output_images.append(output_image)
+            else:
+                # 兼容旧格式：按prompt_id遍历
+                for prompt_id, prompt_data in history.items():
+                    if 'outputs' in prompt_data:
+                        for node_id, node_output in prompt_data['outputs'].items():
+                            if 'images' in node_output:
+                                for image_info in node_output['images']:
+                                    # 构建图片信息
+                                    output_image = {
+                                        'filename': image_info.get('filename', ''),
+                                        'subfolder': image_info.get('subfolder', ''),
+                                        'type': image_info.get('type', 'output'),
+                                        'node_id': node_id
+                                    }
                                     
-                                    output_images.append(output_image)
+                                    # 构建完整URL
+                                    if output_image['filename']:
+                                        base_url = self.comfyui_service.base_url.rstrip('/')
+                                        if output_image['subfolder']:
+                                            output_image['url'] = f"{base_url}/view?filename={output_image['filename']}&subfolder={output_image['subfolder']}&type={output_image['type']}"
+                                        else:
+                                            output_image['url'] = f"{base_url}/view?filename={output_image['filename']}&type={output_image['type']}"
+                                        
+                                        self.logger.info(f"找到输出图片: {output_image['filename']} (节点 {node_id})")
+                                        output_images.append(output_image)
             
             # 构建处理后的结果
             processed_result = {

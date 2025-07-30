@@ -39,6 +39,8 @@ class ComfyUIService:
             
         self.server_address = parsed_url.hostname
         self.port = parsed_url.port
+        # 保存完整的base_url用于构建图片URL
+        self.base_url = comfyui_config.base_url.rstrip('/')
         # 统一 client_id（配置优先，否则随机生成）
         self.client_id = comfyui_config.client_id or uuid.uuid4().hex
 

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 8080
     PUBLIC_HOST: str = "127.0.0.1"
+    BASE_URL: str = "http://127.0.0.1:8080"  # 添加BASE_URL配置
     SESSION_SECRET_KEY: str = "your-web-app-session-secret-key"
     LOG_LEVEL: str = "INFO"
     DEBUG: bool = False

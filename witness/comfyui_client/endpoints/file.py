@@ -23,9 +23,12 @@ class FileAPI(BaseAPI):
 
         # 准备文件字段
         if image_bytes:
-            files = {"image": io.BytesIO(image_bytes)}
+            bio = io.BytesIO(image_bytes)
             if filename:
-                files["image"].name = filename
+                bio.name = filename
+            else:
+                bio.name = "image.jpg"  # 默认文件名
+            files = {"image": bio}
         else:
             if image_path is None:
                 raise ValueError("image_path 不能为 None")
@@ -81,9 +84,12 @@ class FileAPI(BaseAPI):
 
         # 准备文件字段
         if image_bytes:
-            files = {"image": io.BytesIO(image_bytes)}
+            bio = io.BytesIO(image_bytes)
             if filename:
-                files["image"].name = filename
+                bio.name = filename
+            else:
+                bio.name = "mask.jpg"  # 默认文件名
+            files = {"image": bio}
         else:
             f = open(image_path, "rb")
             files = {"image": f}

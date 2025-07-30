@@ -700,10 +700,9 @@ class TransformTaskService:
             await self._push_task_update(task_data)
             
             # 下载第一张图片
-            image1_path = await self.download_service.download_image(
+            image1_path, image1_info = await self.download_service.download_image(
                 image1_url, 
-                task_data.request_id,
-                f"{task_data.request_id}_image1"
+                f"image1_{task_data.request_id.replace('-', '')[:8]}.jpg"
             )
             
             # 阶段2: 下载第二张图片
@@ -712,10 +711,9 @@ class TransformTaskService:
             await self._push_task_update(task_data)
             
             # 下载第二张图片
-            image2_path = await self.download_service.download_image(
+            image2_path, image2_info = await self.download_service.download_image(
                 image2_url,
-                task_data.request_id, 
-                f"{task_data.request_id}_image2"
+                f"image2_{task_data.request_id.replace('-', '')[:8]}.jpg"
             )
             
             # 阶段3: 准备转换
@@ -728,10 +726,12 @@ class TransformTaskService:
             # 获取工作流
             workflow = self.style_registry.workflows[task_data.style_id]
             
-            # 修改工作流参数以使用双图片
-            workflow_params = await workflow.prepare_dual_image_params(
-                image1_path, image2_path, task_data.request_id
-            )
+            # 准备工作流参数
+            workflow_params = {
+                'image1_path': image1_path,
+                'image2_path': image2_path,
+                'output_filename': f"{task_data.request_id}_output.png"
+            }
             
             # 阶段4: 开始转换
             task_data.status = "processing"
@@ -740,14 +740,18 @@ class TransformTaskService:
             task_data.message = "开始双图片转换..."
             await self._push_task_update(task_data)
             
-            # 提交到ComfyUI
-            prompt_id = await self.comfyui_service.queue_prompt(workflow_params)
+            # 使用工作流的execute_async方法提交到ComfyUI
+            prompt_id = await workflow.execute_async(
+                self.comfyui_service,
+                workflow_params,
+                lambda progress, message: self._on_transform_progress(task_data, progress, message)
+            )
             self.prompt_to_request[prompt_id] = task_data.request_id
             
             logger.info(f"双图片转换任务 {task_data.request_id} 已提交到ComfyUI，prompt_id: {prompt_id}")
             
             # 等待转换完成（通过回调处理）
-            await self._wait_for_completion(task_data)
+            await self._wait_for_transform_completion(task_data, prompt_id)
             
         except Exception as e:
             logger.error(f"双图片转换任务执行失败: {e}", exc_info=True)

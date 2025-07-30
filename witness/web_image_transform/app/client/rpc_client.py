@@ -76,6 +76,10 @@ class ComfyUIRPCClient:
             logger.error(f"RPC响应解析错误: {method} - {e}")
             raise Exception(f"响应格式错误: {str(e)}")
     
+    async def call_method(self, method: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+        """调用RPC方法的别名方法，与call_rpc功能相同"""
+        return await self.call_rpc(method, params)
+    
     async def batch_call_rpc(self, calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """批量调用RPC方法"""
         batch_payload = []
