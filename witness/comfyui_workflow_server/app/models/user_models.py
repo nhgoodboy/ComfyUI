@@ -1,21 +1,16 @@
 """
-用户相关数据模型
+任务相关数据模型
 
-定义基于user_id的资源隔离数据结构
+定义基于request_id的任务数据结构
 """
 
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 
-class UserContext(BaseModel):
-    """用户上下文 - 用于标识用户身份"""
-    user_id: str = Field(..., description="用户ID")
-
-class UserTaskData(BaseModel):
-    """用户任务数据"""
+class TaskData(BaseModel):
+    """任务数据"""
     request_id: str = Field(..., description="请求ID，作为主标识符")
     prompt_id: Optional[str] = None  # ComfyUI的prompt_id
-    user_id: str = Field(..., description="用户ID")
     style_id: str = Field(..., description="风格ID")
     status: str = Field(..., description="任务状态")
     progress: float = Field(..., description="进度(0-100)")
@@ -42,31 +37,29 @@ class UserTaskData(BaseModel):
         # 允许动态添加字段
         extra = "allow"
 
-class UserFileInfo(BaseModel):
-    """用户文件信息"""
+class FileInfo(BaseModel):
+    """文件信息"""
     file_id: str = Field(..., description="文件ID")
-    user_id: str = Field(..., description="用户ID")
     filename: str = Field(..., description="文件名")
     original_name: str = Field(..., description="原始文件名")
     url: str = Field(..., description="访问URL")
     size: int = Field(..., description="文件大小(字节)")
     created_at: float = Field(..., description="创建时间戳")
 
-class UserStatsResponse(BaseModel):
-    """用户统计响应"""
-    user_id: str = Field(..., description="用户ID")
+class StatsResponse(BaseModel):
+    """统计响应"""
     task_counts: Dict[str, int] = Field(..., description="任务统计")
     file_counts: Dict[str, int] = Field(..., description="文件统计")
     storage_used: int = Field(..., description="存储使用量(字节)")
 
-class UserTaskListResponse(BaseModel):
-    """用户任务列表响应"""
+class TaskListResponse(BaseModel):
+    """任务列表响应"""
     success: bool = Field(..., description="是否成功")
-    data: List[UserTaskData] = Field(..., description="任务列表")
+    data: List[TaskData] = Field(..., description="任务列表")
     total: int = Field(..., description="总数量")
 
-class UserFileListResponse(BaseModel):
-    """用户文件列表响应"""
+class FileListResponse(BaseModel):
+    """文件列表响应"""
     success: bool = Field(..., description="是否成功")
-    data: List[UserFileInfo] = Field(..., description="文件列表")
+    data: List[FileInfo] = Field(..., description="文件列表")
     total: int = Field(..., description="总数量") 

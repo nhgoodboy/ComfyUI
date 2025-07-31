@@ -55,7 +55,6 @@ class RequestRecord:
     method: str
     status_code: int
     response_time: float
-    user_id: Optional[str] = None
     error_message: Optional[str] = None
 
 class PerformanceMonitor:
@@ -94,8 +93,7 @@ class PerformanceMonitor:
                 logger.error(f"清理任务失败: {e}")
     
     def record_request(self, endpoint: str, method: str, status_code: int, 
-                      response_time: float, user_id: Optional[str] = None,
-                      error_message: Optional[str] = None):
+                      response_time: float, error_message: Optional[str] = None):
         """记录请求"""
         with self._lock:
             timestamp = time.time()
@@ -107,7 +105,6 @@ class PerformanceMonitor:
                 method=method,
                 status_code=status_code,
                 response_time=response_time,
-                user_id=user_id,
                 error_message=error_message
             )
             
@@ -188,7 +185,6 @@ class PerformanceMonitor:
                     "method": record.method,
                     "status_code": record.status_code,
                     "response_time": record.response_time,
-                    "user_id": record.user_id,
                     "error_message": record.error_message
                 }
                 for record in reversed(self.records)
@@ -256,10 +252,9 @@ performance_monitor = PerformanceMonitor()
 class PerformanceTimer:
     """性能计时器上下文管理器"""
     
-    def __init__(self, endpoint: str, method: str, user_id: Optional[str] = None):
+    def __init__(self, endpoint: str, method: str):
         self.endpoint = endpoint
         self.method = method
-        self.user_id = user_id
         self.start_time = None
         self.status_code = 200
         self.error_message = None
@@ -281,7 +276,6 @@ class PerformanceTimer:
                 method=self.method,
                 status_code=self.status_code,
                 response_time=response_time,
-                user_id=self.user_id,
                 error_message=self.error_message
             )
     

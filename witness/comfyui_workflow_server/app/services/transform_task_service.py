@@ -11,7 +11,7 @@ import logging
 from typing import Dict, List, Optional, Any, Callable, TYPE_CHECKING
 from pathlib import Path
 
-from ..models.user_models import UserTaskData
+from ..models.user_models import TaskData
 from ..core.style_registry import StyleRegistry
 from ..services.download_service import DownloadService
 from ..utils.file_naming import FileNamingUtils
@@ -41,7 +41,7 @@ class TransformTaskService:
         self.file_naming = FileNamingUtils()
         
         # 任务存储：简化为按request_id存储
-        self.tasks: Dict[str, UserTaskData] = {}  # {request_id: task_data}
+        self.tasks: Dict[str, TaskData] = {}  # {request_id: task_data}
         self.prompt_to_request: Dict[str, str] = {}  # {prompt_id: request_id}
         
         # 任务状态枚举
@@ -106,9 +106,8 @@ class TransformTaskService:
         current_time = time.time()
         
         # 创建任务数据
-        task_data = UserTaskData(
+        task_data = TaskData(
             request_id=request_id,
-            user_id="",  # 不再使用用户ID
             style_id=style_id,
             status="pending",
             progress=0.0,
@@ -160,7 +159,7 @@ class TransformTaskService:
         except Exception as e:
             await self._fail_task(task_data, str(e))
     
-    async def _download_phase(self, task_data: UserTaskData, progress_callback: Optional[Callable] = None):
+    async def _download_phase(self, task_data: TaskData, progress_callback: Optional[Callable] = None):
         """下载阶段"""
         task_data.status = "downloading"
         task_data.stage = "download"
@@ -204,7 +203,7 @@ class TransformTaskService:
             await self._push_task_update(task_data)
             raise
     
-    async def _transform_phase(self, task_data: UserTaskData, progress_callback: Optional[Callable] = None):
+    async def _transform_phase(self, task_data: TaskData, progress_callback: Optional[Callable] = None):
         """转换阶段"""
         task_data.status = "processing"
         task_data.stage = "transform"
@@ -295,7 +294,7 @@ class TransformTaskService:
                 request_id=task_data.request_id
             )
     
-    async def _complete_task(self, task_data: UserTaskData):
+    async def _complete_task(self, task_data: TaskData):
         """完成任务"""
         task_data.status = "completed"
         task_data.stage = "completed"
@@ -307,7 +306,7 @@ class TransformTaskService:
         
         logger.info(f"请求 {task_data.request_id} 完成")
     
-    async def _fail_task(self, task_data: UserTaskData, error_message: str):
+    async def _fail_task(self, task_data: TaskData, error_message: str):
         """任务失败"""
         if task_data.stage == "download":
             task_data.status = "download_failed"
@@ -321,7 +320,7 @@ class TransformTaskService:
         
         logger.error(f"请求 {task_data.request_id} 失败: {error_message}")
     
-    async def _push_task_update(self, task_data: UserTaskData):
+    async def _push_task_update(self, task_data: TaskData):
         """推送任务状态更新"""
         if not push_manager:
             return
@@ -329,7 +328,6 @@ class TransformTaskService:
         try:
             update_data = {
                 "request_id": task_data.request_id,
-                "user_id": task_data.user_id,
                 "style_id": task_data.style_id,
                 "status": task_data.status,
                 "stage": getattr(task_data, 'stage', 'unknown'),
@@ -608,9 +606,8 @@ class TransformTaskService:
         logger.info(f"开始双图片转换任务: request_id={request_id}, style_id={style_id}")
         
         # 创建任务数据
-        task_data = UserTaskData(
+        task_data = TaskData(
             request_id=request_id,
-            user_id="",  # 不再使用用户ID
             style_id=style_id,
             status="pending",
             stage="pending",

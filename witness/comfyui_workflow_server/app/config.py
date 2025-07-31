@@ -69,18 +69,6 @@ class StorageConfig:
         """解析允许的文件扩展名"""
         return [ext.strip().lower() for ext in extensions_string.split(",") if ext.strip()]
     
-    def get_user_upload_dir(self, user_id: str) -> Path:
-        """获取用户上传目录"""
-        user_dir = self.uploads_dir / user_id
-        user_dir.mkdir(parents=True, exist_ok=True)
-        return user_dir
-    
-    def get_user_output_dir(self, user_id: str) -> Path:
-        """获取用户输出目录"""
-        user_dir = self.outputs_dir / user_id
-        user_dir.mkdir(parents=True, exist_ok=True)
-        return user_dir
-
 
 class AppConfig:
     """应用主配置类"""

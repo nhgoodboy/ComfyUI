@@ -69,7 +69,6 @@ class TaskFileInfo(BaseModel):
 class TaskStatus(BaseModel):
     """任务状态模型"""
     request_id: str
-    user_id: str
     style_id: str
     status: str  # pending, downloading, downloaded, processing, completed, failed
     progress: float = 0.0
@@ -86,7 +85,6 @@ class TaskStatus(BaseModel):
 class TransformResult(BaseModel):
     """转换结果模型"""
     request_id: str
-    user_id: str
     style_id: str
     status: str
     input_info: FileInfo

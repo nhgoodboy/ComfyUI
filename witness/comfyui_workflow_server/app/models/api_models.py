@@ -36,13 +36,11 @@ class TransformResponse(BaseModel):
     """风格转换响应模型"""
     success: bool = Field(..., description="是否成功")
     request_id: str = Field(..., description="请求ID")
-    user_id: str = Field(..., description="用户ID")
     estimated_time: int = Field(..., description="预估处理时间(秒)")
 
 class TaskStatusData(BaseModel):
     """任务状态数据模型"""
     request_id: str = Field(..., description="请求ID")
-    user_id: str = Field(..., description="用户ID")
     style_id: str = Field(..., description="风格ID")
     status: TaskStatus = Field(..., description="任务状态")
     progress: float = Field(..., description="进度(0-100)")
@@ -93,41 +91,37 @@ class HealthResponse(BaseModel):
     timestamp: float = Field(..., description="检查时间戳")
     version: str = Field(..., description="API版本")
 
-class UserTasksResponse(BaseModel):
-    """用户任务列表响应模型"""
+class TasksResponse(BaseModel):
+    """任务列表响应模型"""
     success: bool = Field(..., description="是否成功")
-    user_id: str = Field(..., description="用户ID")
     tasks: List[TaskStatusData] = Field(..., description="任务列表")
     total: int = Field(..., description="总任务数")
 
-class UserFileInfo(BaseModel):
-    """用户文件信息模型"""
+class FileInfo(BaseModel):
+    """文件信息模型"""
     file_id: str = Field(..., description="文件ID")
-    user_id: str = Field(..., description="用户ID")
     filename: str = Field(..., description="文件名")
     original_name: str = Field(..., description="原始文件名")
     url: str = Field(..., description="访问URL")
     size: int = Field(..., description="文件大小(字节)")
     created_at: float = Field(..., description="创建时间戳")
 
-class UserFilesResponse(BaseModel):
-    """用户文件列表响应模型"""
+class FilesResponse(BaseModel):
+    """文件列表响应模型"""
     success: bool = Field(..., description="是否成功")
-    user_id: str = Field(..., description="用户ID")
-    files: List[UserFileInfo] = Field(..., description="文件列表")
+    files: List[FileInfo] = Field(..., description="文件列表")
     total: int = Field(..., description="总文件数")
 
-class UserStatsData(BaseModel):
-    """用户统计数据模型"""
-    user_id: str = Field(..., description="用户ID")
+class StatsData(BaseModel):
+    """统计数据模型"""
     task_counts: Dict[str, int] = Field(..., description="任务状态统计")
     file_counts: Dict[str, int] = Field(..., description="文件类型统计")
     storage_used: int = Field(..., description="存储使用量(字节)")
 
-class UserStatsResponse(BaseModel):
-    """用户统计响应模型"""
+class StatsResponse(BaseModel):
+    """统计响应模型"""
     success: bool = Field(..., description="是否成功")
-    data: UserStatsData = Field(..., description="用户统计数据")
+    data: StatsData = Field(..., description="统计数据")
 
 class ErrorResponse(BaseModel):
     """错误响应模型"""
@@ -141,9 +135,8 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
-class UserFileSchema(BaseModel):
+class FileSchema(BaseModel):
     id: str
-    user_id: str
     filename: str
     filepath: str
     file_size: int

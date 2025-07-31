@@ -9,7 +9,7 @@ class ErrorCodes:
     
     # 通用错误 1001-1099
     INVALID_PARAMS = 1001
-    INVALID_USER_ID = 1002
+    INVALID_REQUEST_ID = 1002
     METHOD_NOT_FOUND = 1003
     INTERNAL_ERROR = 1004
     
@@ -21,7 +21,7 @@ class ErrorCodes:
     DOWNLOAD_TIMEOUT = 2005
     INVALID_FILENAME_FORMAT = 2006
     STYLE_MISMATCH = 2007
-    USER_MISMATCH = 2008
+    REQUEST_MISMATCH = 2008
     NETWORK_ERROR = 2009
     
     # 转换相关错误 3001-3099
@@ -42,7 +42,7 @@ class ErrorCodes:
         """获取错误码对应的默认消息"""
         messages = {
             cls.INVALID_PARAMS: "参数错误",
-            cls.INVALID_USER_ID: "用户ID无效",
+            cls.INVALID_REQUEST_ID: "请求ID无效",
             cls.METHOD_NOT_FOUND: "方法不存在",
             cls.INTERNAL_ERROR: "内部服务器错误",
             
@@ -53,7 +53,7 @@ class ErrorCodes:
             cls.DOWNLOAD_TIMEOUT: "下载超时",
             cls.INVALID_FILENAME_FORMAT: "文件名格式不符合规范",
             cls.STYLE_MISMATCH: "风格参数不匹配",
-            cls.USER_MISMATCH: "用户ID不匹配",
+            cls.REQUEST_MISMATCH: "请求ID不匹配",
             cls.NETWORK_ERROR: "网络连接错误",
             
             cls.STYLE_NOT_FOUND: "风格不存在",

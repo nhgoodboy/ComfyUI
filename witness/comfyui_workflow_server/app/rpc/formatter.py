@@ -57,7 +57,6 @@ class RPCFormatter:
         """格式化任务状态信息"""
         result = {
             "request_id": task.request_id,
-            "user_id": task.user_id,
             "style_id": task.style_id,
             "status": task.status,
             "progress": task.progress,
@@ -115,7 +114,6 @@ class RPCFormatter:
         """格式化转换结果"""
         formatted_result = {
             "request_id": task.request_id,
-            "user_id": task.user_id,
             "style_id": task.style_id,
             "status": task.status,
             "duration": 0,

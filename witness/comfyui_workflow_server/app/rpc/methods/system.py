@@ -119,8 +119,8 @@ async def parse_filename(params: Dict[str, Any], request: Request) -> Dict[str, 
             "filename": params.get("filename", ""),
             "valid": False,
             "error": str(e),
-            "expected_pattern": "{style_id}_{user_id}_{request_id}_{input|output}.{ext}",
-            "example": "clay_style_alice_123e4567-e89b-12d3-a456-426614174000_input.jpg"
+            "expected_pattern": "{style_id}_{request_id}_{input|output}.{ext}",
+            "example": "clay_style_123e4567-e89b-12d3-a456-426614174000_input.jpg"
         }
 
 

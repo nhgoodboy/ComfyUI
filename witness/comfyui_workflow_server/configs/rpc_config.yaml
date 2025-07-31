@@ -37,7 +37,7 @@ download:
 # 文件命名配置
 naming:
   # 文件命名模式
-  pattern: "{style_id}_{user_id}_{type}.{ext}"
+  pattern: "{style_id}_{request_id}_{type}.{ext}"
   
   # 是否验证URL中的文件名
   validate_url_naming: true

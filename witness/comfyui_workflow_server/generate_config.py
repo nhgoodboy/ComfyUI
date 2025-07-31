@@ -107,7 +107,7 @@ class ConfigGenerator:
             
             # 速率限制
             "RATE_LIMIT_PER_IP": "60",
-            "RATE_LIMIT_PER_USER": "30",
+            "RATE_LIMIT_PER_REQUEST": "30",
             
             # 高级配置
             "TASK_TIMEOUT": "300",
@@ -124,13 +124,13 @@ class ConfigGenerator:
             "REQUEST_LOGGING": "true",
             "SLOW_QUERY_THRESHOLD": "5.0",
             
-            # 多用户配置
-            "USER_ID_HEADER": "x-user-id",
-            "MIN_USER_ID_LENGTH": "3",
-            "MAX_USER_ID_LENGTH": "64",
-            "MAX_TASKS_PER_USER": "100",
-            "MAX_FILES_PER_USER": "1000",
-            "MAX_STORAGE_PER_USER": "1073741824",
+            # 多租户配置
+            "REQUEST_ID_HEADER": "x-request-id",
+            "MIN_REQUEST_ID_LENGTH": "3",
+            "MAX_REQUEST_ID_LENGTH": "64",
+            "MAX_TASKS_PER_CLIENT": "100",
+            "MAX_FILES_PER_CLIENT": "1000",
+            "MAX_STORAGE_PER_CLIENT": "1073741824",
             
             # 缓存配置
             "CACHE_TTL": "3600",
@@ -170,7 +170,7 @@ class ConfigGenerator:
                 "ENABLE_DOCS": "true",
                 "DEV_TOOLS": "true",
                 "RATE_LIMIT_PER_IP": "120",
-                "RATE_LIMIT_PER_USER": "60"
+                "RATE_LIMIT_PER_REQUEST": "60"
             })
         elif env_type == "production":
             base_config.update({
@@ -217,7 +217,7 @@ class ConfigGenerator:
             security_vars = ["API_SECRET_KEY", "JWT_SECRET_KEY", "ENCRYPTION_KEY"]
             network_vars = ["ALLOWED_IPS", "ENFORCE_HTTPS", "CORS_ORIGINS"]
             timing_vars = ["SIGNATURE_TIMEOUT", "TOKEN_EXPIRY_MINUTES"]
-            rate_vars = ["RATE_LIMIT_PER_IP", "RATE_LIMIT_PER_USER"]
+            rate_vars = ["RATE_LIMIT_PER_IP", "RATE_LIMIT_PER_REQUEST"]
             
             # 核心安全配置
             content.append("# =============================================================================")

@@ -31,16 +31,6 @@ class RPCValidator:
             )
     
     @staticmethod
-    def validate_user_id(user_id: Any):
-        """验证用户ID"""
-        if not user_id or not isinstance(user_id, str) or not user_id.strip():
-            raise RPCInvalidParams(
-                message="用户ID不能为空",
-                field="user_id",
-                value=user_id
-            )
-    
-    @staticmethod
     def validate_style_id(style_id: Any):
         """验证风格ID"""
         if not style_id or not isinstance(style_id, str) or not style_id.strip():
@@ -79,9 +69,9 @@ class RPCValidator:
             )
     
     @staticmethod
-    def validate_filename_format(filename: str, style_id: str, user_id: str, file_type: str = "input"):
+    def validate_filename_format(filename: str, style_id: str, request_id: str, file_type: str = "input"):
         """验证文件名格式"""
-        expected_pattern = f"{style_id}_{user_id}_{file_type}"
+        expected_pattern = f"{style_id}_{request_id}_{file_type}"
         
         if not filename.startswith(expected_pattern):
             raise RPCInvalidParams(
@@ -91,7 +81,7 @@ class RPCValidator:
                     "actual": filename,
                     "expected_pattern": f"{expected_pattern}.{{ext}}",
                     "style_id": style_id,
-                    "user_id": user_id,
+                    "request_id": request_id,
                     "type": file_type
                 }
             )

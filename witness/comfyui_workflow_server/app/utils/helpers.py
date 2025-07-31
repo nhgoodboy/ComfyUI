@@ -117,17 +117,17 @@ def get_timestamp() -> int:
     return int(time.time() * 1000)
 
 # 数据验证
-def validate_user_id(user_id: str) -> bool:
-    """验证用户ID格式"""
-    if not user_id or not isinstance(user_id, str):
+def validate_request_id(request_id: str) -> bool:
+    """验证请求ID格式"""
+    if not request_id or not isinstance(request_id, str):
         return False
     
     # 长度检查
-    if len(user_id) < 1 or len(user_id) > 100:
+    if len(request_id) < 1 or len(request_id) > 100:
         return False
     
-    # 格式检查（只允许字母、数字、下划线、连字符）
-    if not re.match(r'^[a-zA-Z0-9_-]+$', user_id):
+    # 格式检查（允许字母、数字、下划线、连字符）
+    if not re.match(r'^[a-zA-Z0-9_-]+$', request_id):
         return False
     
     return True

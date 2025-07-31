@@ -228,7 +228,7 @@ async def root(request: Request):
         "api_docs": "/docs" if settings.debug else "禁用（生产模式）",
         "health_check": "/health",
         "rpc_endpoint": "/rpc",
-        "websocket": "/ws/{user_id}",
+        "websocket": "/ws/{client_id}",
         "available_methods": [
             "styles.list",
             "styles.search", 
@@ -286,10 +286,15 @@ async def health_check(request: Request):
         }
     )
 
-@app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    """WebSocket端点 - 为用户提供实时任务状态推送"""
-    await push_manager.connect(websocket, user_id)
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
+    """WebSocket端点 - 为客户端提供实时任务状态推送
+    
+    client_id 可以是:
+    - request_id: 特定请求的连接
+    - "web_image_transform_service": 服务级连接
+    """
+    await push_manager.connect(websocket, client_id)
     try:
         while True:
             # 保持连接活跃，等待心跳或消息
@@ -303,7 +308,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     except WebSocketDisconnect:
         pass
     finally:
-        push_manager.disconnect(user_id)
+        push_manager.disconnect(client_id)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
