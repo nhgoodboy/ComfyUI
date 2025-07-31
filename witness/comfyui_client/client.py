@@ -1,6 +1,7 @@
 import aiohttp
 import asyncio
 import json
+import time
 import uuid
 from typing import Optional, Union, Any
 
@@ -223,7 +224,6 @@ class ComfyUIClient:
         :param check_interval: 检查间隔（秒）
         :return: 完成后的历史记录
         """
-        import time
         start_time = time.time()
         
         while time.time() - start_time < timeout:

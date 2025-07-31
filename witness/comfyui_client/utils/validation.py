@@ -56,7 +56,8 @@ def validate_optional_string(value: Any, parameter_name: str) -> Optional[str]:
             expected_type="str | None"
         )
     
-    return value.strip() if value.strip() else None
+    stripped = value.strip()
+    return stripped if stripped else None
 
 
 def validate_positive_integer(value: Any, parameter_name: str) -> int:
