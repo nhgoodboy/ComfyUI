@@ -130,54 +130,35 @@ class ComfyUIRPCClient:
         """获取特定风格详情"""
         return await self.call_rpc("styles.get", {"style_id": style_id})
     
-    # 转换任务方法
-    async def create_transform(self, style_id: str, image_url: str, request_id: str = None, actual_user_id: str = None) -> Dict[str, Any]:
+    # 转换任务方法（已简化，不再需要user_id）
+    async def create_transform(self, style_id: str, image_url: str, request_id: str) -> Dict[str, Any]:
         """创建转换任务"""
-        # 如果没有提供request_id，自动生成一个
-        if not request_id:
-            import uuid
-            import time
-            request_id = f"req_{int(time.time())}_{str(uuid.uuid4())[:8]}"
-            logger.debug(f"RPC客户端自动生成request_id: {request_id}")
-        
         params = {
-            "user_id": actual_user_id or self.service_id,  # 使用实际的user_id或默认的service_id
+            "request_id": request_id,
             "style_id": style_id,
-            "image_url": image_url,
-            "request_id": request_id  # 现在总是包含request_id
+            "image_url": image_url
         }
         
         return await self.call_rpc("transform.create", params)
     
-    async def get_task_status(self, request_id: str, actual_user_id: str = None) -> Dict[str, Any]:
+    async def get_task_status(self, request_id: str) -> Dict[str, Any]:
         """获取任务状态"""
         return await self.call_rpc("transform.get_status", {
-            "user_id": actual_user_id or self.service_id,
             "request_id": request_id
         })
     
-    async def get_task_result(self, request_id: str, actual_user_id: str = None) -> Dict[str, Any]:
+    async def get_task_result(self, request_id: str) -> Dict[str, Any]:
         """获取任务结果"""
         return await self.call_rpc("transform.get_result", {
-            "user_id": actual_user_id or self.service_id,
             "request_id": request_id
         })
     
-    async def list_tasks(self, limit: int = 100, status_filter: List[str] = None, actual_user_id: str = None) -> Dict[str, Any]:
-        """获取任务列表"""
-        params = {
-            "user_id": actual_user_id or self.service_id,
-            "limit": limit
-        }
-        if status_filter:
-            params["status_filter"] = status_filter
-        
-        return await self.call_rpc("transform.list", params)
+    # 用户任务列表方法已移除（在新架构中不再由workflow server管理用户）
+    # async def list_tasks(...) - 此方法在新架构中已不适用
     
-    async def cancel_task(self, request_id: str, actual_user_id: str = None) -> Dict[str, Any]:
+    async def cancel_task(self, request_id: str) -> Dict[str, Any]:
         """取消任务"""
         return await self.call_rpc("transform.cancel", {
-            "user_id": actual_user_id or self.service_id,
             "request_id": request_id
         })
     
@@ -186,24 +167,8 @@ class ComfyUIRPCClient:
         """获取系统健康状态"""
         return await self.call_rpc("system.health")
     
-    async def build_filename(self, style_id: str, request_id: str = None, file_type: str = "input", extension: str = "jpg", actual_user_id: str = None) -> Dict[str, Any]:
-        """构建符合规范的文件名"""
-        # 如果没有提供request_id，自动生成一个
-        if not request_id:
-            import uuid
-            import time
-            request_id = f"req_{int(time.time())}_{str(uuid.uuid4())[:8]}"
-            logger.debug(f"RPC客户端自动生成request_id: {request_id}")
-        
-        params = {
-            "style_id": style_id,
-            "user_id": actual_user_id or self.service_id,  # 使用实际的user_id或默认的service_id
-            "request_id": request_id,  # 现在总是包含request_id
-            "type": file_type,
-            "extension": extension
-        }
-        
-        return await self.call_rpc("system.build_filename", params)
+    # 文件命名方法已简化（不再需要RPC调用）
+    # async def build_filename(...) - 此方法在新架构中已不适用，文件命名由客户端处理
     
     async def get_system_stats(self) -> Dict[str, Any]:
         """获取系统统计信息"""

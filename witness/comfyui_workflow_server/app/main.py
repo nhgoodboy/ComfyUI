@@ -235,12 +235,13 @@ async def root(request: Request):
             "styles.search", 
             "styles.get",
             "transform.create",
+            "transform.create_dual",
             "transform.get_status",
             "transform.get_result",
-            "transform.list",
             "transform.cancel",
-            "system.health",
-            "system.build_filename"
+            "system.health"
+            # "system.build_filename" - 已移除，文件命名由客户端处理
+            # "transform.list" - 已移除，用户任务列表由web层管理
         ]
     }
 

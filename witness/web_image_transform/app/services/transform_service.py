@@ -240,10 +240,10 @@ class TransformService:
     
     async def save_uploaded_file(self, user_id: str, file_content: bytes, filename: str, style_id: str, request_id: str = None) -> str:
         """
-        保存上传的文件并按照RPC规范命名
+        保存上传的文件
         
         Args:
-            user_id: 用户ID
+            user_id: 用户ID（用于文件命名）
             file_content: 文件内容
             filename: 原始文件名
             style_id: 风格ID
@@ -257,26 +257,13 @@ class TransformService:
             if not request_id:
                 raise ValueError("request_id是必需的")
             
-            # 确保RPC客户端已初始化
-            if not self.rpc_client:
-                await self.initialize()
-            
             # 获取文件扩展名
             file_ext = Path(filename).suffix.lower()
             if not file_ext:
                 file_ext = ".jpg"
             
-            # 使用单一的RPC客户端生成符合规范的文件名，传递实际的user_id
-            async with self.rpc_client:
-                filename_info = await self.rpc_client.build_filename(
-                    style_id=style_id,
-                    request_id=request_id,
-                    file_type="input",
-                    extension=file_ext[1:],  # 去掉点号
-                    actual_user_id=user_id  # 传递实际的用户ID用于文件命名
-                )
-            
-            standard_filename = filename_info["filename"]
+            # 简化文件命名规则（不再依赖RPC服务生成文件名）
+            standard_filename = f"{request_id}_{user_id[:8]}{file_ext}"
             
             # 保存文件
             file_path = self.uploads_dir / standard_filename
@@ -298,7 +285,7 @@ class TransformService:
         创建转换任务
         
         Args:
-            user_id: 用户ID
+            user_id: 用户ID（用于前端连接管理）
             style_id: 风格ID
             image_url: 图片URL
             request_id: 请求ID (如果为None则自动生成)
@@ -315,17 +302,18 @@ class TransformService:
             if not self.rpc_client:
                 await self.initialize()
             
-            # 使用单一的RPC客户端，但传递实际的user_id
+            # 使用简化的RPC接口
             async with self.rpc_client:
-                # 传递实际的user_id给RPC客户端
-                result = await self.rpc_client.create_transform(
-                    style_id=style_id, 
-                    image_url=image_url, 
-                    request_id=request_id,
-                    actual_user_id=user_id  # 传递实际的用户ID
+                result = await self.rpc_client.call_method(
+                    method="transform.create",
+                    params={
+                        "request_id": request_id,
+                        "style_id": style_id,
+                        "image_url": image_url
+                    }
                 )
                 
-                logger.info(f"转换任务已创建: {result.get('request_id')} (user_id: {user_id}, request_id: {request_id})")
+                logger.info(f"转换任务已创建: {result.get('request_id')} (request_id: {request_id})")
                 return result
                 
         except Exception as e:
@@ -339,9 +327,12 @@ class TransformService:
             if not self.rpc_client:
                 await self.initialize()
             
-            # 使用单一的RPC客户端
+            # 使用简化的RPC接口
             async with self.rpc_client:
-                return await self.rpc_client.get_task_status(request_id, actual_user_id=user_id)
+                return await self.rpc_client.call_method(
+                    method="transform.get_status",
+                    params={"request_id": request_id}
+                )
         except Exception as e:
             logger.error(f"获取任务状态失败: {e}")
             raise
@@ -353,9 +344,12 @@ class TransformService:
             if not self.rpc_client:
                 await self.initialize()
             
-            # 使用单一的RPC客户端
+            # 使用简化的RPC接口
             async with self.rpc_client:
-                return await self.rpc_client.get_task_result(request_id, actual_user_id=user_id)
+                return await self.rpc_client.call_method(
+                    method="transform.get_result",
+                    params={"request_id": request_id}
+                )
         except Exception as e:
             logger.error(f"获取任务结果失败: {e}")
             raise
@@ -363,14 +357,17 @@ class TransformService:
     async def list_user_tasks(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """获取用户任务列表"""
         try:
+            # 注意：由于workflow server不再管理用户，此方法可能需要在web层实现
+            # 这里暂时保持原有接口，但实际上workflow server已经不区分用户了
+            logger.warning("list_user_tasks方法在新架构中可能需要重新设计")
+            
             # 确保RPC客户端已初始化
             if not self.rpc_client:
                 await self.initialize()
             
-            # 使用单一的RPC客户端
-            async with self.rpc_client:
-                result = await self.rpc_client.list_tasks(limit=limit, actual_user_id=user_id)
-                return result.get("tasks", [])
+            # 由于workflow server不再按用户区分任务，这里返回空列表
+            # 实际的用户任务列表应该在web层维护
+            return []
         except Exception as e:
             logger.error(f"获取任务列表失败: {e}")
             raise
@@ -382,9 +379,12 @@ class TransformService:
             if not self.rpc_client:
                 await self.initialize()
             
-            # 使用单一的RPC客户端
+            # 使用简化的RPC接口
             async with self.rpc_client:
-                result = await self.rpc_client.cancel_task(request_id, actual_user_id=user_id)
+                result = await self.rpc_client.call_method(
+                    method="transform.cancel",
+                    params={"request_id": request_id}
+                )
                 return result.get("success", False)
         except Exception as e:
             logger.error(f"取消任务失败: {e}")
@@ -471,7 +471,7 @@ class TransformService:
         通过RPC创建转换任务
         
         Args:
-            user_id: 用户ID
+            user_id: 用户ID（用于前端连接管理）
             file_urls: 文件URL列表
             style_id: 风格ID
             request_id: 请求ID
@@ -492,28 +492,26 @@ class TransformService:
             if self.connection_manager:
                 self.connection_manager.register_task(user_id, request_id)
             
-            # 准备RPC调用参数
+            # 准备RPC调用参数 - 使用简化的API
             if mode == 'dual' and len(file_urls) >= 2:
                 # 双图片模式
                 params = {
-                    "method": "transform.create_dual_image_task",
+                    "method": "transform.create_dual",
                     "params": {
-                        "user_id": user_id,
-                        "image1_url": file_urls[0],
-                        "image2_url": file_urls[1],
+                        "request_id": request_id,
                         "style_id": style_id,
-                        "request_id": request_id
+                        "image1_url": file_urls[0],
+                        "image2_url": file_urls[1]
                     }
                 }
             else:
                 # 单图片模式
                 params = {
-                    "method": "transform.create_task",
+                    "method": "transform.create",
                     "params": {
-                        "user_id": user_id,
-                        "image_url": file_urls[0],
+                        "request_id": request_id,
                         "style_id": style_id,
-                        "request_id": request_id
+                        "image_url": file_urls[0]
                     }
                 }
             

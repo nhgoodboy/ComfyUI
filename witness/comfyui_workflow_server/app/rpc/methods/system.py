@@ -83,65 +83,7 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
         )
 
 
-@rpc_method("system.build_filename")
-async def build_filename(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
-    """构建符合规范的文件名"""
-    try:
-        # 验证必需参数
-        RPCValidator.validate_required_fields(params, ["style_id", "user_id", "request_id", "type"])
-        
-        style_id = params["style_id"]
-        user_id = params["user_id"]
-        request_id = params["request_id"]
-        file_type = params["type"]
-        extension = params.get("extension", "jpg")
-        
-        # 验证参数
-        RPCValidator.validate_style_id(style_id)
-        RPCValidator.validate_user_id(user_id)
-        request_id = FileNamingUtils.validate_request_id(request_id)
-        
-        if file_type not in ["input", "output"]:
-            raise RPCError(
-                code=ErrorCodes.INVALID_PARAMS,
-                message="文件类型必须是 'input' 或 'output'",
-                data={"field": "type", "value": file_type}
-            )
-        
-        # 构建文件名
-        filename = FileNamingUtils.build_filename(style_id, user_id, request_id, file_type, extension)
-        
-        # 构建示例URL
-        settings = request.app.state.settings
-        base_url = "http://your-domain:8000"  # 可以从配置获取
-        
-        if file_type == "input":
-            example_url = f"{base_url}/inputs/{filename}"
-        else:
-            example_url = f"{base_url}/outputs/{filename}"
-        
-        return {
-            "filename": filename,
-            "components": {
-                "style_id": style_id,
-                "user_id": user_id,
-                "request_id": request_id,
-                "type": file_type,
-                "extension": extension
-            },
-            "example_url": example_url,
-            "pattern": "{style_id}_{user_id}_{request_id}_{type}.{ext}"
-        }
-        
-    except RPCError:
-        raise
-    except Exception as e:
-        logger.error(f"构建文件名失败: {e}", exc_info=True)
-        raise RPCError(
-            code=ErrorCodes.INTERNAL_ERROR,
-            message="构建文件名失败",
-            data={"error": str(e)}
-        )
+# system.build_filename 方法已移除 - 在新架构中文件命名由客户端处理
 
 
 @rpc_method("system.parse_filename")
@@ -205,19 +147,20 @@ async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str
             }
         }
         
-        # 统计任务信息
+        # 统计任务信息 - 简化统计（新架构中不再区分用户）
         if hasattr(request.app.state, 'transform_task_service'):
             transform_service = request.app.state.transform_task_service
             
-            for user_id, user_tasks in transform_service.user_tasks.items():
-                stats["tasks"]["by_user"][user_id] = len(user_tasks)
-                stats["tasks"]["total"] += len(user_tasks)
-                
-                for task in user_tasks.values():
-                    status = task.status
-                    if status not in stats["tasks"]["by_status"]:
-                        stats["tasks"]["by_status"][status] = 0
-                    stats["tasks"]["by_status"][status] += 1
+            # 新的数据结构：只按request_id存储任务
+            total_tasks = len(transform_service.tasks)
+            stats["tasks"]["total"] = total_tasks
+            
+            # 按状态统计
+            for task in transform_service.tasks.values():
+                status = task.status
+                if status not in stats["tasks"]["by_status"]:
+                    stats["tasks"]["by_status"][status] = 0
+                stats["tasks"]["by_status"][status] += 1
         
         # 统计文件信息
         try:

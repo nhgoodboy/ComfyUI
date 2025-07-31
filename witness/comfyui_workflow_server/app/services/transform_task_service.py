@@ -40,9 +40,8 @@ class TransformTaskService:
         self.download_service = DownloadService()
         self.file_naming = FileNamingUtils()
         
-        # 任务存储：按用户隔离，使用request_id作为主键
-        self.user_tasks: Dict[str, Dict[str, UserTaskData]] = {}  # {user_id: {request_id: task_data}}
-        self.request_to_user: Dict[str, str] = {}  # {request_id: user_id}
+        # 任务存储：简化为按request_id存储
+        self.tasks: Dict[str, UserTaskData] = {}  # {request_id: task_data}
         self.prompt_to_request: Dict[str, str] = {}  # {prompt_id: request_id}
         
         # 任务状态枚举
@@ -59,34 +58,34 @@ class TransformTaskService:
     
     async def create_transform_task(
         self, 
-        user_id: str, 
+        request_id: str,
         style_id: str, 
         image_url: str,
-        request_id: Optional[str] = None,
         progress_callback: Optional[Callable] = None
     ) -> str:
         """
         创建转换任务（下载 + 转换）
         
         Args:
-            user_id: 用户ID
+            request_id: 请求ID，必须唯一
             style_id: 风格ID
             image_url: 图片URL
-            request_id: 请求ID (可选，如果不提供则自动生成)
             progress_callback: 进度回调函数
         
         Returns:
             str: 请求ID (request_id)
         """
         # 验证参数
-        user_id = self.file_naming.validate_user_id(user_id)
+        request_id = self.file_naming.validate_request_id(request_id)
         style_id = self.file_naming.validate_style_id(style_id)
         
-        # 生成或验证request_id
-        if request_id is None:
-            request_id = str(uuid.uuid4())
-        else:
-            request_id = self.file_naming.validate_request_id(request_id)
+        # 检查request_id是否已存在
+        if request_id in self.tasks:
+            raise RPCTransformError(
+                code=ErrorCodes.INVALID_PARAMS,
+                message=f"任务ID已存在: {request_id}",
+                details="请使用不同的request_id"
+            )
         
         # 验证风格存在
         if style_id not in self.style_registry.styles:
@@ -104,26 +103,12 @@ class TransformTaskService:
                 details=f"可用工作流: {list(self.style_registry.workflows.keys())}"
             )
         
-        # 验证URL中的文件名
-        try:
-            # 获取已知的风格ID列表
-            known_style_ids = list(self.style_registry.styles.keys())
-            expected_filename = self.file_naming.validate_url_filename(
-                image_url, style_id, user_id, request_id, "input", known_style_ids
-            )
-        except Exception as e:
-            raise RPCDownloadError(
-                code=ErrorCodes.INVALID_FILENAME_FORMAT,
-                message=str(e),
-                url=image_url
-            )
-        
         current_time = time.time()
         
-        # 创建任务数据，使用request_id作为主键
+        # 创建任务数据
         task_data = UserTaskData(
             request_id=request_id,
-            user_id=user_id,
+            user_id="",  # 不再使用用户ID
             style_id=style_id,
             status="pending",
             progress=0.0,
@@ -139,19 +124,13 @@ class TransformTaskService:
         task_data.stage = "pending"
         task_data.message = "任务已创建，等待开始"
         task_data.image_url = image_url
-        task_data.expected_filename = expected_filename
-        task_data.output_filename = self.file_naming.get_output_filename(expected_filename)
         task_data.download_progress = 0.0
         task_data.transform_progress = 0.0
         
         # 存储任务
-        if user_id not in self.user_tasks:
-            self.user_tasks[user_id] = {}
+        self.tasks[request_id] = task_data
         
-        self.user_tasks[user_id][request_id] = task_data
-        self.request_to_user[request_id] = user_id
-        
-        logger.info(f"创建转换任务: {request_id}, 用户: {user_id}, 风格: {style_id}")
+        logger.info(f"创建转换任务: {request_id}, 风格: {style_id}")
         
         # 推送任务创建消息
         await self._push_task_update(task_data)
@@ -163,12 +142,7 @@ class TransformTaskService:
     
     async def _execute_transform_task(self, request_id: str, progress_callback: Optional[Callable] = None):
         """执行转换任务的完整流程"""
-        user_id = self.request_to_user.get(request_id)
-        if not user_id:
-            logger.error(f"请求 {request_id} 找不到对应的用户")
-            return
-        
-        task_data = self.user_tasks[user_id].get(request_id)
+        task_data = self.tasks.get(request_id)
         if not task_data:
             logger.error(f"请求 {request_id} 数据不存在")
             return
@@ -380,24 +354,13 @@ class TransformTaskService:
         except Exception as e:
             logger.warning(f"推送任务更新失败: {e}")
     
-    def get_user_task(self, user_id: str, request_id: str) -> Optional[UserTaskData]:
-        """获取用户任务"""
-        user_tasks = self.user_tasks.get(user_id, {})
-        return user_tasks.get(request_id)
+    def get_task(self, request_id: str) -> Optional[UserTaskData]:
+        """获取任务"""
+        return self.tasks.get(request_id)
     
-    def list_user_tasks(self, user_id: str, limit: int = 100) -> List[UserTaskData]:
-        """获取用户任务列表"""
-        user_tasks = self.user_tasks.get(user_id, {})
-        tasks = list(user_tasks.values())
-        
-        # 按创建时间倒序排列
-        tasks.sort(key=lambda x: x.created_at, reverse=True)
-        
-        return tasks[:limit]
-    
-    async def cancel_task(self, user_id: str, request_id: str) -> bool:
+    async def cancel_task(self, request_id: str) -> bool:
         """取消任务"""
-        task_data = self.get_user_task(user_id, request_id)
+        task_data = self.get_task(request_id)
         if not task_data:
             return False
         
@@ -410,7 +373,7 @@ class TransformTaskService:
         
         await self._push_task_update(task_data)
         
-        logger.info(f"请求 {request_id} 已被用户 {user_id} 取消")
+        logger.info(f"请求 {request_id} 已取消")
         return True
     
     def on_comfyui_result(self, prompt_id: str, result: Dict[str, Any]):
@@ -420,12 +383,7 @@ class TransformTaskService:
             logger.warning(f"收到未知prompt_id的结果: {prompt_id}")
             return
         
-        user_id = self.request_to_user.get(request_id)
-        if not user_id:
-            logger.warning(f"请求 {request_id} 找不到用户")
-            return
-        
-        task_data = self.get_user_task(user_id, request_id)
+        task_data = self.get_task(request_id)
         if not task_data:
             logger.warning(f"任务数据不存在: {request_id}")
             return
@@ -494,19 +452,20 @@ class TransformTaskService:
         current_time = time.time()
         cleanup_count = 0
         
-        for user_id, user_tasks in self.user_tasks.items():
-            tasks_to_remove = []
-            
-            for request_id, task_data in user_tasks.items():
-                task_age = current_time - task_data.created_at
-                if task_age > max_age_hours * 3600:
-                    tasks_to_remove.append(request_id)
-            
-            for request_id in tasks_to_remove:
-                del user_tasks[request_id]
-                if request_id in self.request_to_user:
-                    del self.request_to_user[request_id]
-                cleanup_count += 1
+        tasks_to_remove = []
+        
+        for request_id, task_data in self.tasks.items():
+            task_age = current_time - task_data.created_at
+            if task_age > max_age_hours * 3600:
+                tasks_to_remove.append(request_id)
+        
+        for request_id in tasks_to_remove:
+            del self.tasks[request_id]
+            # 清理prompt映射
+            prompt_ids_to_remove = [pid for pid, rid in self.prompt_to_request.items() if rid == request_id]
+            for prompt_id in prompt_ids_to_remove:
+                del self.prompt_to_request[prompt_id]
+            cleanup_count += 1
         
         if cleanup_count > 0:
             logger.info(f"清理了 {cleanup_count} 个旧任务")
@@ -520,12 +479,7 @@ class TransformTaskService:
             logger.warning(f"收到未知prompt_id的进度更新: {prompt_id}")
             return
         
-        user_id = self.request_to_user.get(request_id)
-        if not user_id:
-            logger.warning(f"请求 {request_id} 找不到用户")
-            return
-        
-        task_data = self.get_user_task(user_id, request_id)
+        task_data = self.get_task(request_id)
         if not task_data:
             logger.warning(f"任务数据不存在: {request_id}")
             return
@@ -595,36 +549,36 @@ class TransformTaskService:
     
     async def create_dual_image_transform_task(
         self, 
-        user_id: str, 
+        request_id: str,
         style_id: str, 
         image1_url: str,
         image2_url: str,
-        request_id: Optional[str] = None,
         progress_callback: Optional[Callable] = None
     ) -> str:
         """
         创建双图片转换任务（下载 + 转换）
         
         Args:
-            user_id: 用户ID
+            request_id: 请求ID，必须唯一
             style_id: 风格ID
             image1_url: 第一张图片URL
             image2_url: 第二张图片URL
-            request_id: 请求ID (可选，如果不提供则自动生成)
             progress_callback: 进度回调函数
         
         Returns:
             str: 请求ID (request_id)
         """
         # 验证参数
-        user_id = self.file_naming.validate_user_id(user_id)
+        request_id = self.file_naming.validate_request_id(request_id)
         style_id = self.file_naming.validate_style_id(style_id)
         
-        # 生成或验证request_id
-        if request_id is None:
-            request_id = str(uuid.uuid4())
-        else:
-            request_id = self.file_naming.validate_request_id(request_id)
+        # 检查request_id是否已存在
+        if request_id in self.tasks:
+            raise RPCTransformError(
+                code=ErrorCodes.INVALID_PARAMS,
+                message=f"任务ID已存在: {request_id}",
+                details="请使用不同的request_id"
+            )
         
         # 验证风格存在
         if style_id not in self.style_registry.styles:
@@ -651,12 +605,12 @@ class TransformTaskService:
                 details="请使用支持双图片的风格，如 person_scene_merge"
             )
         
-        logger.info(f"开始双图片转换任务: user_id={user_id}, style_id={style_id}, request_id={request_id}")
+        logger.info(f"开始双图片转换任务: request_id={request_id}, style_id={style_id}")
         
         # 创建任务数据
         task_data = UserTaskData(
             request_id=request_id,
-            user_id=user_id,
+            user_id="",  # 不再使用用户ID
             style_id=style_id,
             status="pending",
             stage="pending",
@@ -666,10 +620,7 @@ class TransformTaskService:
         )
         
         # 存储任务数据
-        if user_id not in self.user_tasks:
-            self.user_tasks[user_id] = {}
-        self.user_tasks[user_id][request_id] = task_data
-        self.request_to_user[request_id] = user_id
+        self.tasks[request_id] = task_data
         
         # 推送初始状态
         await self._push_task_update(task_data)
