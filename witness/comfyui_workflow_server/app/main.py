@@ -30,6 +30,7 @@ from .rpc.methods import *
 
 # 导入服务类
 from .core.style_registry import StyleRegistry
+from .core.workflow_registry import WorkflowRegistry
 from .services.comfyui_service import ComfyUIService
 from .services.transform_task_service import TransformTaskService
 
@@ -73,6 +74,15 @@ async def lifespan(app: FastAPI):
         app.state.style_registry = style_registry
         logger.info("样式注册表初始化完成。")
 
+        logger.debug("正在初始化工作流注册表...")
+        workflow_config_path = settings.storage.configs_dir / "workflows.yaml"
+        workflow_registry = WorkflowRegistry(
+            config_file=str(workflow_config_path),
+            comfyui_service=comfyui_service
+        )
+        app.state.workflow_registry = workflow_registry
+        logger.info("工作流注册表初始化完成。")
+
         # RPC架构下不再需要用户文件服务、用户任务服务和样式服务
         # 这些功能已被RPC方法替代
 
@@ -81,6 +91,8 @@ async def lifespan(app: FastAPI):
             comfyui_service=comfyui_service,
             style_registry=style_registry
         )
+        # 注入工作流注册器
+        transform_task_service.set_workflow_registry(workflow_registry)
         app.state.transform_task_service = transform_task_service
         logger.info("转换任务服务初始化完成。")
 
@@ -88,6 +100,7 @@ async def lifespan(app: FastAPI):
         logger.debug("正在将服务挂载到应用状态...")
         app.state.comfyui_service = comfyui_service
         app.state.style_registry = style_registry
+        app.state.workflow_registry = workflow_registry
         app.state.transform_task_service = transform_task_service
         app.state.settings = settings  # 将配置也挂载到state
         

@@ -704,3 +704,198 @@ class TransformTaskService:
         except Exception as e:
             logger.error(f"双图片转换任务执行失败: {e}", exc_info=True)
             await self._fail_task(task_data, str(e))
+    
+    async def create_workflow_task(
+        self, 
+        request_id: str,
+        workflow_id: str, 
+        params: Dict[str, Any],
+        progress_callback: Optional[Callable] = None
+    ) -> str:
+        """
+        创建通用工作流任务
+        
+        Args:
+            request_id: 请求ID，必须唯一
+            workflow_id: 工作流ID
+            params: 工作流参数
+            progress_callback: 进度回调函数
+        
+        Returns:
+            str: 请求ID (request_id)
+        """
+        # 验证参数
+        request_id = self.file_naming.validate_request_id(request_id)
+        
+        # 检查request_id是否已存在
+        if request_id in self.tasks:
+            raise RPCTransformError(
+                code=ErrorCodes.INVALID_PARAMS,
+                message=f"任务ID已存在: {request_id}",
+                details="请使用不同的request_id"
+            )
+        
+        # 获取工作流注册器（从应用状态中获取）
+        try:
+            from ..core.workflow_registry import WorkflowRegistry
+            # 这里需要从应用状态获取，暂时使用style_registry的逻辑
+            if not hasattr(self, 'workflow_registry'):
+                # 临时兼容：如果没有workflow_registry，尝试从style_registry获取
+                logger.warning("工作流注册器未初始化，使用兼容模式")
+                if workflow_id not in self.style_registry.styles:
+                    raise RPCTransformError(
+                        code=ErrorCodes.STYLE_NOT_FOUND,
+                        message=f"工作流不存在: {workflow_id}",
+                        details=f"可用工作流: {list(self.style_registry.styles.keys())}"
+                    )
+        except Exception as e:
+            logger.error(f"工作流验证失败: {e}")
+            raise RPCTransformError(
+                code=ErrorCodes.INTERNAL_ERROR,
+                message="工作流系统初始化失败",
+                details=str(e)
+            )
+        
+        current_time = time.time()
+        
+        # 创建任务数据
+        task_data = TaskData(
+            request_id=request_id,
+            style_id=workflow_id,  # 兼容性：使用workflow_id作为style_id
+            status="pending",
+            progress=0.0,
+            created_at=current_time,
+            started_at=None,
+            completed_at=None,
+            estimated_remaining=None,
+            result=None,
+            error_message=None
+        )
+        
+        # 添加扩展属性
+        task_data.stage = "pending"
+        task_data.message = "工作流任务已创建，等待开始"
+        task_data.workflow_id = workflow_id
+        task_data.workflow_params = params
+        
+        # 存储任务
+        self.tasks[request_id] = task_data
+        
+        logger.info(f"创建工作流任务: {request_id}, 工作流: {workflow_id}")
+        
+        # 推送任务创建消息
+        await self._push_task_update(task_data)
+        
+        # 异步执行任务
+        asyncio.create_task(self._execute_workflow_task(request_id, progress_callback))
+        
+        return request_id
+    
+    async def _execute_workflow_task(self, request_id: str, progress_callback: Optional[Callable] = None):
+        """执行通用工作流任务的完整流程"""
+        task_data = self.tasks.get(request_id)
+        if not task_data:
+            logger.error(f"请求 {request_id} 数据不存在")
+            return
+        
+        try:
+            # 阶段1: 参数预处理
+            await self._workflow_preprocess_phase(task_data, progress_callback)
+            
+            # 阶段2: 工作流执行
+            await self._workflow_execution_phase(task_data, progress_callback)
+            
+            # 任务完成
+            await self._complete_task(task_data)
+            
+        except Exception as e:
+            await self._fail_task(task_data, str(e))
+    
+    async def _workflow_preprocess_phase(self, task_data: TaskData, progress_callback: Optional[Callable] = None):
+        """工作流预处理阶段"""
+        task_data.status = "processing"
+        task_data.stage = "preprocess"
+        task_data.message = "正在预处理工作流参数..."
+        task_data.started_at = time.time()
+        task_data.progress = 10.0
+        
+        await self._push_task_update(task_data)
+        
+        try:
+            # 获取工作流执行器（临时兼容方案）
+            if hasattr(self, 'workflow_registry'):
+                # 新的工作流系统
+                workflow_config = self.workflow_registry.get_workflow(task_data.workflow_id)
+                if not workflow_config:
+                    raise ValueError(f"工作流配置不存在: {task_data.workflow_id}")
+                
+                from ..workflows.universal_workflow import UniversalWorkflowExecutor
+                workflow_executor = UniversalWorkflowExecutor(workflow_config, self.comfyui_service)
+            else:
+                # 兼容旧系统
+                workflow_executor = self.style_registry.workflows.get(task_data.workflow_id)
+                if not workflow_executor:
+                    raise ValueError(f"工作流不存在: {task_data.workflow_id}")
+            
+            # 验证参数
+            validated_params = workflow_executor.validate_parameters(task_data.workflow_params)
+            
+            # 预处理（处理文件下载等）
+            processed_params = await workflow_executor.pre_process(validated_params)
+            
+            # 更新任务数据
+            task_data.processed_params = processed_params
+            task_data.workflow_executor = workflow_executor
+            
+            task_data.progress = 25.0
+            task_data.message = "参数预处理完成，准备执行工作流..."
+            await self._push_task_update(task_data)
+            
+            logger.info(f"工作流 {task_data.request_id} 预处理完成")
+            
+        except Exception as e:
+            logger.error(f"工作流预处理失败: {e}")
+            raise
+    
+    async def _workflow_execution_phase(self, task_data: TaskData, progress_callback: Optional[Callable] = None):
+        """工作流执行阶段"""
+        task_data.status = "processing"
+        task_data.stage = "execute"
+        task_data.message = "正在执行工作流..."
+        task_data.progress = 30.0
+        
+        await self._push_task_update(task_data)
+        
+        try:
+            workflow_executor = task_data.workflow_executor
+            processed_params = task_data.processed_params
+            
+            # 构建工作流JSON
+            workflow_json = await workflow_executor.build_workflow(processed_params)
+            
+            # 提交到ComfyUI执行
+            task_data.progress = 40.0
+            task_data.message = "正在提交工作流到ComfyUI..."
+            await self._push_task_update(task_data)
+            
+            # 执行工作流
+            prompt_id = await self.comfyui_service.queue_prompt(workflow_json)
+            self.prompt_to_request[prompt_id] = task_data.request_id
+            
+            task_data.progress = 50.0
+            task_data.message = "工作流已提交，等待ComfyUI处理..."
+            await self._push_task_update(task_data)
+            
+            logger.info(f"工作流任务 {task_data.request_id} 已提交到ComfyUI，prompt_id: {prompt_id}")
+            
+            # 等待执行完成（通过回调处理）
+            await self._wait_for_transform_completion(task_data, prompt_id)
+            
+        except Exception as e:
+            logger.error(f"工作流执行失败: {e}")
+            raise
+    
+    def set_workflow_registry(self, workflow_registry):
+        """设置工作流注册器（用于依赖注入）"""
+        self.workflow_registry = workflow_registry
+        logger.info("工作流注册器已设置")

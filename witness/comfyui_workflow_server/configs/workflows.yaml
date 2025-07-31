@@ -1,0 +1,187 @@
+# 通用工作流配置文件
+# 基于参数化配置的工作流管理系统
+
+workflows:
+  clay_style_transform:
+    name: "黏土风格转换"
+    description: "将输入图像转换为黏土风格的图像，呈现可爱、3D、立体效果"
+    template_file: "clay_style_transform.json"
+    estimated_time: 45
+    tags: ["风格转换", "黏土风格", "3D效果", "可爱"]
+    version: "1.0.0"
+    
+    # 可配置参数定义
+    parameters:
+      input_image:
+        type: "file"
+        description: "输入图像文件"
+        node_path: "1.inputs.image"
+        required: true
+        validation:
+          accept: ["jpg", "jpeg", "png", "webp"]
+      
+      prompt:
+        type: "string"
+        description: "风格描述文字"
+        default: "Clay Style, lovely, 3D, cute"
+        node_path: "24.inputs.clip_l"
+        required: false
+      
+      guidance:
+        type: "float"
+        description: "引导强度，控制风格转换的强度"
+        default: 10.0
+        node_path: "24.inputs.guidance"
+        required: false
+        validation:
+          range: [1.0, 20.0]
+
+  anime_style_transform:
+    name: "动漫风格转换"
+    description: "将输入图像转换为动漫风格的图像，呈现鲜艳色彩和漫画风格"
+    template_file: "anime_style_transform.json"
+    estimated_time: 45
+    tags: ["风格转换", "动漫风格", "漫画", "动画"]
+    version: "1.0.0"
+    
+    parameters:
+      input_image:
+        type: "file"
+        description: "输入图像文件"
+        node_path: "1.inputs.image"
+        required: true
+        validation:
+          accept: ["jpg", "jpeg", "png", "webp"]
+      
+      prompt:
+        type: "string"
+        description: "动漫风格描述"
+        default: "anime style, vibrant colors, manga style"
+        node_path: "24.inputs.clip_l"
+        required: false
+      
+      guidance:
+        type: "float"
+        description: "引导强度"
+        default: 10.0
+        node_path: "24.inputs.guidance"
+        required: false
+        validation:
+          range: [1.0, 20.0]
+
+  person_scene_merge:
+    name: "人物场景融合"
+    description: "将人物图片与场景图片融合，创造新的合成图像"
+    template_file: "person_scene_merge.json"
+    estimated_time: 60
+    tags: ["图像融合", "人物融合", "场景合成", "双图处理"]
+    version: "1.0.0"
+    
+    parameters:
+      person_image:
+        type: "file"
+        description: "人物图片"
+        node_path: "1.inputs.image"
+        required: true
+        validation:
+          accept: ["jpg", "jpeg", "png", "webp"]
+      
+      scene_image:
+        type: "file"
+        description: "场景图片"
+        node_path: "2.inputs.image"
+        required: true
+        validation:
+          accept: ["jpg", "jpeg", "png", "webp"]
+      
+      merge_strength:
+        type: "float"
+        description: "融合强度，控制人物与场景的融合程度"
+        default: 0.8
+        node_path: "15.inputs.strength"
+        required: false
+        validation:
+          range: [0.1, 1.0]
+      
+      prompt:
+        type: "string"
+        description: "融合效果描述"
+        default: "person in scenic environment, natural integration"
+        node_path: "24.inputs.clip_l"
+        required: false
+
+# 扩展示例 - 添加新工作流的模板
+# watercolor_style_transform:
+#   name: "水彩风格转换"
+#   description: "将输入图像转换为水彩画风格"
+#   template_file: "watercolor_style_transform.json"
+#   estimated_time: 50
+#   tags: ["风格转换", "水彩风格", "艺术效果"]
+#   version: "1.0.0"
+#   
+#   parameters:
+#     input_image:
+#       type: "file"
+#       description: "输入图像文件"
+#       node_path: "1.inputs.image"
+#       required: true
+#     
+#     watercolor_intensity:
+#       type: "float"
+#       description: "水彩效果强度"
+#       default: 0.7
+#       node_path: "12.inputs.intensity"
+#       required: false
+#       validation:
+#         range: [0.1, 1.0]
+#     
+#     color_bleeding:
+#       type: "float"
+#       description: "颜色晕染程度"
+#       default: 0.5
+#       node_path: "13.inputs.bleeding"
+#       required: false
+#       validation:
+#         range: [0.0, 1.0]
+
+# text_to_image:
+#   name: "文本生成图像"
+#   description: "根据文本描述生成图像"
+#   template_file: "text_to_image.json"
+#   estimated_time: 30
+#   tags: ["文本生成", "AI绘画", "创意生成"]
+#   version: "1.0.0"
+#   
+#   parameters:
+#     prompt:
+#       type: "string"
+#       description: "图像描述文本"
+#       node_path: "6.inputs.text"
+#       required: true
+#     
+#     width:
+#       type: "int"
+#       description: "图像宽度"
+#       default: 1024
+#       node_path: "5.inputs.width"
+#       required: false
+#       validation:
+#         range: [512, 2048]
+#     
+#     height:
+#       type: "int"
+#       description: "图像高度"
+#       default: 1024
+#       node_path: "5.inputs.height"
+#       required: false
+#       validation:
+#         range: [512, 2048]
+#     
+#     steps:
+#       type: "int"
+#       description: "生成步数"
+#       default: 20
+#       node_path: "3.inputs.steps"
+#       required: false
+#       validation:
+#         range: [10, 50]
