@@ -151,9 +151,8 @@ if not os.path.exists(outputs_dir):
 # 挂载输出目录为静态文件服务
 app.mount("/outputs", StaticFiles(directory=outputs_dir), name="outputs")
 
-# 注册文件访问API
-from .api.files import router as files_router
-app.include_router(files_router)
+# 文件访问功能已迁移到RPC方法中
+# 使用 files.get_output_image, files.get_output_image_info, files.list_output_images 等RPC方法
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
