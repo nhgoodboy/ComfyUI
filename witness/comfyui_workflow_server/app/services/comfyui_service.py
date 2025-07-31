@@ -9,16 +9,13 @@ from urllib.parse import urlparse, urljoin
 import uuid
 import time
 import weakref
-
-import sys
-from pathlib import Path
-
-# 添加comfyui_client模块路径
-witness_path = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(witness_path))
-
 from comfyui_client.client import ComfyUIClient
 from comfyui_client.websocket import ComfyUIWebSocketClient
+from comfyui_client.config import ComfyUIClientConfig
+from comfyui_client.exceptions import (
+    ComfyUIConnectionError, ComfyUIAPIError, ComfyUIValidationError,
+    ComfyUITimeoutError, ComfyUIFileError
+)
 from ..config import get_settings
 
 if TYPE_CHECKING:
@@ -44,14 +41,28 @@ class ComfyUIService:
         # 统一 client_id（配置优先，否则随机生成）
         self.client_id = comfyui_config.client_id or uuid.uuid4().hex
 
-        # 连接池配置（延迟初始化）
-        self.connector = None
-        self.timeout = None
+        # 创建客户端配置
+        self.client_config = ComfyUIClientConfig(
+            request_timeout=120.0,  # 图像处理需要更长时间
+            connect_timeout=10.0,
+            read_timeout=300.0,
+            max_retries=3,
+            retry_delay=1.0,
+            retry_backoff=2.0,
+            max_connections=100,
+            max_connections_per_host=30,
+            websocket_timeout=60.0,
+            websocket_ping_interval=30.0,
+            websocket_debug=False,
+            log_requests=False,
+            log_responses=False
+        )
 
         self.client = ComfyUIClient(
             server_address=self.server_address,
             port=self.port,
-            client_id=self.client_id
+            client_id=self.client_id,
+            config=self.client_config
         )
         self.ws_client = None
         self._workflow_cache = {}
@@ -59,8 +70,6 @@ class ComfyUIService:
         self.transform_task_service: Optional['TransformTaskService'] = None
         
         # 连接状态管理
-        self.connection_pool = None
-        self.session = None
         self.health_status = False
         self.last_health_check = 0
         self.health_check_interval = 30  # 30秒检查一次
@@ -68,11 +77,6 @@ class ComfyUIService:
         # 任务状态缓存
         self.prompt_progress: Dict[str, Dict] = {}  # prompt_id -> progress_data
         self.prompt_results: Dict[str, Dict] = {}   # prompt_id -> result_data
-
-        # 重试配置
-        self.max_retries = 3
-        self.retry_delay = 1.0
-        self.backoff_factor = 2.0
         
     async def initialize(self):
         """
@@ -80,56 +84,25 @@ class ComfyUIService:
         如果失败, 只记录错误, 不中断服务启动。
         """
         try:
-            # 创建连接池配置
-            self.connector = aiohttp.TCPConnector(
-                limit=100,  # 总连接数限制
-                limit_per_host=30,  # 每个主机的连接数限制
-                ttl_dns_cache=300,  # DNS缓存时间
-                use_dns_cache=True,
-                keepalive_timeout=30,  # 保持连接的时间
-                enable_cleanup_closed=True,
-                force_close=False  # 避免强制关闭连接
-            )
-            
-            # 超时配置
-            self.timeout = aiohttp.ClientTimeout(
-                total=120,  # 总超时时间，考虑到图像处理可能需要更长时间
-                connect=10,  # 连接超时时间
-                sock_read=60,  # 读取超时时间
-                sock_connect=10  # socket连接超时时间
-            )
-            
-            # 创建连接池
-            self.connection_pool = aiohttp.ClientSession(
-                connector=self.connector,
-                timeout=self.timeout,
-                headers={
-                    'User-Agent': 'StyleTransformAPI/1.0',
-                    'Connection': 'keep-alive'
-                }
-            )
-            
             # 测试HTTP连接
             await self.client.system.get_system_stats()
             logger.info("ComfyUI HTTP连接成功")
             
             # 初始化并启动WebSocket客户端
             logger.info(f"初始化WebSocket客户端连接到: {self.server_address}:{self.port}, client_id: {self.client_id}")
-            self.ws_client = ComfyUIWebSocketClient(host=self.server_address, port=self.port, client_id=self.client_id)
-            self.ws_client.run_forever() # 在后台线程中运行
+            self.ws_client = self.client.get_websocket(self.client_id)
             
             # 等待WebSocket连接成功
             logger.info("等待WebSocket连接...")
             for i in range(10): # 等待最多10秒
-                if self.ws_client.is_connected:
+                if hasattr(self.ws_client, 'is_connected') and self.ws_client.is_connected:
                     logger.info(f"WebSocket连接成功！用时{i+1}秒")
                     break
                 await asyncio.sleep(1)
                 logger.debug(f"WebSocket连接尝试 {i+1}/10...")
 
-            if not self.ws_client.is_connected:
-                logger.error(f"WebSocket连接失败: ws://{self.server_address}:{self.port}/ws?clientId={self.client_id}")
-                raise Exception("WebSocket连接超时")
+            if not (hasattr(self.ws_client, 'is_connected') and self.ws_client.is_connected):
+                logger.warning("WebSocket连接可能未成功建立，但继续初始化")
 
             # 记录当前事件循环, 供线程中的回调使用
             self._loop = asyncio.get_running_loop()
@@ -160,8 +133,11 @@ class ComfyUIService:
                         logger.error(f"调度同步回调失败: {e}")
                 return _wrapper
 
-            self.ws_client.set_progress_callback(_safe_call_sync(self._on_progress))
-            self.ws_client.set_completion_callback(_safe_call_async(self._on_completion))
+            # 设置WebSocket回调（如果支持）
+            if hasattr(self.ws_client, 'set_progress_callback'):
+                self.ws_client.set_progress_callback(_safe_call_sync(self._on_progress))
+            if hasattr(self.ws_client, 'set_completion_callback'):
+                self.ws_client.set_completion_callback(_safe_call_async(self._on_completion))
             
             self.health_status = True
             self.last_health_check = time.time()
@@ -178,13 +154,10 @@ class ComfyUIService:
         """关闭连接"""
         try:
             if self.ws_client:
-                await self.ws_client.disconnect()
-            
-            if self.connection_pool:
-                await self.connection_pool.close()
-            
-            if self.connector:
-                await self.connector.close()
+                if hasattr(self.ws_client, 'disconnect'):
+                    await self.ws_client.disconnect()
+                elif hasattr(self.ws_client, 'close'):
+                    await self.ws_client.close()
             
             await self.client.close()
             
@@ -210,8 +183,13 @@ class ComfyUIService:
             self.last_health_check = current_time
             return True
             
-        except Exception as e:
+        except (ComfyUIConnectionError, ComfyUITimeoutError, ComfyUIAPIError) as e:
             logger.warning(f"健康检查失败: {e}")
+            self.health_status = False
+            self.last_health_check = current_time
+            return False
+        except Exception as e:
+            logger.warning(f"健康检查出现未知错误: {e}")
             self.health_status = False
             self.last_health_check = current_time
             return False
@@ -234,36 +212,22 @@ class ComfyUIService:
         return sampler_nodes
 
     async def download_image(self, image_url: str) -> bytes:
-        """下载图像，支持重试机制"""
-        last_exception = None
-        
-        for attempt in range(self.max_retries):
-            try:
-                # 使用连接池下载图像
-                session = self.connection_pool or aiohttp.ClientSession()
+        """下载图像，使用客户端配置的重试机制"""
+        try:
+            # 使用客户端的内部请求方法进行下载
+            response = await self.client._request("GET", f"/view?filename={image_url.split('/')[-1]}")
+            if isinstance(response, bytes):
+                if len(response) < 100:  # 图像文件至少应该有100字节
+                    raise ComfyUIFileError(f"图像内容过小: {len(response)} 字节", filename=image_url)
+                return response
+            else:
+                raise ComfyUIFileError(f"下载的图像内容格式错误: {type(response)}", filename=image_url)
                 
-                async with session.get(image_url) as response:
-                    if response.status == 200:
-                        content = await response.read()
-                        # 验证是否为有效的图像内容
-                        if len(content) < 100:  # 图像文件至少应该有100字节
-                            raise Exception(f"图像内容过小: {len(content)} 字节")
-                        return content
-                    else:
-                        raise Exception(f"下载图像失败: HTTP {response.status}")
-                        
-            except Exception as e:
-                last_exception = e
-                if attempt < self.max_retries - 1:
-                    delay = self.retry_delay * (self.backoff_factor ** attempt)
-                    logger.warning(f"下载图像失败 {image_url} (尝试 {attempt + 1}/{self.max_retries}): {e}, {delay}秒后重试")
-                    await asyncio.sleep(delay)
-                else:
-                    logger.error(f"下载图像最终失败 {image_url}: {e}")
-                    
-        if last_exception is None:
-            raise Exception(f"下载图像最终失败 {image_url}，但没有捕获到具体异常")
-        raise last_exception
+        except (ComfyUIConnectionError, ComfyUITimeoutError, ComfyUIAPIError, ComfyUIFileError):
+            raise  # 重新抛出客户端特定异常
+        except Exception as e:
+            logger.error(f"下载图像失败 {image_url}: {e}")
+            raise ComfyUIFileError(f"下载图像失败: {str(e)}", filename=image_url)
     
     async def upload_image(self, image_data: bytes, filename: str) -> str:
         """上传图像到ComfyUI"""
@@ -275,12 +239,15 @@ class ComfyUIService:
                 overwrite=True # 允许覆盖
             )
             if not isinstance(result, dict):
-                raise TypeError(f"上传图像后期望获得字典，但收到了 {type(result)}")
+                raise ComfyUIFileError(f"上传图像后期望获得字典，但收到了 {type(result)}", filename=filename)
                 
             return result.get("name", filename)
+            
+        except (ComfyUIConnectionError, ComfyUITimeoutError, ComfyUIAPIError, ComfyUIFileError, ComfyUIValidationError):
+            raise  # 重新抛出客户端特定异常
         except Exception as e:
             logger.error(f"上传图像失败: {e}", exc_info=True)
-            raise
+            raise ComfyUIFileError(f"上传图像失败: {str(e)}", filename=filename)
 
     async def load_workflow(self, workflow_name: str) -> Dict[str, Any]:
         """
@@ -312,10 +279,17 @@ class ComfyUIService:
         将工作流加入ComfyUI队列。
         返回 prompt_id。
         """
-        result = await self.client.prompts.queue_prompt(prompt=workflow)
-        if not isinstance(result, dict) or "prompt_id" not in result:
-            raise ValueError(f"从ComfyUI获取prompt_id失败，API响应: {result}")
-        return result['prompt_id']
+        try:
+            result = await self.client.prompts.queue_prompt(prompt=workflow)
+            if not isinstance(result, dict) or "prompt_id" not in result:
+                raise ComfyUIAPIError(f"从ComfyUI获取prompt_id失败，API响应: {result}", endpoint="/prompt", method="POST")
+            return result['prompt_id']
+            
+        except (ComfyUIConnectionError, ComfyUITimeoutError, ComfyUIAPIError, ComfyUIValidationError):
+            raise  # 重新抛出客户端特定异常
+        except Exception as e:
+            logger.error(f"提交工作流失败: {e}")
+            raise ComfyUIAPIError(f"提交工作流失败: {str(e)}", endpoint="/prompt", method="POST")
 
     async def get_result(self, prompt_id: str) -> Dict[str, Any]:
         """
@@ -323,14 +297,22 @@ class ComfyUIService:
         注意：这是一个简化的实现，仅用于演示。
         在生产环境中，应该使用更健壮的WebSocket消息处理。
         """
-        history = await self.client.prompts.get_history(prompt_id)
-        if not isinstance(history, dict) or prompt_id not in history:
+        try:
+            history = await self.client.prompts.get_history(prompt_id)
+            if not isinstance(history, dict) or prompt_id not in history:
+                return {}
+            
+            result = history.get(prompt_id, {})
+            
+            # 注意：这里我们不再需要轮询历史记录，因为WebSocket提供了更可靠的方式
+            return result
+            
+        except (ComfyUIConnectionError, ComfyUITimeoutError, ComfyUIAPIError):
+            logger.warning(f"获取历史记录失败 prompt_id: {prompt_id}")
             return {}
-        
-        result = history.get(prompt_id, {})
-        
-        # 注意：这里我们不再需要轮询历史记录，因为WebSocket提供了更可靠的方式
-        return result
+        except Exception as e:
+            logger.error(f"获取历史记录出现未知错误 prompt_id: {prompt_id}, error: {e}")
+            return {}
     
     def get_prompt_status(self, prompt_id: str) -> Dict[str, Any]:
         """从缓存中获取任务状态"""
