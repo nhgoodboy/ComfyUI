@@ -1,0 +1,52 @@
+graph TB
+    subgraph "移动端用户层"
+        A[移动端APP]
+    end
+    
+    subgraph "APP后端系统"
+        B[APP后端服务]
+        C[用户管理]
+        D[图片存储]
+    end
+    
+    subgraph "图像风格变换API系统"
+        E[FastAPI服务器]
+        F[任务管理器]
+        G[ComfyUI服务封装]
+        H[工作流模板]
+    end
+    
+    subgraph "ComfyUI服务集群"
+        I[ComfyUI实例1]
+        J[ComfyUI实例2]
+        K[ComfyUI实例N]
+    end
+    
+    subgraph "存储层"
+        L[模型文件存储]
+        M[临时图片存储]
+    end
+    
+    A --> B
+    B --> C
+    B --> D
+    B --> E
+    
+    E --> F
+    E --> G
+    E --> H
+    
+    G --> I
+    G --> J
+    G --> K
+    
+    I --> L
+    J --> L
+    K --> L
+    
+    I --> M
+    J --> M
+    K --> M
+    
+    F -.-> E
+    H -.-> G

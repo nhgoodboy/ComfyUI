@@ -26,7 +26,7 @@ if default_env_path.is_file():
 # 假设start.py在项目根目录下，所以app可以直接导入
 sys.path.insert(0, str(Path(__file__).parent))
 
-from app.main import app
+from main import app
 from app.config import get_settings, validate_config, get_environment_info, AppConfig
 
 # 在导入任何其他模块之前配置基本日志

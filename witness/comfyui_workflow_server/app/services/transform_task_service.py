@@ -246,7 +246,7 @@ class TransformTaskService:
             await self._push_task_update(task_data)
             raise
     
-    def _on_transform_progress(self, task_data: UserTaskData, progress: float, message: str):
+    def _on_transform_progress(self, task_data: TaskData, progress: float, message: str):
         """转换进度回调"""
         task_data.transform_progress = progress
         # 直接使用ComfyUI的实际进度，不再添加30%的基础偏移
@@ -256,7 +256,7 @@ class TransformTaskService:
         # 异步推送进度
         asyncio.create_task(self._push_task_update(task_data))
     
-    async def _wait_for_transform_completion(self, task_data: UserTaskData, prompt_id: str):
+    async def _wait_for_transform_completion(self, task_data: TaskData, prompt_id: str):
         """等待转换完成"""
         timeout = 300  # 5分钟超时
         start_time = time.time()
@@ -352,7 +352,7 @@ class TransformTaskService:
         except Exception as e:
             logger.warning(f"推送任务更新失败: {e}")
     
-    def get_task(self, request_id: str) -> Optional[UserTaskData]:
+    def get_task(self, request_id: str) -> Optional[TaskData]:
         """获取任务"""
         return self.tasks.get(request_id)
     
@@ -392,7 +392,7 @@ class TransformTaskService:
         # 异步获取完整的历史记录信息
         asyncio.create_task(self._process_completion_result(task_data, prompt_id, result))
     
-    async def _process_completion_result(self, task_data: 'UserTaskData', prompt_id: str, result: Dict[str, Any]):
+    async def _process_completion_result(self, task_data: TaskData, prompt_id: str, result: Dict[str, Any]):
         """处理完成结果，获取完整的历史记录信息"""
         try:
             # 获取完整的历史记录
@@ -631,7 +631,7 @@ class TransformTaskService:
     
     async def _execute_dual_image_transform_task(
         self, 
-        task_data: UserTaskData, 
+        task_data: TaskData, 
         image1_url: str,
         image2_url: str,
         progress_callback: Optional[Callable] = None
