@@ -80,6 +80,15 @@ class PromptAPI(BaseAPI):
             data["free_memory"] = free_memory
         return await self._client._request("POST", "/free", json_data=data)
     
+    async def clear_queue(self):
+        """
+        清空整个队列。
+        
+        :return: API 返回的响应。
+        """
+        data = {"clear": True}
+        return await self._client._request("POST", "/queue", json_data=data)
+    
     async def clear_history(self, clear: bool = False, delete: Optional[list] = None):
         """
         清理历史记录。
@@ -93,4 +102,12 @@ class PromptAPI(BaseAPI):
             data["clear"] = clear
         if delete:
             data["delete"] = delete
-        return await self._client._request("POST", "/history", json_data=data) 
+        return await self._client._request("POST", "/history", json_data=data)
+    
+    async def clear_all_history(self):
+        """
+        清空所有历史记录的便捷方法。
+        
+        :return: API 返回的响应。
+        """
+        return await self.clear_history(clear=True) 

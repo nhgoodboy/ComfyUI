@@ -43,6 +43,13 @@ class ComfyUIClientConfig:
     # 其他配置
     user_agent: str = "ComfyUI-Python-Client/2.0.0"
     enable_compression: bool = True  # 启用压缩
+    use_api_prefix: bool = False     # 是否使用 /api 前缀
+    
+    # 高级配置
+    verify_ssl: bool = True          # SSL 证书验证
+    follow_redirects: bool = True    # 跟随重定向
+    keep_alive: bool = True          # 保持连接
+    tcp_keepalive: bool = True       # TCP 保活
     
     def __post_init__(self):
         """配置验证"""
@@ -100,5 +107,23 @@ class ComfyUIClientConfig:
         return aiohttp.TCPConnector(
             limit=self.max_connections,
             limit_per_host=self.max_connections_per_host,
-            enable_cleanup_closed=True
+            enable_cleanup_closed=True,
+            verify_ssl=self.verify_ssl,
+            keepalive_timeout=30 if self.keep_alive else 0
+        )
+    
+    @classmethod
+    def create_production(cls) -> 'ComfyUIClientConfig':
+        """创建生产环境配置"""
+        return cls(
+            request_timeout=120.0,
+            connect_timeout=10.0,
+            read_timeout=300.0,
+            max_retries=3,
+            retry_delay=2.0,
+            max_connections=50,
+            max_connections_per_host=20,
+            log_requests=False,
+            log_responses=False,
+            websocket_debug=False
         ) 

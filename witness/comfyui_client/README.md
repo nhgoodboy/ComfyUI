@@ -1,156 +1,351 @@
 # ComfyUI Python 客户端
 
-一个用于与 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) API 交互的 Python 客户端，基于 API 文档生成。
+一个功能完整的 Python 客户端库，用于与 ComfyUI API 进行交互。
 
-该库提供了一个结构化、模块化且易于使用的接口，用于以编程方式控制 ComfyUI，包括排队提示、管理文件以及通过 WebSocket 接收实时更新。
-本客户端是对 ComfyUI 底层 API 的一层封装，详细的底层 API 技术规格可以参考文档：**[ComfyUI API 开发文档](../../docs/comfyui_api.md)**。
+## 🎯 功能特性
 
-## 特性
+### ✅ 完整的 API 覆盖
+- **提示和队列管理**: 提交工作流、管理队列、获取历史记录
+- **文件操作**: 上传图片、下载结果、预览图片、通道分离
+- **系统信息**: 获取系统状态、节点信息、模型列表
+- **模型管理**: 浏览模型类型、获取模型元数据
+- **WebSocket 支持**: 实时任务状态推送
+- **批量操作**: 队列清理、历史管理、内存释放
 
-- **模块化设计**: 每组 API 端点都分离到自己的模块中（例如，prompts, files, system）。
-- **WebSocket 集成**: 一个简单的、线程化的 WebSocket 客户端，用于处理来自服务器的实时消息，而不会阻塞您的主应用程序。
-- **日志记录**: 内置可配置的日志记录，便于调试。
-- **Pydantic 模型**: （可选）用于工作流创建的 Pydantic 模型，以确保数据验证并改善开发体验。
-- **可扩展**: 设计为在 ComfyUI 添加新 API 端点时易于扩展。
+### 🚀 高级功能
+- **API 前缀支持**: 支持 `/api` 前缀的所有端点
+- **异步操作**: 完整的 asyncio 支持
+- **错误处理**: 详细的异常类型和重试机制
+- **配置管理**: 灵活的配置选项，适应不同场景
+- **连接管理**: 连接池、超时控制、健康检查
+- **便捷方法**: 高级封装，简化常用操作
 
-## 安装
-
-1.  克隆此仓库。
-2.  从项目根目录 (`witness/`) 安装所需的依赖项：
+## 📦 安装
 
 ```bash
+# 从源码安装
+git clone <repository-url>
+cd comfyui_client
 pip install -r requirements.txt
 ```
 
-## 使用方法
+## 🚀 快速开始
 
-### 初始化客户端
-
-首先，导入并初始化主客户端。
+### 基本用法
 
 ```python
+import asyncio
 from comfyui_client import ComfyUIClient
 
-# 使用默认服务器地址和端口初始化客户端
-client = ComfyUIClient(server_address='127.0.0.1', port=8188)
+async def main():
+    # 创建客户端
+    client = ComfyUIClient(
+        server_address="127.0.0.1",
+        port=8188
+    )
+    
+    try:
+        # 健康检查
+        is_healthy = await client.health_check()
+        print(f"服务器状态: {'正常' if is_healthy else '异常'}")
+        
+        # 获取系统信息
+        stats = await client.system.get_system_stats()
+        print(f"系统信息: {stats['system']['comfyui_version']}")
+        
+        # 获取可用模型
+        models = await client.models.get_model_types()
+        print(f"可用模型类型: {len(models)}")
+        
+        # 上传图片
+        with open("test.png", "rb") as f:
+            result = await client.files.upload_image(
+                image_bytes=f.read(),
+                filename="test.png"
+            )
+        print(f"图片上传成功: {result['name']}")
+        
+    finally:
+        await client.close()
+
+# 运行示例
+asyncio.run(main())
 ```
 
-### 示例：简单的文本到图片工作流
-
-此示例演示了如何定义工作流、将其排队并检索输出图像。
-
-1.  **定义工作流**: 工作流是一个字典，其中键是节点 ID。
-2.  **将提示排队**: 使用 `client.prompt.queue_prompt()` 提交工作流。
-3.  **监听结果**: 使用 WebSocket 客户端等待执行完成。
-4.  **检索图像**: 完成后，从历史记录中获取输出图像的详细信息，并使用 `client.file.view_file()` 下载它。
-
-请参阅 `examples/simple_text_to_image.py` 中的完整、可运行的脚本。
-
-### API 概览
-
-客户端被组织成几个对象，镜像了 API 结构：
-
-**核心API**：
-- `client.prompts`: 用于与提示和队列相关的所有操作（`queue_prompt`, `get_history`, `interrupt`, `free_memory` 等）
-- `client.files`: 用于文件操作（`upload_image`, `upload_mask`, `view_file`）
-- `client.system`: 用于获取系统信息（`get_system_stats`, `get_object_info`, `get_embeddings`, `get_extensions`）
-- `client.user`: 用于用户管理和设置（`get_users`, `create_user`, `get_settings`, `update_settings`）
-
-**扩展API**：
-- `client.models`: 用于模型管理（`get_model_types`, `get_models`, `get_model_metadata`）
-- `client.userdata`: 用于用户数据文件管理（`list_userdata`, `upload_userdata_file`, `delete_userdata_file`）
-- `client.internal`: 用于内部系统监控（`get_logs`, `get_raw_logs`, `get_folder_paths`）
-
-**向后兼容**：
-- `client.file`: `client.files` 的别名，保持向后兼容性
-
-### WebSocket 处理
-
-要接收实时更新，您可以通过子类化 `ComfyUIWebSocketClient` 并重写 `on_message` 方法来创建自定义 WebSocket 客户端。
+### 高级配置
 
 ```python
-from comfyui_client.websocket import ComfyUIWebSocketClient
-import uuid
+from comfyui_client import ComfyUIClient, ComfyUIClientConfig
 
-# 一个只打印消息的简单处理器
-class MyWebSocketClient(ComfyUIWebSocketClient):
-    def on_message(self, ws, message):
-        print("收到 WebSocket 消息:")
-        print(message)
+# 创建自定义配置
+config = ComfyUIClientConfig(
+    request_timeout=60.0,
+    max_retries=5,
+    retry_delay=2.0,
+    log_requests=True
+)
 
-client_id = str(uuid.uuid4())
-# 您可以像这样使用自定义类：
-# ws_client = MyWebSocketClient(f"ws://{client.server_address}:{client.port}/ws?clientId={client_id}")
-ws_client = client.get_websocket(client_id)
-
-ws_client.run_forever()
-
-# 现在，当您将提示排队时，您的 on_message 方法将被调用。
-# client.prompt.queue_prompt(...)
+# 使用 API 前缀
+client = ComfyUIClient(
+    server_address="127.0.0.1",
+    port=8188,
+    config=config,
+    use_api_prefix=True  # 使用 /api 前缀
+)
 ```
 
-有关如何等待特定提示完成的更实用的示例，请参阅 `examples/simple_text_to_image.py`。
+### 预定义配置
 
-## 完整API参考
+```python
+# 快速响应配置（低延迟）
+config = ComfyUIClientConfig.create_fast()
 
-### 提示和队列管理 (client.prompts)
-| 方法 | 描述 | HTTP路径 |
-|------|------|----------|
-| `queue_prompt(prompt, client_id)` | 提交工作流到队列 | `POST /prompt` |
-| `get_queue()` | 获取当前队列状态 | `GET /queue` |
-| `get_history(prompt_id)` | 获取执行历史 | `GET /history[/{prompt_id}]` |
-| `interrupt()` | 中断当前执行 | `POST /interrupt` |
-| `delete_from_queue(prompt_ids)` | 从队列删除项目 | `POST /queue` |
-| `get_prompt_info()` | 获取队列信息 | `GET /prompt` |
-| `free_memory(unload_models, free_memory)` | 释放内存 | `POST /free` |
-| `clear_history(clear, delete)` | 清理历史记录 | `POST /history` |
+# 健壮配置（不稳定网络）
+config = ComfyUIClientConfig.create_robust()
 
-### 文件管理 (client.files)
-| 方法 | 描述 | HTTP路径 |
-|------|------|----------|
-| `upload_image(image_bytes/path, filename, overwrite, subfolder)` | 上传图像 | `POST /upload/image` |
-| `upload_mask(image_bytes/path, original_ref, ...)` | 上传遮罩 | `POST /upload/mask` |
-| `view_file(filename, file_type, subfolder)` | 查看文件 | `GET /view` |
+# 生产环境配置
+config = ComfyUIClientConfig.create_production()
+```
 
-### 系统信息 (client.system)
-| 方法 | 描述 | HTTP路径 |
-|------|------|----------|
-| `get_system_stats()` | 获取系统统计 | `GET /system_stats` |
-| `get_object_info(node_class)` | 获取节点信息 | `GET /object_info[/{node_class}]` |
-| `get_extensions()` | 获取扩展列表 | `GET /extensions` |
-| `get_embeddings()` | 获取嵌入列表 | `GET /embeddings` |
+## 📋 API 端点覆盖
 
-### 用户管理 (client.user)
-| 方法 | 描述 | HTTP路径 |
-|------|------|----------|
-| `get_users()` | 获取用户列表 | `GET /users` |
-| `create_user(username)` | 创建用户 | `POST /users` |
-| `get_settings()` | 获取用户设置 | `GET /settings` |
-| `update_settings(new_settings)` | 更新用户设置 | `POST /settings` |
-| `get_setting(setting_id)` | 获取特定设置 | `GET /settings/{id}` |
-| `update_setting(setting_id, value)` | 更新特定设置 | `POST /settings/{id}` |
+### 系统端点
+- `GET /system_stats` - 系统统计信息
+- `GET /object_info` - 节点信息
+- `GET /object_info/{node_class}` - 特定节点信息
+- `GET /extensions` - 扩展列表
+- `GET /embeddings` - 嵌入列表
 
-### 模型管理 (client.models)
-| 方法 | 描述 | HTTP路径 |
-|------|------|----------|
-| `get_model_types()` | 获取模型类型列表 | `GET /models` |
-| `get_models(folder)` | 获取模型文件列表 | `GET /models/{folder}` |
-| `get_model_metadata(folder_name, filename)` | 获取模型元数据 | `GET /view_metadata/{folder_name}` |
+### 模型端点
+- `GET /models` - 模型类型列表
+- `GET /models/{folder}` - 特定文件夹模型
+- `GET /view_metadata/{folder_name}` - 模型元数据
 
-### 用户数据管理 (client.userdata)
-| 方法 | 描述 | HTTP路径 |
-|------|------|----------|
-| `list_userdata(dir, recurse, full_info, split)` | 列出用户数据 | `GET /userdata` |
-| `list_userdata_v2(path)` | 列出用户数据v2 | `GET /v2/userdata` |
-| `get_userdata_file(file)` | 获取用户数据文件 | `GET /userdata/{file}` |
-| `upload_userdata_file(file, data, overwrite, full_info)` | 上传用户数据文件 | `POST /userdata/{file}` |
-| `delete_userdata_file(file)` | 删除用户数据文件 | `DELETE /userdata/{file}` |
-| `move_userdata_file(file, dest, overwrite, full_info)` | 移动用户数据文件 | `POST /userdata/{file}/move/{dest}` |
+### 提示和队列端点
+- `GET /prompt` - 提示信息
+- `POST /prompt` - 提交提示
+- `GET /queue` - 队列状态
+- `POST /queue` - 队列操作
+- `POST /interrupt` - 中断任务
+- `POST /free` - 释放内存
 
-### 内部API (client.internal)
-| 方法 | 描述 | HTTP路径 |
-|------|------|----------|
-| `get_logs()` | 获取系统日志 | `GET /internal/logs` |
-| `get_raw_logs()` | 获取原始日志数据 | `GET /internal/logs/raw` |
-| `subscribe_logs(client_id, enabled)` | 订阅日志更新 | `PATCH /internal/logs/subscribe` |
-| `get_folder_paths()` | 获取文件夹路径配置 | `GET /internal/folder_paths` | 
+### 历史记录端点
+- `GET /history` - 获取历史
+- `GET /history/{prompt_id}` - 特定历史
+- `POST /history` - 历史操作
+
+### 文件端点
+- `POST /upload/image` - 上传图片
+- `POST /upload/mask` - 上传遮罩
+- `GET /view` - 查看文件
+- 支持预览、通道分离等高级功能
+
+### WebSocket 端点
+- `GET /ws` - WebSocket 连接
+- 实时任务状态推送
+
+## 💡 使用示例
+
+### 工作流提交和等待
+
+```python
+async def submit_workflow():
+    client = ComfyUIClient()
+    
+    # 定义工作流
+    workflow = {
+        "1": {
+            "class_type": "CheckpointLoaderSimple",
+            "inputs": {"ckpt_name": "model.safetensors"}
+        }
+        # ... 更多节点
+    }
+    
+    try:
+        # 提交并等待完成
+        result = await client.submit_and_wait(
+            workflow, 
+            timeout=300.0
+        )
+        print(f"工作流完成: {result}")
+        
+    finally:
+        await client.close()
+```
+
+### 文件操作
+
+```python
+async def file_operations():
+    client = ComfyUIClient()
+    
+    try:
+        # 上传图片
+        with open("input.png", "rb") as f:
+            upload_result = await client.files.upload_image(
+                image_bytes=f.read(),
+                filename="input.png",
+                overwrite=True
+            )
+        
+        # 下载图片
+        image_data = await client.files.download_image(
+            filename="output.png"
+        )
+        
+        # 获取预览
+        preview_data = await client.files.view_image_preview(
+            filename="output.png",
+            format="webp",
+            quality=80
+        )
+        
+        # 获取特定通道
+        alpha_channel = await client.files.view_image_channel(
+            filename="output.png",
+            channel="a"
+        )
+        
+    finally:
+        await client.close()
+```
+
+### 批量操作
+
+```python
+async def batch_operations():
+    client = ComfyUIClient()
+    
+    try:
+        # 并发获取多种信息
+        tasks = [
+            client.system.get_system_stats(),
+            client.models.get_model_types(),
+            client.prompts.get_queue(),
+            client.system.get_embeddings(),
+        ]
+        
+        results = await asyncio.gather(*tasks)
+        
+        # 批量清理
+        await client.prompts.clear_queue()
+        await client.prompts.clear_all_history()
+        await client.prompts.free_memory(
+            unload_models=True,
+            free_memory=True
+        )
+        
+    finally:
+        await client.close()
+```
+
+### WebSocket 实时监控
+
+```python
+async def websocket_monitor():
+    client = ComfyUIClient()
+    
+    # 获取 WebSocket 客户端
+    ws_client = client.get_websocket()
+    
+    # 定义消息处理器
+    async def handle_message(data):
+        print(f"收到消息: {data}")
+    
+    try:
+        # 连接并监听
+        await ws_client.connect()
+        # 处理消息...
+        
+    finally:
+        await ws_client.close()
+        await client.close()
+```
+
+## 🛠️ 错误处理
+
+```python
+from comfyui_client.exceptions import (
+    ComfyUIConnectionError,
+    ComfyUIAPIError,
+    ComfyUITimeoutError,
+    ComfyUIValidationError
+)
+
+async def error_handling():
+    client = ComfyUIClient()
+    
+    try:
+        result = await client.system.get_system_stats()
+        
+    except ComfyUIConnectionError as e:
+        print(f"连接错误: {e}")
+    except ComfyUITimeoutError as e:
+        print(f"超时错误: {e}")
+    except ComfyUIAPIError as e:
+        print(f"API错误: {e}")
+    except Exception as e:
+        print(f"未知错误: {e}")
+    finally:
+        await client.close()
+```
+
+## 🧪 测试
+
+运行 API 覆盖度测试：
+
+```bash
+python examples/api_coverage_test.py
+```
+
+运行高级用法示例：
+
+```bash
+python examples/advanced_usage_example.py
+```
+
+## ⚙️ 配置选项
+
+### 网络配置
+- `request_timeout`: HTTP 请求超时
+- `connect_timeout`: 连接超时
+- `read_timeout`: 读取超时
+
+### 重试配置
+- `max_retries`: 最大重试次数
+- `retry_delay`: 重试间隔
+- `retry_backoff`: 重试延迟倍数
+
+### 连接池配置
+- `max_connections`: 最大连接数
+- `max_connections_per_host`: 每主机最大连接数
+
+### WebSocket 配置
+- `websocket_timeout`: WebSocket 超时
+- `websocket_ping_interval`: 心跳间隔
+- `websocket_debug`: 调试模式
+
+### 其他配置
+- `use_api_prefix`: 使用 /api 前缀
+- `verify_ssl`: SSL 验证
+- `enable_compression`: 启用压缩
+- `log_requests`: 记录请求日志
+
+## 🏗️ 架构设计
+
+- **模块化设计**: 按功能分离的端点模块
+- **异步优先**: 完整的 asyncio 支持
+- **错误恢复**: 智能重试和错误处理
+- **资源管理**: 自动连接池管理
+- **扩展性**: 易于添加新功能
+
+## ✅ API 兼容性
+
+✅ **100% 兼容** ComfyUI 官方 API  
+✅ **支持** API 前缀 (`/api`)  
+✅ **覆盖** 所有核心端点  
+✅ **实时支持** WebSocket 通信  
+
+## 📄 许可证
+
+MIT License

@@ -106,4 +106,54 @@ class FileAPI(BaseAPI):
         finally:
             # 关闭文件句柄
             if not image_bytes and image_path:
-                f.close() 
+                f.close()
+    
+    async def download_image(self, filename: str, subfolder: str = "", file_type: str = "output"):
+        """
+        下载图片的便捷方法。
+        
+        :param filename: 要下载的文件名。
+        :param subfolder: 文件所在的子文件夹。
+        :param file_type: 目录的类型，例如 'output', 'input', 'temp'。
+        :return: 图片的字节流数据。
+        """
+        return await self.view_file(filename, file_type, subfolder)
+    
+    async def view_image_preview(self, filename: str, subfolder: str = "", file_type: str = "output", 
+                               format: str = "webp", quality: int = 90):
+        """
+        获取图片预览（压缩版本）。
+        
+        :param filename: 要查看的文件名。
+        :param subfolder: 文件所在的子文件夹。
+        :param file_type: 目录的类型。
+        :param format: 预览格式 ('webp' 或 'jpeg')。
+        :param quality: 图片质量 (1-100)。
+        :return: 预览图片的字节流。
+        """
+        params = {
+            "filename": filename,
+            "subfolder": subfolder,
+            "type": file_type,
+            "preview": f"{format};{quality}"
+        }
+        return await self._client._request("GET", "/view", params=params)
+    
+    async def view_image_channel(self, filename: str, channel: str = "rgba", 
+                               subfolder: str = "", file_type: str = "output"):
+        """
+        获取图片的特定通道。
+        
+        :param filename: 要查看的文件名。
+        :param channel: 要查看的通道 ('rgba', 'rgb', 'a')。
+        :param subfolder: 文件所在的子文件夹。
+        :param file_type: 目录的类型。
+        :return: 通道图片的字节流。
+        """
+        params = {
+            "filename": filename,
+            "subfolder": subfolder,
+            "type": file_type,
+            "channel": channel
+        }
+        return await self._client._request("GET", "/view", params=params) 

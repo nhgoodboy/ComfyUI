@@ -28,12 +28,14 @@ class ComfyUIClient:
                  port: int = 8188, 
                  user_id: Optional[str] = None, 
                  client_id: Optional[str] = None,
-                 config: Optional[ComfyUIClientConfig] = None):
+                 config: Optional[ComfyUIClientConfig] = None,
+                 use_api_prefix: bool = False):
         self.server_address = server_address
         self.port = port
         self.user_id = user_id
         self.base_url = f"http://{self.server_address}:{self.port}"
         self.config = config or ComfyUIClientConfig.create_default()
+        self.api_prefix = "/api" if use_api_prefix else ""
         self.logger = get_logger()
 
         # 请求头部信息
@@ -95,7 +97,7 @@ class ComfyUIClient:
         if self._session is None:
             raise ComfyUIConnectionError("无法创建HTTP会话")
         
-        url = f"{self.base_url}{endpoint}"
+        url = f"{self.base_url}{self.api_prefix}{endpoint}"
         
         # 处理文件上传
         data = json_data
@@ -197,6 +199,67 @@ class ComfyUIClient:
         if self._connector and not self._connector.closed:
             await self._connector.close()
         self.logger.info("ComfyUIClient 已关闭")
+    
+    # 便捷方法
+    async def health_check(self):
+        """
+        快速健康检查，测试与 ComfyUI 服务器的连接。
+        
+        :return: 如果连接正常返回 True，否则返回 False
+        """
+        try:
+            await self.system.get_system_stats()
+            return True
+        except Exception as e:
+            self.logger.warning(f"健康检查失败: {e}")
+            return False
+    
+    async def wait_for_completion(self, prompt_id: str, timeout: float = 300.0, check_interval: float = 1.0):
+        """
+        等待指定提示的完成。
+        
+        :param prompt_id: 要等待的提示 ID
+        :param timeout: 最大等待时间（秒）
+        :param check_interval: 检查间隔（秒）
+        :return: 完成后的历史记录
+        """
+        import time
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                history = await self.prompts.get_history(prompt_id)
+                if prompt_id in history:
+                    return history[prompt_id]
+                await asyncio.sleep(check_interval)
+            except Exception as e:
+                self.logger.warning(f"等待完成时出错: {e}")
+                await asyncio.sleep(check_interval)
+        
+        raise ComfyUITimeoutError(
+            f"等待提示 {prompt_id} 完成超时",
+            timeout_seconds=timeout,
+            operation="wait_for_completion"
+        )
+    
+    async def submit_and_wait(self, prompt: dict, timeout: float = 300.0, check_interval: float = 1.0):
+        """
+        提交提示并等待完成的便捷方法。
+        
+        :param prompt: 工作流提示
+        :param timeout: 最大等待时间（秒）
+        :param check_interval: 检查间隔（秒）
+        :return: 完成后的历史记录
+        """
+        # 提交提示
+        result = await self.prompts.queue_prompt(prompt)
+        prompt_id = result.get("prompt_id")
+        
+        if not prompt_id:
+            raise ComfyUIAPIError("提交提示后未获得 prompt_id")
+        
+        # 等待完成
+        return await self.wait_for_completion(prompt_id, timeout, check_interval)
 
 # 端点模块的占位符类，以便于初始化
 # 这些将在它们各自的文件中被实际的实现所替换。
