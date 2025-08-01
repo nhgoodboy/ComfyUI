@@ -47,19 +47,6 @@ class AuthenticationError(WorkflowAPIException):
             status_code=401
         )
 
-
-class AuthorizationError(WorkflowAPIException):
-    """授权错误"""
-    
-    def __init__(self, message: str = "权限不足", details: Optional[Dict[str, Any]] = None):
-        super().__init__(
-            error_code="AUTHORIZATION_ERROR",
-            error_message=message,
-            details=details,
-            status_code=403
-        )
-
-
 class ResourceNotFoundError(WorkflowAPIException):
     """资源未找到错误"""
     
@@ -108,14 +95,14 @@ class ComfyUIError(WorkflowAPIException):
         )
 
 
-class ImageProcessingError(WorkflowAPIException):
-    """图像处理错误"""
+class WorkflowProcessingError(WorkflowAPIException):
+    """工作流处理错误"""
     
-    def __init__(self, message: str, stage: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(self, message: str, workflow_id: str, stage: str, details: Optional[Dict[str, Any]] = None):
         super().__init__(
-            error_code="IMAGE_PROCESSING_ERROR",
-            error_message=f"图像处理失败 ({stage}): {message}",
-            details={"stage": stage, **(details or {})},
+            error_code="WORKFLOW_PROCESSING_ERROR",
+            error_message=f"工作流处理失败 ({stage}): {message}",
+            details={"workflow_id": workflow_id, "stage": stage, **(details or {})},
             status_code=422
         )
 
@@ -132,14 +119,14 @@ class NetworkError(WorkflowAPIException):
         )
 
 
-class TaskError(WorkflowAPIException):
-    """任务处理错误"""
+class WorkflowTaskError(WorkflowAPIException):
+    """工作流任务处理错误"""
     
-    def __init__(self, message: str, request_id: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(self, message: str, request_id: str, workflow_id: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         super().__init__(
-            error_code="TASK_ERROR",
-            error_message=f"任务处理失败: {message}",
-            details={"request_id": request_id, **(details or {})},
+            error_code="WORKFLOW_TASK_ERROR",
+            error_message=f"工作流任务处理失败: {message}",
+            details={"request_id": request_id, "workflow_id": workflow_id, **(details or {})},
             status_code=500
         )
 

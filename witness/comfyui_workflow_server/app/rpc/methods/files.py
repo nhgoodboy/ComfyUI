@@ -40,7 +40,7 @@ async def get_output_image(params: Dict[str, Any], request: Request) -> Dict[str
         if not file_path.exists():
             logger.warning(f"请求的文件不存在: {filename}")
             raise RPCError(
-                code=ErrorCodes.NOT_FOUND,
+                code=ErrorCodes.TASK_NOT_FOUND,
                 message="文件不存在",
                 data={"filename": filename}
             )
@@ -48,7 +48,7 @@ async def get_output_image(params: Dict[str, Any], request: Request) -> Dict[str
         if not file_path.is_file():
             logger.warning(f"请求的路径不是文件: {filename}")
             raise RPCError(
-                code=ErrorCodes.NOT_FOUND,
+                code=ErrorCodes.TASK_NOT_FOUND,
                 message="不是有效文件",
                 data={"filename": filename}
             )
@@ -87,7 +87,7 @@ async def get_output_image(params: Dict[str, Any], request: Request) -> Dict[str
             "media_type": media_type,
             "size": len(file_data),
             "data": file_base64,
-            "url": f"/api/files/output/{filename}",
+            "url": f"/outputs/{filename}",
             "static_url": f"/outputs/{filename}"
         }
         
@@ -123,14 +123,14 @@ async def get_output_image_info(params: Dict[str, Any], request: Request) -> Dic
         
         if not file_path.exists():
             raise RPCError(
-                code=ErrorCodes.NOT_FOUND,
+                code=ErrorCodes.TASK_NOT_FOUND,
                 message="文件不存在",
                 data={"filename": filename}
             )
         
         if not file_path.is_file():
             raise RPCError(
-                code=ErrorCodes.NOT_FOUND,
+                code=ErrorCodes.TASK_NOT_FOUND,
                 message="不是有效文件",
                 data={"filename": filename}
             )
@@ -164,7 +164,7 @@ async def get_output_image_info(params: Dict[str, Any], request: Request) -> Dic
             "extension": file_path.suffix.lower(),
             "media_type": media_type,
             "is_image": is_image,
-            "url": f"/api/files/output/{filename}",
+            "url": f"/outputs/{filename}",
             "static_url": f"/outputs/{filename}"
         }
         
@@ -223,7 +223,7 @@ async def list_output_images(params: Dict[str, Any], request: Request) -> Dict[s
                     "created_time": stat.st_ctime,
                     "modified_time": stat.st_mtime,
                     "extension": file_path.suffix.lower(),
-                    "url": f"/api/files/output/{file_path.name}",
+                    "url": f"/outputs/{file_path.name}",
                     "static_url": f"/outputs/{file_path.name}"
                 })
         

@@ -71,8 +71,8 @@ class RPCInternalError(RPCError):
         )
 
 
-class RPCDownloadError(RPCError):
-    """下载相关错误"""
+class RPCFileError(RPCError):
+    """文件相关错误"""
     
     def __init__(self, code: int, message: str = None, url: str = None, details: str = None):
         data = {}
@@ -88,11 +88,13 @@ class RPCDownloadError(RPCError):
         )
 
 
-class RPCTransformError(RPCError):
-    """转换相关错误"""
+class RPCWorkflowError(RPCError):
+    """工作流相关错误"""
     
-    def __init__(self, code: int, message: str = None, request_id: str = None, details: str = None):
+    def __init__(self, code: int, message: str = None, workflow_id: str = None, request_id: str = None, details: str = None):
         data = {}
+        if workflow_id:
+            data["workflow_id"] = workflow_id
         if request_id:
             data["request_id"] = request_id
         if details:

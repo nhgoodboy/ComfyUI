@@ -39,7 +39,7 @@ class FileNamingUtils:
             known_style_ids: 已知的风格ID列表
             
         Returns:
-            Tuple[str, str, str, str]: (style_id, request_id, file_type, extension)
+            Tuple[str, str, str, str]: (workflow_id, request_id, file_type, extension)
         """
         # 分离扩展名
         if '.' not in filename:
@@ -118,7 +118,7 @@ class FileNamingUtils:
             filename: 文件名
         
         Returns:
-            Tuple[str, str, str, str]: (style_id, request_id, file_type, extension)
+            Tuple[str, str, str, str]: (workflow_id, request_id, file_type, extension)
         
         Raises:
             RPCInvalidParams: 文件名格式不符合规范
@@ -210,7 +210,7 @@ class FileNamingUtils:
             if known_style_ids:
                 style_id, request_id, file_type, extension = cls.parse_filename_with_known_styles(filename, known_style_ids)
             else:
-                style_id, request_id, file_type, extension = cls.parse_filename(filename)
+                workflow_id, request_id, file_type, extension = cls.parse_filename(filename)
             
             # 验证参数匹配
             if style_id != expected_style_id:
@@ -343,12 +343,16 @@ class FileNamingUtils:
         Returns:
             dict: 文件信息
         """
-        style_id, request_id, file_type, extension = cls.parse_filename(filename)
+        workflow_id, request_id, file_type, extension = cls.parse_filename(filename)
         
         return {
-            "style_id": style_id,
+            "workflow_id": workflow_id,
             "request_id": request_id,
             "file_type": file_type,
             "extension": extension,
             "filename": filename
         }
+
+    # 兼容性别名
+    parse_filename_with_known_styles = parse_filename_with_known_workflows
+    validate_style_id = validate_workflow_id

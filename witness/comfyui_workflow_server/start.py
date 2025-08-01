@@ -2,7 +2,7 @@
 """
 ComfyUI工作流服务器启动脚本
 
-用于启动多用户图像风格转换API服务器的主要入口点。
+用于启动工作流处理API服务器的主要入口点。
 """
 
 import os
@@ -75,8 +75,7 @@ def main():
     
     if settings.is_production():
         logger.warning("生产模式已激活。请确保所有安全设置都已配置。")
-        logger.warning(f"IP白名单: {settings.security.allowed_ips}")
-        logger.warning(f"CORS源: {settings.security.cors_origins}")
+        logger.warning(f"CORS源: {settings.cors_origins}")
 
     uvicorn.run(
         app,

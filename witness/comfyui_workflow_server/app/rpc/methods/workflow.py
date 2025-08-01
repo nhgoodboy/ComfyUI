@@ -14,7 +14,7 @@ from ..validator import RPCValidator
 from ..formatter import RPCFormatter
 from ..exceptions import RPCError
 from ..error_codes import ErrorCodes
-from ...services.transform_task_service import TransformTaskService
+from ...services.workflow_task_service import WorkflowTaskService
 from ...core.workflow_registry import WorkflowRegistry
 
 logger = logging.getLogger(__name__)
@@ -69,18 +69,18 @@ async def execute_workflow(params: Dict[str, Any], request: Request) -> Dict[str
                 data={"workflow_id": workflow_id, "params": workflow_params}
             )
         
-        # 获取转换任务服务
-        transform_service: TransformTaskService = request.app.state.transform_task_service
+        # 获取工作流任务服务
+        workflow_service: WorkflowTaskService = request.app.state.workflow_task_service
         
         # 创建工作流执行任务
-        task_id = await transform_service.create_workflow_task(
+        task_id = await workflow_service.create_workflow_task(
             request_id=request_id,
             workflow_id=workflow_id,
             params=validated_params
         )
         
         # 获取任务信息
-        task_data = transform_service.get_task(request_id)
+        task_data = workflow_service.get_task(request_id)
         if not task_data:
             raise RPCError(
                 code=ErrorCodes.INTERNAL_ERROR,
@@ -202,11 +202,11 @@ async def get_workflow_status(params: Dict[str, Any], request: Request) -> Dict[
         # 验证参数
         RPCValidator.validate_request_id(request_id)
         
-        # 获取转换任务服务
-        transform_service: TransformTaskService = request.app.state.transform_task_service
+        # 获取工作流任务服务
+        workflow_service: WorkflowTaskService = request.app.state.workflow_task_service
         
         # 获取任务状态
-        task_data = transform_service.get_task(request_id)
+        task_data = workflow_service.get_task(request_id)
         if not task_data:
             raise RPCError(
                 code=ErrorCodes.TASK_NOT_FOUND,
@@ -240,11 +240,11 @@ async def get_workflow_result(params: Dict[str, Any], request: Request) -> Dict[
         # 验证参数
         RPCValidator.validate_request_id(request_id)
         
-        # 获取转换任务服务
-        transform_service: TransformTaskService = request.app.state.transform_task_service
+        # 获取工作流任务服务
+        workflow_service: WorkflowTaskService = request.app.state.workflow_task_service
         
         # 获取任务数据
-        task_data = transform_service.get_task(request_id)
+        task_data = workflow_service.get_task(request_id)
         if not task_data:
             raise RPCError(
                 code=ErrorCodes.TASK_NOT_FOUND,
@@ -297,15 +297,15 @@ async def cancel_workflow(params: Dict[str, Any], request: Request) -> Dict[str,
         # 验证参数
         RPCValidator.validate_request_id(request_id)
         
-        # 获取转换任务服务
-        transform_service: TransformTaskService = request.app.state.transform_task_service
+        # 获取工作流任务服务
+        workflow_service: WorkflowTaskService = request.app.state.workflow_task_service
         
         # 取消任务
-        success = await transform_service.cancel_task(request_id)
+        success = await workflow_service.cancel_task(request_id)
         
         if not success:
             # 检查任务是否存在
-            task_data = transform_service.get_task(request_id)
+            task_data = workflow_service.get_task(request_id)
             if not task_data:
                 raise RPCError(
                     code=ErrorCodes.TASK_NOT_FOUND,
@@ -379,30 +379,3 @@ async def search_workflows(params: Dict[str, Any], request: Request) -> Dict[str
             message="搜索工作流失败",
             data={"error": str(e)}
         )
-
-
-# 保持向后兼容的别名方法（可选）
-@rpc_method("transform.create")
-async def create_transform_legacy(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
-    """向后兼容：创建转换任务（映射到工作流执行）"""
-    try:
-        # 将旧格式转换为新格式
-        if "style_id" in params:
-            # 旧的风格转换API
-            new_params = {
-                "request_id": params["request_id"],
-                "workflow_id": params["style_id"],  # style_id -> workflow_id
-                "params": {
-                    "input_image": params.get("image_url"),
-                }
-            }
-            return await execute_workflow(new_params, request)
-        else:
-            raise RPCError(
-                code=ErrorCodes.INVALID_PARAMS,
-                message="缺少必需参数 style_id",
-                data=params
-            )
-    except Exception as e:
-        logger.error(f"向后兼容转换失败: {e}", exc_info=True)
-        raise

@@ -45,17 +45,17 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
         except Exception:
             storage_healthy = False
         
-        # 检查风格注册表
-        styles_count = 0
+        # 检查工作流注册表
+        workflows_count = 0
         try:
-            if hasattr(request.app.state, 'style_registry'):
-                style_registry = request.app.state.style_registry
-                styles_count = len(style_registry.styles)
+            if hasattr(request.app.state, 'workflow_registry'):
+                workflow_registry = request.app.state.workflow_registry
+                workflows_count = len(workflow_registry.get_available_workflows())
         except Exception:
-            styles_count = 0
+            workflows_count = 0
         
         # 计算总体状态
-        overall_status = "healthy" if comfyui_healthy and storage_healthy and styles_count > 0 else "unhealthy"
+        overall_status = "healthy" if comfyui_healthy and storage_healthy and workflows_count > 0 else "unhealthy"
         
         return {
             "status": overall_status,
@@ -63,12 +63,12 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
             "services": {
                 "comfyui": "healthy" if comfyui_healthy else "unhealthy",
                 "storage": "healthy" if storage_healthy else "unhealthy", 
-                "styles": "healthy" if styles_count > 0 else "unhealthy"
+                "workflows": "healthy" if workflows_count > 0 else "unhealthy"
             },
             "details": {
                 "comfyui_connected": comfyui_healthy,
                 "storage_healthy": storage_healthy,
-                "styles_count": styles_count,
+                "workflows_count": workflows_count,
                 "environment": settings.environment,
                 "version": "2.0.0"
             }
@@ -119,7 +119,7 @@ async def parse_filename(params: Dict[str, Any], request: Request) -> Dict[str, 
             "filename": params.get("filename", ""),
             "valid": False,
             "error": str(e),
-            "expected_pattern": "{style_id}_{request_id}_{input|output}.{ext}",
+            "expected_pattern": "{workflow_id}_{request_id}_{input|output}.{ext}",
             "example": "clay_style_123e4567-e89b-12d3-a456-426614174000_input.jpg"
         }
 
@@ -141,22 +141,22 @@ async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str
                 "outputs": 0,
                 "temp": 0
             },
-            "styles": {
+            "workflows": {
                 "total": 0,
                 "available": []
             }
         }
         
         # 统计任务信息 - 简化统计（新架构中不再区分用户）
-        if hasattr(request.app.state, 'transform_task_service'):
-            transform_service = request.app.state.transform_task_service
+        if hasattr(request.app.state, 'workflow_task_service'):
+            workflow_service = request.app.state.workflow_task_service
             
             # 新的数据结构：只按request_id存储任务
-            total_tasks = len(transform_service.tasks)
+            total_tasks = len(workflow_service.tasks)
             stats["tasks"]["total"] = total_tasks
             
             # 按状态统计
-            for task in transform_service.tasks.values():
+            for task in workflow_service.tasks.values():
                 status = task.status
                 if status not in stats["tasks"]["by_status"]:
                     stats["tasks"]["by_status"][status] = 0
@@ -166,26 +166,28 @@ async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str
         try:
             settings = request.app.state.settings
             
-            inputs_dir = settings.storage.base_dir / "inputs"
-            if inputs_dir.exists():
-                stats["files"]["inputs"] = len(list(inputs_dir.glob("*")))
+            uploads_dir = settings.storage.uploads_dir
+            if uploads_dir.exists():
+                stats["files"]["inputs"] = len(list(uploads_dir.glob("*")))
             
-            outputs_dir = settings.storage.base_dir / "outputs"
+            outputs_dir = settings.storage.outputs_dir
             if outputs_dir.exists():
                 stats["files"]["outputs"] = len(list(outputs_dir.glob("*")))
             
-            temp_dir = settings.storage.base_dir / "temp"
+            # 临时目录（如果存在）
+            temp_dir = settings.storage.uploads_dir.parent / "temp"
             if temp_dir.exists():
                 stats["files"]["temp"] = len(list(temp_dir.glob("*")))
                 
         except Exception as e:
             logger.warning(f"统计文件信息失败: {e}")
         
-        # 统计风格信息
-        if hasattr(request.app.state, 'style_registry'):
-            style_registry = request.app.state.style_registry
-            stats["styles"]["total"] = len(style_registry.styles)
-            stats["styles"]["available"] = list(style_registry.styles.keys())
+        # 统计工作流信息
+        if hasattr(request.app.state, 'workflow_registry'):
+            workflow_registry = request.app.state.workflow_registry
+            available_workflows = workflow_registry.get_available_workflows()
+            stats["workflows"]["total"] = len(available_workflows)
+            stats["workflows"]["available"] = list(available_workflows.keys())
         
         return stats
         

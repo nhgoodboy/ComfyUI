@@ -132,8 +132,8 @@ def validate_request_id(request_id: str) -> bool:
     
     return True
 
-def validate_image_url(url: str) -> Tuple[bool, Optional[str]]:
-    """验证图像URL"""
+def validate_file_url(url: str) -> Tuple[bool, Optional[str]]:
+    """验证文件URL"""
     if not url or not isinstance(url, str):
         return False, "URL不能为空"
     
@@ -370,4 +370,7 @@ def retry_on_exception(max_retries: int = 3, delay: float = 1.0, backoff: float 
             raise last_exception
         
         return wrapper
-    return decorator 
+    return decorator
+
+# 兼容性别名
+validate_image_url = validate_file_url 

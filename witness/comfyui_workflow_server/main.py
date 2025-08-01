@@ -1,7 +1,7 @@
 """
 ComfyUI工作流服务器主应用
 
-RPC风格的微服务架构：专注于图像风格转换的核心功能
+RPC风格的微服务架构：专注于工作流处理的核心功能
 """
 
 import asyncio
@@ -29,10 +29,9 @@ from app.rpc.handler import rpc_handler
 from app.rpc.methods import *
 
 # 导入服务类
-from app.core.style_registry import StyleRegistry
 from app.core.workflow_registry import WorkflowRegistry
 from app.services.comfyui_service import ComfyUIService
-from app.services.transform_task_service import TransformTaskService
+from app.services.workflow_task_service import WorkflowTaskService
 
 # 导入WebSocket推送管理器
 from app.utils.websocket_push import push_manager
@@ -65,15 +64,6 @@ async def lifespan(app: FastAPI):
         await comfyui_service.initialize()
         logger.info("ComfyUI 服务初始化完成。")
 
-        logger.debug("正在初始化样式注册表...")
-        style_config_path = settings.storage.configs_dir / "style_configs.yaml"
-        style_registry = StyleRegistry(
-            config_file=str(style_config_path),
-            comfyui_service=comfyui_service
-        )
-        app.state.style_registry = style_registry
-        logger.info("样式注册表初始化完成。")
-
         logger.debug("正在初始化工作流注册表...")
         workflow_config_path = settings.storage.configs_dir / "workflows.yaml"
         workflow_registry = WorkflowRegistry(
@@ -83,33 +73,30 @@ async def lifespan(app: FastAPI):
         app.state.workflow_registry = workflow_registry
         logger.info("工作流注册表初始化完成。")
 
-        # RPC架构下不再需要用户文件服务、用户任务服务和样式服务
-        # 这些功能已被RPC方法替代
+        # RPC架构下专注于工作流处理
+        # 文件访问和任务管理通过RPC方法提供
 
-        logger.debug("正在初始化转换任务服务...")
-        transform_task_service = TransformTaskService(
+        logger.debug("正在初始化工作流任务服务...")
+        workflow_task_service = WorkflowTaskService(
             comfyui_service=comfyui_service,
-            style_registry=style_registry
+            workflow_registry=workflow_registry
         )
-        # 注入工作流注册器
-        transform_task_service.set_workflow_registry(workflow_registry)
-        app.state.transform_task_service = transform_task_service
-        logger.info("转换任务服务初始化完成。")
+        app.state.workflow_task_service = workflow_task_service  # 标准服务状态名称
+        logger.info("工作流任务服务初始化完成。")
 
         # --- 4. 挂载服务到 app.state ---
         logger.debug("正在将服务挂载到应用状态...")
         app.state.comfyui_service = comfyui_service
-        app.state.style_registry = style_registry
         app.state.workflow_registry = workflow_registry
-        app.state.transform_task_service = transform_task_service
+        app.state.workflow_task_service = workflow_task_service  # 标准服务状态名称
         app.state.settings = settings  # 将配置也挂载到state
         
-        # 注入依赖：将转换任务服务实例提供给ComfyUIService
-        comfyui_service.set_transform_task_service(transform_task_service)
+        # 注入依赖：将工作流任务服务实例提供给ComfyUIService
+        comfyui_service.set_workflow_task_service(workflow_task_service)
         
-        # 为转换任务服务设置ComfyUI结果回调
+        # 为工作流任务服务设置ComfyUI结果回调
         if hasattr(comfyui_service, 'add_result_callback'):
-            comfyui_service.add_result_callback(transform_task_service.on_comfyui_result)
+            comfyui_service.add_result_callback(workflow_task_service.on_comfyui_result)
 
         # 记录启动时间（用于系统统计）
         app.state.start_time = time.time()
@@ -243,17 +230,20 @@ async def root(request: Request):
         "rpc_endpoint": "/rpc",
         "websocket": "/ws/{client_id}",
         "available_methods": [
-            "styles.list",
-            "styles.search", 
-            "styles.get",
-            "transform.create",
-            "transform.create_dual",
-            "transform.get_status",
-            "transform.get_result",
-            "transform.cancel",
-            "system.health"
-            # "system.build_filename" - 已移除，文件命名由客户端处理
-            # "transform.list" - 已移除，用户任务列表由web层管理
+            "workflow.execute",
+            "workflow.list",
+            "workflow.get_schema",
+            "workflow.get_status", 
+            "workflow.get_result",
+            "workflow.cancel",
+            "workflow.search",
+            "files.list_output_images",
+            "files.get_output_image",
+            "files.get_output_image_info",
+            "system.health",
+            "system.parse_filename",
+            "system.get_stats"
+            # 文件命名由客户端处理，任务管理通过工作流RPC方法提供
         ]
     }
 
@@ -301,7 +291,7 @@ async def health_check(request: Request):
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    """WebSocket端点 - 为客户端提供实时任务状态推送
+    """WebSocket端点 - 为客户端提供实时工作流状态推送
     
     client_id 可以是:
     - request_id: 特定请求的连接

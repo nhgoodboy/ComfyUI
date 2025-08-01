@@ -17,31 +17,10 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
-class StyleInfo(BaseModel):
-    """风格信息模型"""
-    id: str = Field(..., description="风格ID")
-    name: str = Field(..., description="风格名称")
-    description: str = Field(..., description="风格描述")
-    estimated_time: int = Field(..., description="预估处理时间(秒)")
-    tags: List[str] = Field(default=[], description="风格标签")
-    image_count: int = Field(default=1, description="需要的图片数量")
-    requires_dual_images: bool = Field(default=False, description="是否需要双图片输入")
-
-class TransformRequest(BaseModel):
-    """风格转换请求模型"""
-    style_id: str = Field(..., description="风格ID")
-    image_url: str = Field(..., description="图片URL")
-
-class TransformResponse(BaseModel):
-    """风格转换响应模型"""
-    success: bool = Field(..., description="是否成功")
-    request_id: str = Field(..., description="请求ID")
-    estimated_time: int = Field(..., description="预估处理时间(秒)")
-
 class TaskStatusData(BaseModel):
     """任务状态数据模型"""
     request_id: str = Field(..., description="请求ID")
-    style_id: str = Field(..., description="风格ID")
+    workflow_id: str = Field(..., description="工作流ID")
     status: TaskStatus = Field(..., description="任务状态")
     progress: float = Field(..., description="进度(0-100)")
     created_at: float = Field(..., description="创建时间戳")
@@ -65,7 +44,7 @@ class TaskResult(BaseModel):
     """任务结果模型"""
     output_images: List[OutputImage] = Field(..., description="输出图片列表")
     duration: float = Field(..., description="处理耗时(秒)")
-    style_applied: str = Field(..., description="应用的风格")
+    workflow_applied: str = Field(..., description="应用的工作流")
 
 class TaskResultResponse(BaseModel):
     """任务结果响应模型"""
@@ -129,11 +108,6 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="错误类型")
     message: str = Field(..., description="错误消息")
     details: Optional[Dict[str, Any]] = Field(None, description="错误详情")
-
-class Token(BaseModel):
-    """JWT令牌模型"""
-    access_token: str
-    token_type: str
 
 class FileSchema(BaseModel):
     id: str

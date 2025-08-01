@@ -66,37 +66,45 @@ class TaskFileInfo(BaseModel):
     output_path: Optional[str] = None
 
 
-class TaskStatus(BaseModel):
-    """任务状态模型"""
+class WorkflowTaskStatus(BaseModel):
+    """工作流任务状态模型"""
     request_id: str
-    style_id: str
-    status: str  # pending, downloading, downloaded, processing, completed, failed
+    workflow_id: str
+    status: str  # pending, processing, completed, failed, cancelled
     progress: float = 0.0
-    stage: str = "pending"  # download, transform
+    stage: str = "pending"  # workflow_execution, post_processing
     message: str = ""
     created_at: float
     started_at: Optional[float] = None
     completed_at: Optional[float] = None
     estimated_remaining: Optional[int] = None
-    file_info: Optional[TaskFileInfo] = None
+    workflow_params: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
 
 
-class TransformResult(BaseModel):
-    """转换结果模型"""
+class WorkflowResult(BaseModel):
+    """工作流结果模型"""
     request_id: str
-    style_id: str
+    workflow_id: str
     status: str
-    input_info: FileInfo
-    output_info: FileInfo
+    workflow_params: Dict[str, Any]
+    output_files: list[FileInfo]
     duration: float
     completed_at: float
 
 
-class StyleInfo(BaseModel):
-    """风格信息模型"""
+class WorkflowInfo(BaseModel):
+    """工作流信息模型"""
     id: str
     name: str
     description: str
     estimated_time: int
     tags: list[str]
+    version: str = "1.0"
+    parameters: Optional[Dict[str, Any]] = None
+
+
+# 兼容性别名
+TaskStatus = WorkflowTaskStatus
+TransformResult = WorkflowResult
+StyleInfo = WorkflowInfo

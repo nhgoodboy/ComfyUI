@@ -14,7 +14,7 @@ from typing import Optional, Tuple, Callable
 from urllib.parse import urlparse
 import hashlib
 
-from ..rpc.exceptions import RPCDownloadError
+from ..rpc.exceptions import RPCFileError
 from ..rpc.error_codes import ErrorCodes
 from ..config import get_settings
 
@@ -101,7 +101,7 @@ class DownloadService:
             try:
                 size = int(content_length)
                 if size > self.max_file_size:
-                    raise RPCDownloadError(
+                    raise RPCFileError(
                         code=ErrorCodes.FILE_TOO_LARGE,
                         message=f"文件过大: {size / 1024 / 1024:.2f}MB，最大允许: {self.max_file_size / 1024 / 1024}MB"
                     )
@@ -135,7 +135,7 @@ class DownloadService:
             async with self._session.get(url, allow_redirects=True) as response:
                 # 检查响应状态
                 if response.status != 200:
-                    raise RPCDownloadError(
+                    raise RPCFileError(
                         code=ErrorCodes.DOWNLOAD_FAILED,
                         message=f"下载失败，HTTP状态码: {response.status}",
                         url=url,
@@ -156,14 +156,14 @@ class DownloadService:
                         # URL看起来像图片，可能是服务器MIME类型配置问题，允许通过
                         logger.warning(f"Content-Type为text但URL像图片: {url}, Content-Type: {content_type}")
                     else:
-                        raise RPCDownloadError(
+                        raise RPCFileError(
                             code=ErrorCodes.INVALID_FILE_FORMAT,
                             message=f"不支持的内容类型: {content_type}",
                             url=url
                         )
                 elif content_type:
                     # 其他明确非图片的类型
-                    raise RPCDownloadError(
+                    raise RPCFileError(
                         code=ErrorCodes.INVALID_FILE_FORMAT,
                         message=f"不支持的内容类型: {content_type}",
                         url=url
@@ -194,7 +194,7 @@ class DownloadService:
                         if downloaded_size > self.max_file_size:
                             # 删除临时文件
                             temp_path.unlink(missing_ok=True)
-                            raise RPCDownloadError(
+                            raise RPCFileError(
                                 code=ErrorCodes.FILE_TOO_LARGE,
                                 message=f"文件过大: {downloaded_size / 1024 / 1024:.2f}MB",
                                 url=url
@@ -229,24 +229,24 @@ class DownloadService:
                 return str(final_path), file_info
                 
         except aiohttp.ClientError as e:
-            raise RPCDownloadError(
+            raise RPCFileError(
                 code=ErrorCodes.NETWORK_ERROR,
                 message=f"网络连接错误: {str(e)}",
                 url=url,
                 details=str(e)
             )
         except asyncio.TimeoutError:
-            raise RPCDownloadError(
+            raise RPCFileError(
                 code=ErrorCodes.DOWNLOAD_TIMEOUT,
                 message=f"下载超时（{self.timeout}秒）",
                 url=url
             )
-        except RPCDownloadError:
+        except RPCFileError:
             # 重新抛出RPC下载错误
             raise
         except Exception as e:
             logger.error(f"下载异常: {str(e)}", exc_info=True)
-            raise RPCDownloadError(
+            raise RPCFileError(
                 code=ErrorCodes.DOWNLOAD_FAILED,
                 message=f"下载失败: {str(e)}",
                 url=url,

@@ -31,13 +31,13 @@ class RPCValidator:
             )
     
     @staticmethod
-    def validate_style_id(style_id: Any):
-        """验证风格ID"""
-        if not style_id or not isinstance(style_id, str) or not style_id.strip():
+    def validate_workflow_id(workflow_id: Any):
+        """验证工作流ID"""
+        if not workflow_id or not isinstance(workflow_id, str) or not workflow_id.strip():
             raise RPCInvalidParams(
-                message="风格ID不能为空",
-                field="style_id", 
-                value=style_id
+                message="工作流ID不能为空",
+                field="workflow_id", 
+                value=workflow_id
             )
     
     @staticmethod
@@ -51,27 +51,27 @@ class RPCValidator:
             )
     
     @staticmethod
-    def validate_image_url(image_url: Any):
-        """验证图片URL"""
-        if not image_url or not isinstance(image_url, str):
+    def validate_file_url(file_url: Any):
+        """验证文件URL"""
+        if not file_url or not isinstance(file_url, str):
             raise RPCInvalidParams(
-                message="图片URL不能为空",
-                field="image_url",
-                value=image_url
+                message="文件URL不能为空",
+                field="file_url",
+                value=file_url
             )
         
         # 基础URL格式检查
-        if not (image_url.startswith('http://') or image_url.startswith('https://')):
+        if not (file_url.startswith('http://') or file_url.startswith('https://')):
             raise RPCInvalidParams(
-                message="图片URL格式无效，必须以http://或https://开头",
-                field="image_url",
-                value=image_url
+                message="文件URL格式无效，必须以http://或https://开头",
+                field="file_url",
+                value=file_url
             )
     
     @staticmethod
-    def validate_filename_format(filename: str, style_id: str, request_id: str, file_type: str = "input"):
-        """验证文件名格式"""
-        expected_pattern = f"{style_id}_{request_id}_{file_type}"
+    def validate_workflow_filename_format(filename: str, workflow_id: str, request_id: str, file_type: str = "input"):
+        """验证工作流文件名格式"""
+        expected_pattern = f"{workflow_id}_{request_id}_{file_type}"
         
         if not filename.startswith(expected_pattern):
             raise RPCInvalidParams(
@@ -80,11 +80,16 @@ class RPCValidator:
                 value={
                     "actual": filename,
                     "expected_pattern": f"{expected_pattern}.{{ext}}",
-                    "style_id": style_id,
+                    "workflow_id": workflow_id,
                     "request_id": request_id,
                     "type": file_type
                 }
             )
+    
+    # 兼容性别名
+    validate_style_id = validate_workflow_id
+    validate_image_url = validate_file_url
+    validate_filename_format = validate_workflow_filename_format
     
     @staticmethod
     def validate_pydantic_model(params: Dict[str, Any], model_class: Type[BaseModel]) -> BaseModel:

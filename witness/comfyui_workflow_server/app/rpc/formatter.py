@@ -53,11 +53,11 @@ class RPCFormatter:
         }
     
     @staticmethod
-    def format_task_status(task) -> Dict[str, Any]:
-        """格式化任务状态信息"""
+    def format_workflow_task_status(task) -> Dict[str, Any]:
+        """格式化工作流任务状态信息"""
         result = {
             "request_id": task.request_id,
-            "style_id": task.style_id,
+            "workflow_id": task.workflow_id,
             "status": task.status,
             "progress": task.progress,
             "stage": getattr(task, 'stage', 'unknown'),
@@ -76,45 +76,44 @@ class RPCFormatter:
         if hasattr(task, 'error_message') and task.error_message:
             result["error_message"] = task.error_message
         
-        # 添加文件信息
-        if hasattr(task, 'file_info') and task.file_info:
-            result["file_info"] = {
-                "input_filename": getattr(task.file_info, 'input_filename', ''),
-                "expected_output_filename": getattr(task.file_info, 'expected_output_filename', '')
-            }
+        # 添加工作流参数信息
+        if hasattr(task, 'workflow_params') and task.workflow_params:
+            result["workflow_params"] = task.workflow_params
         
         return result
     
     @staticmethod
-    def format_style_info(style) -> Dict[str, Any]:
-        """格式化风格信息"""
+    def format_workflow_info(workflow) -> Dict[str, Any]:
+        """格式化工作流信息"""
         try:
             # 确保所有值都是可序列化的
             result = {
-                "id": str(style.id) if style.id else "",
-                "name": str(style.name) if style.name else "",
-                "description": str(style.description) if style.description else "",
-                "estimated_time": int(getattr(style, 'estimated_time', 0)),
-                "tags": list(getattr(style, 'tags', []))
+                "id": str(workflow.id) if workflow.id else "",
+                "name": str(workflow.name) if workflow.name else "",
+                "description": str(workflow.description) if workflow.description else "",
+                "estimated_time": int(getattr(workflow, 'estimated_time', 0)),
+                "tags": list(getattr(workflow, 'tags', [])),
+                "version": str(getattr(workflow, 'version', '1.0'))
             }
             return result
         except Exception as e:
-            logger.error(f"格式化风格信息失败: {e}")
+            logger.error(f"格式化工作流信息失败: {e}")
             # 返回安全的默认值
             return {
                 "id": "unknown",
-                "name": "Unknown Style",
-                "description": "Style information unavailable",
+                "name": "Unknown Workflow",
+                "description": "Workflow information unavailable",
                 "estimated_time": 60,
-                "tags": []
+                "tags": [],
+                "version": "1.0"
             }
     
     @staticmethod
-    def format_transform_result(task, result_data) -> Dict[str, Any]:
-        """格式化转换结果"""
+    def format_workflow_result(task, result_data) -> Dict[str, Any]:
+        """格式化工作流结果"""
         formatted_result = {
             "request_id": task.request_id,
-            "style_id": task.style_id,
+            "workflow_id": task.workflow_id,
             "status": task.status,
             "duration": 0,
             "completed_at": task.completed_at
@@ -124,9 +123,9 @@ class RPCFormatter:
         if task.completed_at and task.started_at:
             formatted_result["duration"] = task.completed_at - task.started_at
         
-        # 处理输入文件信息
-        if hasattr(task, 'input_file_info'):
-            formatted_result["input_info"] = task.input_file_info
+        # 处理工作流参数信息
+        if hasattr(task, 'workflow_params'):
+            formatted_result["workflow_params"] = task.workflow_params
         
         # 处理输出文件信息
         if result_data and 'output' in result_data:
@@ -139,10 +138,14 @@ class RPCFormatter:
                         filename = img_data.get('filename', 'unknown')
                         output_images.append({
                             "filename": filename,
-                            "url": f"/view?filename={filename}&subfolder={img_data.get('subfolder', '')}&type={img_data.get('type', 'output')}",
-                            "size": 0
+                            "url": f"/outputs/{filename}",
+                            "size": img_data.get('size', 0)
                         })
             
             formatted_result["output_images"] = output_images
         
         return formatted_result
+    
+    # 兼容性别名
+    format_task_status = format_workflow_task_status
+    format_transform_result = format_workflow_result
