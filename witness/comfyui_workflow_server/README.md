@@ -1,378 +1,408 @@
-# ComfyUI Workflow Server (RPC Edition)
+# ComfyUI 工作流服务器
 
-基于RPC架构的ComfyUI工作流微服务，专注于图像风格转换和文件下载处理。支持一对一WebSocket连接架构，实现多用户任务隔离和精确消息推送。
+基于 FastAPI 和 RPC 架构构建的高性能、安全的 ComfyUI 工作流微服务。提供统一的图像风格转换和工作流执行能力，具备企业级安全特性。
 
-## 项目概述
+## 🚀 功能特性
 
-这是一个采用JSON-RPC 2.0协议的微服务，为ComfyUI提供统一的RPC接口。支持从外部URL下载图片并进行风格转换，采用标准化的文件命名规范。通过基于user_id的精确消息路由，实现真正的多用户隔离。
+- **RPC 架构**: 基于 JSON-RPC 2.0 协议的高效客户端-服务器通信
+- **工作流管理**: 动态工作流注册和执行系统
+- **图像处理**: 使用 ComfyUI 后端的高级图像风格转换
+- **企业级安全**: 5层安全防护架构，包含JWT、IP白名单和API密钥认证
+- **实时更新**: WebSocket 支持实时任务状态监控
+- **高性能**: 异步处理，支持可配置的并发限制
+- **Docker 就绪**: 生产就绪的容器化部署，内置健康检查
 
-## 主要特性
+## 📋 系统要求
 
-- **RPC架构**: 单一端点(`/rpc`)，JSON-RPC 2.0协议
-- **安全认证**: 基于API密钥的安全认证系统
-- **文件下载**: 支持从外部URL下载图片，无需客户端上传
-- **标准化命名**: 文件按`{style_id}_{user_id}_{request_id}_{input/output}.{ext}`格式命名
-- **多阶段处理**: 下载→转换的完整生命周期管理
-- **实时进度**: WebSocket支持任务状态和进度实时更新
-- **进度精确跟踪**: 真实反映ComfyUI采样进度，过滤无关步骤
-- **错误分类**: 系统化的错误代码体系(1xxx-3xxx)
-- **request_id支持**: 端到端请求追踪和调试
-- **文件结果管理**: 自动获取ComfyUI生成结果并构造访问URL
-- **多用户隔离**: 基于user_id的完全任务和文件隔离
-- **精确消息推送**: 基于任务中的user_id进行精确WebSocket推送
-- **一对一连接支持**: 支持服务级别的WebSocket连接（如web_image_transform_service）
-- **用户ID格式统一**: 使用连字符格式 `user-{timestamp}-{random}` 确保一致性
+- **Python**: 3.11+
+- **ComfyUI**: 运行中的实例 (默认: localhost:8188)
+- **系统内存**: 推荐 4GB+
+- **存储空间**: 工作流和临时文件需要 10GB+
 
-## RPC接口
+## 🛠️ 安装部署
 
-### 单一端点
-所有RPC调用统一使用：`POST /rpc`
-
-### 风格管理方法
-- `styles.list` - 获取所有可用风格
-- `styles.search` - 搜索风格
-- `styles.get` - 获取特定风格详情
-
-### 转换任务方法
-- `transform.create` - 创建转换任务（下载+转换）
-- `transform.get_status` - 获取任务状态
-- `transform.get_result` - 获取任务结果
-- `transform.list` - 获取用户任务列表
-- `transform.cancel` - 取消任务
-
-### 系统方法
-- `system.health` - 系统健康检查
-- `system.build_filename` - 构建标准文件名
-- `system.get_stats` - 获取系统统计信息
-
-### WebSocket推送
-- `GET /ws/{service_id}` - 实时任务状态和进度推送
-  - **服务连接**: `/ws/web_image_transform_service` - 服务级别连接
-  - 支持任务状态变化通知
-  - 实时进度更新（下载进度、转换进度）
-  - 任务完成结果推送
-  - 心跳保活机制
-  - **精确推送**: 基于任务中的user_id进行精确路由，不再广播
-  - **一对一连接**: 单一服务连接，高效消息路由
-  - **用户ID格式**: 统一使用连字符格式 `user-{timestamp}-{random}`
-
-## RPC调用示例
-
-### 创建转换任务
-```json
-{
-  "method": "transform.create",
-  "params": {
-    "user_id": "user123",
-    "style_id": "anime_style",
-    "image_url": "https://example.com/image.jpg",
-    "request_id": "req123"
-  },
-  "id": "req_1"
-}
-```
-
-### 获取风格列表
-```json
-{
-  "method": "styles.list",
-  "params": {},
-  "id": "req_2"
-}
-```
-
-### 获取任务状态
-```json
-{
-  "method": "transform.get_status",
-  "params": {
-    "user_id": "user123",
-    "request_id": "req_abc123"
-  },
-  "id": "req_3"
-}
-```
-
-## 配置环境变量
+### 快速开始
 
 ```bash
-# 基础配置
-HOST=0.0.0.0
-PORT=8000
-DEBUG=false
-ENVIRONMENT=production
+# 克隆仓库
+git clone <repository-url>
+cd comfyui_workflow_server
 
-# ComfyUI连接
-COMFYUI_HOST=127.0.0.1
-COMFYUI_PORT=8188
-COMFYUI_TIMEOUT=300
-
-# 文件存储配置
-UPLOADS_DIR=uploads
-OUTPUTS_DIR=outputs
-MAX_FILE_SIZE=10485760
-MAX_DOWNLOAD_SIZE=50485760
-
-# 下载配置
-DOWNLOAD_TIMEOUT=30
-DOWNLOAD_RETRIES=3
-ALLOWED_SCHEMES=http,https
-
-# 日志配置
-LOG_LEVEL=INFO
-LOG_FORMAT=json
-
-# CORS配置
-CORS_ORIGINS=*
-```
-
-## 部署说明
-
-### 开发环境
-```bash
 # 安装依赖
 pip install -r requirements.txt
 
-# 启动服务
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# 设置环境变量
+cp env.template .env
+# 编辑 .env 文件配置
+
+# 启动服务器
+python main.py
 ```
 
-### 生产环境
+### Docker 部署
+
 ```bash
-# 使用gunicorn
-gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
+# 构建镜像
+docker build -t comfyui-workflow-server .
+
+# 运行容器
+docker run -d \
+  --name comfyui-server \
+  -p 8000:8000 \
+  -v $(pwd)/uploads:/app/uploads \
+  -v $(pwd)/outputs:/app/outputs \
+  -v $(pwd)/logs:/app/logs \
+  comfyui-workflow-server
 ```
 
-## 文件命名规范
+## ⚙️ 配置说明
 
-### 标准格式
+### 环境变量
+
+`.env` 文件中的关键配置选项:
+
+```bash
+# 服务器配置
+HOST=0.0.0.0
+PORT=8000
+DEBUG=false
+
+# ComfyUI 后端
+COMFYUI_HOST=127.0.0.1
+COMFYUI_PORT=8188
+
+# 安全配置 (生产环境)
+SECURITY_ENABLED=true
+API_SECRET_KEY=your-64-char-secret-key
+JWT_SECRET_KEY=your-64-char-jwt-key
+ALLOWED_IPS=127.0.0.1,::1,192.168.0.0/24
+
+# 文件存储
+UPLOADS_DIR=uploads
+OUTPUTS_DIR=outputs
+MAX_FILE_SIZE=10485760  # 10MB
 ```
-{style_id}_{user_id}_{request_id}_{type}.{extension}
+
+### 配置文件
+
+- `configs/rpc_config.yaml` - RPC 服务设置
+- `configs/workflows.yaml` - 工作流定义
+- `workflows/` - ComfyUI 工作流 JSON 文件
+
+## 🔌 API 使用指南
+
+### RPC 端点
+
+**URL**: `POST /rpc`
+
+**Content-Type**: `application/json`
+
+### 可用方法
+
+#### 工作流执行
+
+```bash
+curl -X POST http://localhost:8000/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "workflow.execute",
+    "params": {
+      "request_id": "req_123",
+      "workflow_id": "clay_style_transform",
+      "params": {
+        "input_image": "http://example.com/image.jpg",
+        "prompt": "粘土风格，可爱",
+        "guidance": 12
+      }
+    },
+    "id": 1
+  }'
 ```
 
-### 示例
-- 输入文件：`anime_style_user123_req123_input.jpg`
-- 输出文件：`anime_style_user123_req123_output.png`
+#### 系统信息
 
-### 文件组织
-- 下载文件：`uploads/{filename}`
-- 输出文件：`outputs/{filename}`
-- 所有文件按标准命名格式存储
+```bash
+curl -X POST http://localhost:8000/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "system.health",
+    "params": {},
+    "id": 1
+  }'
+```
 
-## 任务生命周期
+#### 文件管理
 
-1. **pending** - 任务已创建，等待处理
-2. **downloading** - 正在下载图片
-3. **downloaded** - 图片下载完成
-4. **processing** - 正在进行风格转换
-5. **completed** - 转换完成
-6. **download_failed** - 下载失败
-7. **processing_failed** - 转换失败
+```bash
+# 列出输出文件
+curl -X POST http://localhost:8000/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "files.list_output_images",
+    "params": {
+      "request_id": "req_123"
+    },
+    "id": 1
+  }'
+```
 
-## 错误代码体系
+### WebSocket 连接
 
-- **1001-1099**: 通用错误（参数、验证等）
-- **2001-2099**: 下载相关错误
-- **3001-3099**: 转换处理错误
+连接实时更新:
 
-## 与客户端集成
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws/req_123');
 
-### RPC客户端示例
+ws.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    console.log('状态更新:', data);
+};
+```
+
+## 🏗️ 系统架构
+
+### 目录结构
+
+```
+comfyui_workflow_server/
+├── app/                          # 应用核心
+│   ├── core/                     # 核心业务逻辑
+│   │   ├── workflow_registry.py  # 工作流管理
+│   │   └── parameter_mapper.py   # 参数映射
+│   ├── rpc/                      # RPC 实现
+│   │   ├── methods/              # RPC 方法处理器
+│   │   ├── handler.py            # 请求处理器
+│   │   └── router.py             # 方法路由器
+│   ├── services/                 # 业务服务
+│   │   ├── comfyui_service.py    # ComfyUI 客户端
+│   │   └── transform_task_service.py # 任务管理
+│   └── utils/                    # 工具类
+├── comfyui_client/               # ComfyUI 客户端库
+├── configs/                      # 配置文件
+├── workflows/                    # 工作流定义
+├── main.py                       # 应用入口点
+└── requirements.txt              # 依赖项
+```
+
+### 安全架构
+
+1. **IP 白名单** - 网络级访问控制
+2. **API 密钥认证** - 请求级安全
+3. **请求签名验证** - 消息完整性
+4. **速率限制** - DDoS 防护
+5. **JWT 令牌验证** - 用户会话管理
+
+## 🔧 开发指南
+
+### 添加新工作流
+
+1. 在 `workflows/` 目录中创建工作流 JSON 文件
+2. 在 `configs/workflows.yaml` 中注册:
+
+```yaml
+workflows:
+  my_custom_workflow:
+    name: "我的自定义工作流"
+    description: "自定义图像处理"
+    file: "my_workflow.json"
+    parameters:
+      input_image:
+        type: "string"
+        required: true
+      strength:
+        type: "float"
+        default: 0.8
+```
+
+### 创建 RPC 方法
 
 ```python
-import aiohttp
-import json
-import uuid
+from app.rpc.router import rpc_method
 
-class ComfyUIRPCClient:
-    def __init__(self, base_url: str, user_id: str):
-        self.base_url = base_url
-        self.user_id = user_id
-        self.rpc_url = f"{base_url}/rpc"
+@rpc_method("my_namespace.my_method")
+async def my_custom_method(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
+    """自定义 RPC 方法实现"""
+    # 您的逻辑代码
+    return {"status": "success"}
+```
+
+### 测试
+
+```bash
+# 运行测试
+pytest
+
+# 运行带覆盖率的测试
+pytest --cov=app tests/
+```
+
+## 🐳 生产环境部署
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  comfyui-server:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SECURITY_ENABLED=true
+      - DEBUG=false
+    volumes:
+      - ./data/uploads:/app/uploads
+      - ./data/outputs:/app/outputs
+      - ./logs:/app/logs
+    restart: unless-stopped
     
-    async def create_transform(self, style_id: str, image_url: str, request_id: str = None):
-        payload = {
-            "method": "transform.create",
-            "params": {
-                "user_id": self.user_id,
-                "style_id": style_id,
-                "image_url": image_url,
-                "request_id": request_id or str(uuid.uuid4())
-            },
-            "id": "req_1"
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self.rpc_url, json=payload) as resp:
-                result = await resp.json()
-                return result["result"]
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/ssl
+    depends_on:
+      - comfyui-server
 ```
 
-### WebSocket监听
+### 安全检查清单
 
-```python
-import websockets
-import json
+- [ ] 更改所有默认密钥
+- [ ] 设置 `DEBUG=false`
+- [ ] 配置正确的 IP 白名单
+- [ ] 生产环境中启用 HTTPS
+- [ ] 设置日志监控
+- [ ] 配置备份策略
+- [ ] 启用速率限制
+- [ ] 检查文件权限
 
-async def listen_updates(service_id: str = "web_image_transform_service"):
-    uri = f"ws://localhost:8000/ws/{service_id}"
-    async with websockets.connect(uri) as websocket:
-        async for message in websocket:
-            # 忽略心跳消息
-            if message == 'pong':
-                continue
-                
-            data = json.loads(message)
-            if data.get('type') == 'task_update':
-                request_id = data.get('request_id')
-                task_data = data.get('data', {})
-                status = task_data.get('status')
-                progress = task_data.get('progress', 0)
-                message = task_data.get('message', '')
-                
-                print(f"任务 {request_id}: {status} ({progress}%) - {message}")
-                
-                # 处理任务完成
-                if status == 'completed' and 'result' in task_data:
-                    result = task_data['result']
-                    if 'files' in result:
-                        output_files = result['files'].get('output', [])
-                        print(f"生成文件: {output_files}")
+## 📊 监控运维
+
+### 健康检查
+
+```bash
+curl http://localhost:8000/health
 ```
 
-## 目录结构
+### 监控端点
 
-```
-app/
-├── rpc/
-│   ├── __init__.py
-│   ├── handler.py       # RPC请求处理器
-│   ├── router.py        # RPC方法路由
-│   ├── protocol.py      # RPC协议模型
-│   ├── exceptions.py    # RPC异常定义
-│   ├── error_codes.py   # 错误代码定义
-│   ├── formatter.py     # 响应格式化器
-│   ├── validator.py     # 参数验证器
-│   └── methods/
-│       ├── styles.py    # 风格管理方法
-│       ├── transform.py # 转换任务方法
-│       └── system.py    # 系统方法
-├── services/
-│   ├── comfyui_service.py       # ComfyUI客户端服务
-│   ├── download_service.py      # 文件下载服务
-│   └── transform_task_service.py # 转换任务服务
-├── utils/
-│   ├── file_naming.py    # 文件命名工具
-│   ├── websocket_push.py # WebSocket推送管理器
-│   └── crypto_utils.py   # 加密工具
-├── core/
-│   └── style_registry.py # 风格注册表
-├── models/
-│   ├── api_models.py     # API数据模型
-│   └── user_models.py    # 用户数据模型
-├── workflows/
-│   └── built_in/         # 内置工作流
-├── config.py             # 配置管理
-└── main.py              # 应用入口
-```
+- `/` - 服务概览
+- `/health` - 详细健康状态
+- `/rpc` - 主 API 端点
+- `/outputs` - 静态文件服务
 
-## 实时进度跟踪
+### 日志记录
 
-### 进度处理优化
-- **精确进度映射**: 直接使用ComfyUI报告的真实进度，不添加人工偏移
-- **多步骤节点过滤**: 只显示主要生成节点（采样）的进度，过滤单步预处理节点
-- **平滑进度体验**: 避免进度跳跃，确保0%→100%的连续进度显示
+应用中配置了结构化的 JSON 格式日志:
 
-### WebSocket消息格式
 ```json
 {
-  "type": "task_update",
-  "request_id": "req123",
-  "data": {
-    "status": "processing",
-    "progress": 45.6,
-    "message": "生成进度: 12/25 (45.6%) - 节点: 73",
-    "stage": "transform",
-    "request_id": "req123",
-    "timestamp": 1752982316.123,
-    "result": {
-      "files": {
-        "input": "http://host:port/uploads/input.jpg",
-        "output": ["http://host:port/view?filename=output.png"]
-      }
-    }
-  }
+  "timestamp": "2024-01-01T00:00:00Z",
+  "level": "INFO",
+  "message": "请求完成",
+  "request_id": "req_123",
+  "duration": 1.234
 }
 ```
 
-## WebSocket连接架构
+## 🛠️ 故障排除
 
-### 一对一连接模式
-支持服务级别的WebSocket连接，如 `web_image_transform_service`，实现高效的消息路由：
+### 常见问题
 
-```
-多个前端用户 ←→ web_image_transform ←→ comfyui_workflow_server
-(多对一)                    (一对一，基于user_id精确推送)
-```
+**ComfyUI 连接失败**
+```bash
+# 检查 ComfyUI 状态
+curl http://localhost:8188/system_stats
 
-### 精确消息推送机制
-```python
-# 推送管理器根据任务中的user_id进行精确路由
-task_user_id = update_data.get("user_id")  # 从任务数据中获取用户ID
-
-# 查找目标连接
-if "web_image_transform_service" in active_connections:
-    # 推送到服务连接（一对一模式）
-    await websocket.send_json(message)
+# 验证配置
+grep COMFYUI_ .env
 ```
 
-### 消息路由流程
-1. 任务状态更新时，从任务数据中提取 `user_id`
-2. 查找活跃的WebSocket连接
-3. 优先推送到服务级别连接（如 `web_image_transform_service`）
-4. 服务端接收后根据 `user_id` 路由到对应前端用户
-5. 实现精确推送，避免广播造成的资源浪费
+**文件上传错误**
+```bash
+# 检查文件权限
+ls -la uploads/ outputs/
 
-## 更新日志
+# 验证文件大小限制
+grep MAX_FILE_SIZE .env
+```
 
-### v3.3.0 - 用户ID格式统一版本
-- **用户ID格式统一**: 统一使用连字符格式 `user-{timestamp}-{random}`，替代下划线格式
-- **WebSocket连接优化**: 修复用户ID格式不一致导致的连接问题
-- **服务ID匹配**: 确保 `web_image_transform_service` 在推送服务中正确匹配
-- **调试工具增强**: 添加WebSocket连接测试页面和调试端点
-- **会话管理改进**: 支持会话重置和用户ID重新生成
+**内存问题**
+```bash
+# 监控资源使用
+docker stats comfyui-server
 
-### v3.2.0 - 一对一连接架构版本
-- **精确消息推送**: 基于任务中的user_id进行精确WebSocket推送，不再广播
-- **一对一连接支持**: 支持服务级别的WebSocket连接（如web_image_transform_service）
-- **消息路由优化**: 智能路由机制，优先推送到服务连接
-- **多用户隔离**: 完全基于user_id的任务和消息隔离
-- **连接管理优化**: 支持混合连接模式（直接用户连接+服务连接）
+# 检查 ComfyUI 内存使用
+curl http://localhost:8188/system_stats
+```
 
-### v3.1.0 - 进度跟踪优化版本
-- **实时进度跟踪**: WebSocket实时推送ComfyUI采样进度
-- **进度精确映射**: 直接使用ComfyUI真实进度，移除30%基础偏移
-- **多节点过滤**: 只显示主要生成节点进度，过滤预处理步骤
-- **结果自动获取**: 任务完成时自动获取ComfyUI历史记录和文件
-- **request_id追踪**: 端到端请求ID支持，便于调试和监控
-- **心跳机制**: WebSocket连接保活，避免连接断开
+### 调试模式
 
-### v3.0.0 - RPC版本
-- 完全重构为RPC架构
-- 单一端点设计（POST /rpc）
-- 支持外部URL图片下载
-- 标准化文件命名规范
-- 多阶段任务生命周期
-- 系统化错误代码体系
-- 基础WebSocket状态推送
+启用详细日志:
 
-### v2.0.0 - 简化版本
-- 移除复杂的认证系统
-- 简化为基于user_id的资源隔离
-- 优化微服务架构
-- 专注核心业务功能
+```bash
+# 在 .env 中设置
+DEBUG=true
+LOG_LEVEL=DEBUG
 
-### v1.0.0 - 初始RESTful版本
-- RESTful API设计
-- 基础认证系统
-- 用户文件管理 
+# 重启服务
+python main.py
+```
+
+## 📝 API 参考
+
+### 响应格式
+
+所有 RPC 响应都遵循 JSON-RPC 2.0 规范:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "success",
+    "data": {}
+  },
+  "id": 1
+}
+```
+
+### 错误代码
+
+| 代码 | 描述 |
+|------|------|
+| 1001 | 无效的 JSON 格式 |
+| 1002 | 未找到方法 |
+| 1003 | 无效参数 |
+| 1004 | 内部服务器错误 |
+| 2001 | ComfyUI 连接错误 |
+| 2002 | 工作流执行失败 |
+
+## 🤝 贡献指南
+
+1. Fork 仓库
+2. 创建功能分支
+3. 进行修改
+4. 如适用，添加测试
+5. 提交 Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 详情请参阅 [LICENSE](LICENSE) 文件。
+
+## 📞 技术支持
+
+- **文档**: 请查看本 README 和代码内注释
+- **问题反馈**: 在项目仓库中创建 issue
+- **社区讨论**: 加入我们的开发讨论
+
+---
+
+**版本**: 2.0.0  
+**最后更新**: 2024-01-01  
+**维护团队**: ComfyUI 工作流服务器团队
