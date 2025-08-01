@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComfyUIå\AKÕûß</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>ComfyUIå\AKÕûß</h1>
+            <div class="connection-status">
+                <span id="connection-status">*Þ¥</span>
+                <span class="system-status" id="system-status">Àå-...</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- §6b -->
+            <section class="control-panel">
+                <h2>§6b</h2>
+                
+                <!-- å\A	é -->
+                <div class="workflow-selection">
+                    <label for="workflow-select">	éå\A</label>
+                    <select id="workflow-select">
+                        <option value="">c( }å\A...</option>
+                    </select>
+                    <button id="refresh-workflows" class="btn btn-secondary">7°</button>
+                </div>
+
+                <!-- å\Aáo -->
+                <div id="workflow-info" class="workflow-info" style="display: none;">
+                    <h3>å\AæÅ</h3>
+                    <div id="workflow-details"></div>
+                </div>
+
+                <!-- ÂpMn -->
+                <div class="parameter-config">
+                    <h3>ÂpMn</h3>
+                    <div id="parameter-form">
+                        <p>÷H	éå\A</p>
+                    </div>
+                </div>
+
+                <!-- Í\	® -->
+                <div class="action-buttons">
+                    <button id="execute-btn" class="btn btn-primary" disabled>gLå\A</button>
+                    <button id="cancel-btn" class="btn btn-danger" disabled>Öˆû¡</button>
+                    <button id="clear-log-btn" class="btn btn-secondary">zå×</button>
+                </div>
+            </section>
+
+            <!-- ¶Ñ§ -->
+            <section class="status-monitor">
+                <h2>¶Ñ§</h2>
+                
+                <!-- SMû¡ -->
+                <div class="current-task">
+                    <h3>SMû¡</h3>
+                    <div id="current-task-info">
+                        <p>à;Ãû¡</p>
+                    </div>
+                    
+                    <!-- Û¦a -->
+                    <div id="progress-container" class="progress-container" style="display: none;">
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
+                        </div>
+                        <div class="progress-text">
+                            <span id="progress-percentage">0%</span>
+                            <span id="progress-stage"></span>
+                        </div>
+                        <div id="progress-message" class="progress-message"></div>
+                    </div>
+                </div>
+
+                <!-- û¡†ò -->
+                <div class="task-history">
+                    <h3>û¡†ò</h3>
+                    <div class="task-controls">
+                        <button id="clear-history-btn" class="btn btn-secondary">z†ò</button>
+                        <span class="task-count">;¡: <span id="task-count">0</span> *û¡</span>
+                    </div>
+                    <div id="task-list" class="task-list">
+                        <p>‚àû¡†ò</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ÓœU: -->
+            <section class="results-section">
+                <h2>ÓœU:</h2>
+                <div id="results-container" class="results-container">
+                    <p>Óœ(û¡Œ>:</p>
+                </div>
+            </section>
+
+            <!-- å×“ú -->
+            <section class="log-section">
+                <h2>ûßå×</h2>
+                <div class="log-controls">
+                    <button id="auto-scroll-btn" class="btn btn-secondary active">ê¨Ú¨</button>
+                    <button id="export-log-btn" class="btn btn-secondary">üúå×</button>
+                </div>
+                <div id="log-container" class="log-container">
+                    <div id="log-output" class="log-output"></div>
+                </div>
+            </section>
+        </main>
+
+        <!-- ûßáo§¹ -->
+        <aside class="sidebar">
+            <div class="system-info">
+                <h3>ûßáo</h3>
+                <div id="system-info-content">
+                    <div class="info-item">
+                        <label>ÝID:</label>
+                        <span id="session-id">*å</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Þ¥¶:</label>
+                        <span id="ws-status">*Þ¥</span>
+                    </div>
+                    <div class="info-item">
+                        <label>;Ãû¡:</label>
+                        <span id="active-tasks">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <h3>ëÍ\</h3>
+                <button id="health-check-btn" class="btn btn-outline">e·Àå</button>
+                <button id="system-stats-btn" class="btn btn-outline">ûßß¡</button>
+                <button id="list-files-btn" class="btn btn-outline">‡öh</button>
+            </div>
+
+            <div class="shortcuts">
+                <h3>ëw.</h3>
+                <div class="shortcut-list">
+                    <div class="shortcut-item">
+                        <kbd>Ctrl</kbd> + <kbd>Enter</kbd>
+                        <span>gLå\A</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl</kbd> + <kbd>K</kbd>
+                        <span>zå×</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>F5</kbd>
+                        <span>7°å\A</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- !F -->
+    <div id="modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">˜</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div class="modal-body" id="modal-body">
+                …¹
+            </div>
+            <div class="modal-footer">
+                <button id="modal-ok" class="btn btn-primary">nš</button>
+                <button id="modal-cancel" class="btn btn-secondary">Öˆ</button>
+            </div>
+        </div>
+    </div>
+
+    <!--  }:h -->
+    <div id="loading" class="loading" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p>-...</p>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

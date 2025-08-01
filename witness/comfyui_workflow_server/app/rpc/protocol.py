@@ -102,9 +102,3 @@ class WorkflowInfo(BaseModel):
     tags: list[str]
     version: str = "1.0"
     parameters: Optional[Dict[str, Any]] = None
-
-
-# 兼容性别名
-TaskStatus = WorkflowTaskStatus
-TransformResult = WorkflowResult
-StyleInfo = WorkflowInfo

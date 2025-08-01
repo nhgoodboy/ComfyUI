@@ -86,11 +86,6 @@ class RPCValidator:
                 }
             )
     
-    # 兼容性别名
-    validate_style_id = validate_workflow_id
-    validate_image_url = validate_file_url
-    validate_filename_format = validate_workflow_filename_format
-    
     @staticmethod
     def validate_pydantic_model(params: Dict[str, Any], model_class: Type[BaseModel]) -> BaseModel:
         """使用Pydantic模型验证参数"""
