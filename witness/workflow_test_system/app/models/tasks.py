@@ -1,5 +1,5 @@
 """
-û¡¶!‹
+ä»»åŠ¡çŠ¶æ€æ¨¡å‹
 """
 
 from typing import Dict, Any, Optional, List
@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 
 class TaskStatus(str, Enum):
-    """û¡¶š>"""
+    """ä»»åŠ¡çŠ¶æ€æšä¸¾"""
     PENDING = "pending"
     PROCESSING = "processing" 
     COMPLETED = "completed"
@@ -16,7 +16,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 class TaskInfo(BaseModel):
-    """û¡áo"""
+    """ä»»åŠ¡ä¿¡æ¯"""
     request_id: str
     workflow_id: str
     status: TaskStatus
@@ -32,7 +32,7 @@ class TaskInfo(BaseModel):
     output_images: Optional[List[Dict[str, str]]] = None
 
 class WorkflowInfo(BaseModel):
-    """å\Aáo"""
+    """å·¥ä½œæµä¿¡æ¯"""
     workflow_id: str
     name: str
     description: str
@@ -42,14 +42,14 @@ class WorkflowInfo(BaseModel):
     parameter_count: int = 0
 
 class SystemHealth(BaseModel):
-    """ûße·¶"""
+    """ç³»ç»Ÿå¥åº·çŠ¶æ€"""
     status: str
     timestamp: datetime
     services: Dict[str, str]
     details: Dict[str, Any]
 
 class FileInfo(BaseModel):
-    """‡öáo"""
+    """æ–‡ä»¶ä¿¡æ¯"""
     filename: str
     size: int
     created_time: datetime

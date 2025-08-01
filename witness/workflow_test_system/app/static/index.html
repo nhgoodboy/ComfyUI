@@ -1,69 +1,69 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ComfyUIå\AKÕûß</title>
+    <title>ComfyUI Workflow Test System</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="container">
         <header class="header">
-            <h1>ComfyUIå\AKÕûß</h1>
+            <h1>ComfyUI Workflow Test System</h1>
             <div class="connection-status">
-                <span id="connection-status">*Þ¥</span>
-                <span class="system-status" id="system-status">Àå-...</span>
+                <span id="connection-status">Disconnected</span>
+                <span class="system-status" id="system-status">Checking...</span>
             </div>
         </header>
 
         <main class="main-content">
-            <!-- §6b -->
+            <!-- Control Panel -->
             <section class="control-panel">
-                <h2>§6b</h2>
+                <h2>Control Panel</h2>
                 
-                <!-- å\A	é -->
+                <!-- Workflow Selection -->
                 <div class="workflow-selection">
-                    <label for="workflow-select">	éå\A</label>
+                    <label for="workflow-select">Select Workflow:</label>
                     <select id="workflow-select">
-                        <option value="">c( }å\A...</option>
+                        <option value="">Loading workflows...</option>
                     </select>
-                    <button id="refresh-workflows" class="btn btn-secondary">7°</button>
+                    <button id="refresh-workflows" class="btn btn-secondary">Refresh</button>
                 </div>
 
-                <!-- å\Aáo -->
+                <!-- Workflow Info -->
                 <div id="workflow-info" class="workflow-info" style="display: none;">
-                    <h3>å\AæÅ</h3>
+                    <h3>Workflow Details</h3>
                     <div id="workflow-details"></div>
                 </div>
 
-                <!-- ÂpMn -->
+                <!-- Parameter Configuration -->
                 <div class="parameter-config">
-                    <h3>ÂpMn</h3>
+                    <h3>Parameter Configuration</h3>
                     <div id="parameter-form">
-                        <p>÷H	éå\A</p>
+                        <p>Please select a workflow</p>
                     </div>
                 </div>
 
-                <!-- Í\	® -->
+                <!-- Action Buttons -->
                 <div class="action-buttons">
-                    <button id="execute-btn" class="btn btn-primary" disabled>gLå\A</button>
-                    <button id="cancel-btn" class="btn btn-danger" disabled>Öˆû¡</button>
-                    <button id="clear-log-btn" class="btn btn-secondary">zå×</button>
+                    <button id="execute-btn" class="btn btn-primary" disabled>Execute Workflow</button>
+                    <button id="cancel-btn" class="btn btn-danger" disabled>Cancel Task</button>
+                    <button id="clear-log-btn" class="btn btn-secondary">Clear Log</button>
                 </div>
             </section>
 
-            <!-- ¶Ñ§ -->
+            <!-- Status Monitor -->
             <section class="status-monitor">
-                <h2>¶Ñ§</h2>
+                <h2>Status Monitor</h2>
                 
-                <!-- SMû¡ -->
+                <!-- Current Task -->
                 <div class="current-task">
-                    <h3>SMû¡</h3>
+                    <h3>Current Task</h3>
                     <div id="current-task-info">
-                        <p>à;Ãû¡</p>
+                        <p>No active task</p>
                     </div>
                     
-                    <!-- Û¦a -->
+                    <!-- Progress Bar -->
                     <div id="progress-container" class="progress-container" style="display: none;">
                         <div class="progress-bar">
                             <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
@@ -76,33 +76,33 @@
                     </div>
                 </div>
 
-                <!-- û¡†ò -->
+                <!-- Task History -->
                 <div class="task-history">
-                    <h3>û¡†ò</h3>
+                    <h3>Task History</h3>
                     <div class="task-controls">
-                        <button id="clear-history-btn" class="btn btn-secondary">z†ò</button>
-                        <span class="task-count">;¡: <span id="task-count">0</span> *û¡</span>
+                        <button id="clear-history-btn" class="btn btn-secondary">Clear History</button>
+                        <span class="task-count">Total: <span id="task-count">0</span> tasks</span>
                     </div>
                     <div id="task-list" class="task-list">
-                        <p>‚àû¡†ò</p>
+                        <p>No task history</p>
                     </div>
                 </div>
             </section>
 
-            <!-- ÓœU: -->
+            <!-- Results Section -->
             <section class="results-section">
-                <h2>ÓœU:</h2>
+                <h2>Results</h2>
                 <div id="results-container" class="results-container">
-                    <p>Óœ(û¡Œ>:</p>
+                    <p>Results will appear here when tasks complete</p>
                 </div>
             </section>
 
-            <!-- å×“ú -->
+            <!-- Log Section -->
             <section class="log-section">
-                <h2>ûßå×</h2>
+                <h2>System Log</h2>
                 <div class="log-controls">
-                    <button id="auto-scroll-btn" class="btn btn-secondary active">ê¨Ú¨</button>
-                    <button id="export-log-btn" class="btn btn-secondary">üúå×</button>
+                    <button id="auto-scroll-btn" class="btn btn-secondary active">Auto Scroll</button>
+                    <button id="export-log-btn" class="btn btn-secondary">Export Log</button>
                 </div>
                 <div id="log-container" class="log-container">
                     <div id="log-output" class="log-output"></div>
@@ -110,74 +110,74 @@
             </section>
         </main>
 
-        <!-- ûßáo§¹ -->
+        <!-- Sidebar -->
         <aside class="sidebar">
             <div class="system-info">
-                <h3>ûßáo</h3>
+                <h3>System Info</h3>
                 <div id="system-info-content">
                     <div class="info-item">
-                        <label>ÝID:</label>
-                        <span id="session-id">*å</span>
+                        <label>Session ID:</label>
+                        <span id="session-id">Unknown</span>
                     </div>
                     <div class="info-item">
-                        <label>Þ¥¶:</label>
-                        <span id="ws-status">*Þ¥</span>
+                        <label>Connection:</label>
+                        <span id="ws-status">Disconnected</span>
                     </div>
                     <div class="info-item">
-                        <label>;Ãû¡:</label>
+                        <label>Active Tasks:</label>
                         <span id="active-tasks">0</span>
                     </div>
                 </div>
             </div>
 
             <div class="quick-actions">
-                <h3>ëÍ\</h3>
-                <button id="health-check-btn" class="btn btn-outline">e·Àå</button>
-                <button id="system-stats-btn" class="btn btn-outline">ûßß¡</button>
-                <button id="list-files-btn" class="btn btn-outline">‡öh</button>
+                <h3>Quick Actions</h3>
+                <button id="health-check-btn" class="btn btn-outline">Health Check</button>
+                <button id="system-stats-btn" class="btn btn-outline">System Stats</button>
+                <button id="list-files-btn" class="btn btn-outline">List Files</button>
             </div>
 
             <div class="shortcuts">
-                <h3>ëw.</h3>
+                <h3>Keyboard Shortcuts</h3>
                 <div class="shortcut-list">
                     <div class="shortcut-item">
                         <kbd>Ctrl</kbd> + <kbd>Enter</kbd>
-                        <span>gLå\A</span>
+                        <span>Execute Workflow</span>
                     </div>
                     <div class="shortcut-item">
                         <kbd>Ctrl</kbd> + <kbd>K</kbd>
-                        <span>zå×</span>
+                        <span>Clear Log</span>
                     </div>
                     <div class="shortcut-item">
                         <kbd>F5</kbd>
-                        <span>7°å\A</span>
+                        <span>Refresh Workflows</span>
                     </div>
                 </div>
             </div>
         </aside>
     </div>
 
-    <!-- !F -->
+    <!-- Modal Dialog -->
     <div id="modal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="modal-title">˜</h3>
+                <h3 id="modal-title">Title</h3>
                 <span class="modal-close">&times;</span>
             </div>
             <div class="modal-body" id="modal-body">
-                …¹
+                Content
             </div>
             <div class="modal-footer">
-                <button id="modal-ok" class="btn btn-primary">nš</button>
-                <button id="modal-cancel" class="btn btn-secondary">Öˆ</button>
+                <button id="modal-ok" class="btn btn-primary">OK</button>
+                <button id="modal-cancel" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
 
-    <!--  }:h -->
+    <!-- Loading Overlay -->
     <div id="loading" class="loading" style="display: none;">
         <div class="loading-spinner"></div>
-        <p>-...</p>
+        <p>Processing...</p>
     </div>
 
     <script src="js/app.js"></script>

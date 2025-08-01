@@ -1,5 +1,5 @@
 """
-˚ﬂ—ßAPIÔ1
+System API endpoints
 """
 
 import logging
@@ -13,9 +13,9 @@ router = APIRouter(prefix="/system", tags=["system"])
 
 @router.get("/health")
 async def health_check():
-    """˚ﬂe∑¿Â"""
+    """Health check endpoint"""
     try:
-        logger.debug("gL˚ﬂe∑¿Â")
+        logger.debug("Performing health check")
         
         async with rpc_client:
             comfyui_health = await rpc_client.health_check()
@@ -30,7 +30,7 @@ async def health_check():
         }
         
     except Exception as e:
-        logger.error(f"e∑¿Â1%: {e}")
+        logger.error(f"Health check failed: {e}")
         return {
             "success": False,
             "data": {
@@ -42,19 +42,19 @@ async def health_check():
 
 @router.get("/stats")
 async def get_system_stats():
-    """∑÷˚ﬂﬂ°·o"""
+    """Get system statistics"""
     try:
-        logger.debug("∑÷˚ﬂﬂ°·o")
+        logger.debug("Getting system statistics")
         
-        # ∑÷›ﬂ°
+        # Get session statistics
         session_stats = session_manager.get_session_stats()
         
-        # ∑÷ComfyUI°hﬂ°
+        # Get ComfyUI statistics
         try:
             async with rpc_client:
                 comfyui_stats = await rpc_client.get_system_stats()
         except Exception as e:
-            logger.warning(f"∑÷ComfyUIﬂ°1%: {e}")
+            logger.warning(f"Failed to get ComfyUI statistics: {e}")
             comfyui_stats = {"error": str(e)}
         
         return {
@@ -69,12 +69,12 @@ async def get_system_stats():
         }
         
     except Exception as e:
-        logger.error(f"∑÷˚ﬂﬂ°1%: {e}")
+        logger.error(f"Failed to get system statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/sessions")
 async def get_sessions():
-    """∑÷;√›h"""
+    """Get active sessions information"""
     try:
         active_sessions = session_manager.get_active_sessions()
         session_stats = session_manager.get_session_stats()
@@ -88,14 +88,14 @@ async def get_sessions():
         }
         
     except Exception as e:
-        logger.error(f"∑÷›h1%: {e}")
+        logger.error(f"Failed to get sessions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/parse-filename")
 async def parse_filename(filename: str):
-    """„êáˆ"""
+    """Parse filename"""
     try:
-        logger.debug(f"„êáˆ: {filename}")
+        logger.debug(f"Parsing filename: {filename}")
         
         async with rpc_client:
             result = await rpc_client.parse_filename(filename)
@@ -106,5 +106,5 @@ async def parse_filename(filename: str):
         }
         
     except Exception as e:
-        logger.error(f"„êáˆ1%: {e}")
+        logger.error(f"Failed to parse filename: {e}")
         raise HTTPException(status_code=500, detail=str(e))

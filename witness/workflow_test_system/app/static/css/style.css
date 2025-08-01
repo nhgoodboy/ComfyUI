@@ -1,4 +1,4 @@
-/* ComfyUIå\AKÕûß7 */
+/* ComfyUI Workflow Test System Styles */
 
 * {
     margin: 0;
@@ -83,7 +83,7 @@ body {
     gap: 20px;
 }
 
-/* (aG7 */
+/* Card component styles */
 .control-panel,
 .status-monitor,
 .results-section,
@@ -110,7 +110,7 @@ body {
     padding-bottom: 5px;
 }
 
-/* 	®7 */
+/* Button styles */
 .btn {
     padding: 8px 16px;
     border: none;
@@ -178,7 +178,7 @@ body {
     color: white;
 }
 
-/* hUC 7 */
+/* Form input styles */
 select, input, textarea {
     padding: 8px 12px;
     border: 1px solid #ddd;
@@ -200,7 +200,7 @@ label {
     color: #555;
 }
 
-/* §6b7 */
+/* Workflow selection styles */
 .workflow-selection {
     display: flex;
     gap: 10px;
@@ -244,7 +244,7 @@ label {
     flex-wrap: wrap;
 }
 
-/* ¶Ñ§7 */
+/* Status monitoring styles */
 .current-task {
     margin-bottom: 30px;
 }
@@ -337,7 +337,7 @@ label {
     margin-top: 5px;
 }
 
-/* ÓœU:7 */
+/* Results display styles */
 .results-container {
     min-height: 200px;
     border: 2px dashed #e9ecef;
@@ -366,7 +366,7 @@ label {
     justify-content: center;
 }
 
-/* å×7 */
+/* Log styles */
 .log-controls {
     display: flex;
     gap: 10px;
@@ -414,7 +414,7 @@ label {
     font-size: 11px;
 }
 
-/* §¹7 */
+/* System info styles */
 .info-item {
     display: flex;
     justify-content: space-between;
@@ -455,7 +455,7 @@ kbd {
     font-family: monospace;
 }
 
-/* !F7 */
+/* Modal styles */
 .modal {
     position: fixed;
     top: 0;
@@ -507,7 +507,7 @@ kbd {
     gap: 10px;
 }
 
-/*  }:h */
+/* Loading overlay */
 .loading {
     position: fixed;
     top: 0;
@@ -537,7 +537,7 @@ kbd {
     100% { transform: rotate(360deg); }
 }
 
-/* Í”¾¡ */
+/* Responsive design */
 @media (max-width: 1200px) {
     .container {
         grid-template-columns: 1fr;
@@ -580,7 +580,7 @@ kbd {
     }
 }
 
-/* ¶:h */
+/* Status indicator styles */
 .status-indicator {
     display: inline-block;
     width: 8px;
@@ -601,7 +601,7 @@ kbd {
     background-color: #007bff;
 }
 
-/* ¨;Hœ */
+/* Animation effects */
 .fade-in {
     animation: fadeIn 0.3s ease-in;
 }

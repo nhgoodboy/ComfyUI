@@ -1,5 +1,5 @@
 """
-ComfyUI�\A�hRPC�7�
+ComfyUI工作流服务器RPC客户端
 """
 
 import asyncio
@@ -13,7 +13,7 @@ from ..config import config
 logger = logging.getLogger(__name__)
 
 class ComfyUIRPCClient:
-    """ComfyUI RPC�7�"""
+    """ComfyUI RPC客户端"""
     
     def __init__(self):
         self.base_url = config.COMFYUI_WORKFLOW_SERVER_URL.rstrip('/')
@@ -22,8 +22,7 @@ class ComfyUIRPCClient:
         self.request_counter = 0
     
     async def __aenter__(self):
-        """e
-��he�"""
+        """异步上下文管理器进入"""
         if not self.session or self.session.closed:
             timeout = aiohttp.ClientTimeout(total=config.WEBSOCKET_TIMEOUT)
             self.session = aiohttp.ClientSession(
@@ -33,21 +32,20 @@ class ComfyUIRPCClient:
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """e
-��h��"""
+        """异步上下文管理器退出"""
         if self.session and not self.session.closed:
             await self.session.close()
     
     def _generate_request_id(self) -> str:
-        """�BID"""
+        """生成请求ID"""
         self.request_counter += 1
         return f"rpc_{int(time.time() * 1000)}_{self.request_counter}"
     
     async def call(self, method: str, params: Optional[Dict[str, Any]] = None, 
                    request_id: Optional[str] = None) -> Dict[str, Any]:
-        """(RPC��"""
+        """调用RPC方法"""
         if not self.session or self.session.closed:
-            raise RuntimeError("RPC�7�*��(async with��")
+            raise RuntimeError("RPC客户端未初始化，请使用async with语句")
         
         if params is None:
             params = {}
@@ -61,7 +59,7 @@ class ComfyUIRPCClient:
             "id": request_id
         }
         
-        logger.debug(f"RPC(: {method}, �p: {params}")
+        logger.debug(f"RPC调用: {method}, 参数: {params}")
         
         try:
             async with self.session.post(self.rpc_url, json=payload) as response:
@@ -72,25 +70,25 @@ class ComfyUIRPCClient:
                 
                 if "error" in result:
                     error = result["error"]
-                    error_msg = f"RPC� [{error['code']}]: {error['message']}"
+                    error_msg = f"RPC错误 [{error['code']}]: {error['message']}"
                     if "data" in error:
                         error_msg += f" - {error['data']}"
                     raise Exception(error_msg)
                 
-                logger.debug(f"RPC͔: {method} -> �")
+                logger.debug(f"RPC响应: {method} -> 成功")
                 return result["result"]
                 
         except aiohttp.ClientError as e:
-            logger.error(f"RPCQ��: {method} - {e}")
-            raise Exception(f"Q�ޥ1%: {str(e)}")
+            logger.error(f"RPC网络错误: {method} - {e}")
+            raise Exception(f"网络连接失败: {str(e)}")
         except json.JSONDecodeError as e:
-            logger.error(f"RPC͔��: {method} - {e}")
-            raise Exception(f"͔<�: {str(e)}")
+            logger.error(f"RPC响应解析错误: {method} - {e}")
+            raise Exception(f"响应格式错误: {str(e)}")
     
-    # �\A�s��
+    # 工作流相关方法
     async def execute_workflow(self, request_id: str, workflow_id: str, 
                              params: Dict[str, Any]) -> Dict[str, Any]:
-        """gL�\A"""
+        """执行工作流"""
         return await self.call("workflow.execute", {
             "request_id": request_id,
             "workflow_id": workflow_id,
@@ -98,76 +96,76 @@ class ComfyUIRPCClient:
         })
     
     async def get_workflow_status(self, request_id: str) -> Dict[str, Any]:
-        """���\A�"""
+        """获取工作流状态"""
         return await self.call("workflow.get_status", {
             "request_id": request_id
         })
     
     async def get_workflow_result(self, request_id: str) -> Dict[str, Any]:
-        """���\AӜ"""
+        """获取工作流结果"""
         return await self.call("workflow.get_result", {
             "request_id": request_id
         })
     
     async def cancel_workflow(self, request_id: str) -> Dict[str, Any]:
-        """ֈ�\A"""
+        """取消工作流"""
         return await self.call("workflow.cancel", {
             "request_id": request_id
         })
     
     async def list_workflows(self) -> Dict[str, Any]:
-        """���\Ah"""
+        """列出工作流"""
         return await self.call("workflow.list")
     
     async def get_workflow_schema(self, workflow_id: str) -> Dict[str, Any]:
-        """���\A�p!"""
+        """获取工作流参数模式"""
         return await self.call("workflow.get_schema", {
             "workflow_id": workflow_id
         })
     
     async def search_workflows(self, query: Optional[str] = None) -> Dict[str, Any]:
-        """"�\A"""
+        """搜索工作流"""
         params = {}
         if query:
             params["query"] = query
         return await self.call("workflow.search", params)
     
-    # ���s��
+    # 文件相关方法
     async def get_output_image(self, filename: str) -> Dict[str, Any]:
-        """�֓��G"""
+        """获取输出图像"""
         return await self.call("files.get_output_image", {
             "filename": filename
         })
     
     async def get_output_image_info(self, filename: str) -> Dict[str, Any]:
-        """�֓��G�o"""
+        """获取输出图像信息"""
         return await self.call("files.get_output_image_info", {
             "filename": filename
         })
     
     async def list_output_images(self, limit: int = 100, offset: int = 0,
                                pattern: str = "*") -> Dict[str, Any]:
-        """����G"""
+        """列出输出图像"""
         return await self.call("files.list_output_images", {
             "limit": limit,
             "offset": offset,
             "pattern": pattern
         })
     
-    # ���s��
+    # 系统相关方法
     async def health_check(self) -> Dict[str, Any]:
-        """��e���"""
+        """健康检查"""
         return await self.call("system.health")
     
     async def get_system_stats(self) -> Dict[str, Any]:
-        """����ߡ"""
+        """获取系统统计"""
         return await self.call("system.get_stats")
     
     async def parse_filename(self, filename: str) -> Dict[str, Any]:
-        """㐇�"""
+        """解析文件名"""
         return await self.call("system.parse_filename", {
             "filename": filename
         })
 
-# h@RPC�7
+# 全局RPC客户端实例
 rpc_client = ComfyUIRPCClient()

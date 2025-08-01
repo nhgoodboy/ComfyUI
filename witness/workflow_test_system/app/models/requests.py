@@ -1,49 +1,49 @@
 """
-÷BŒÍ”!‹
+Request and response models for the workflow test system
 """
 
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 
 class RPCRequest(BaseModel):
-    """RPC÷B!‹"""
+    """RPC request model"""
     method: str
     params: Optional[Dict[str, Any]] = None
     id: Optional[str] = None
 
 class RPCResponse(BaseModel):
-    """RPCÍ”!‹"""
+    """RPC response model"""
     result: Optional[Any] = None
     error: Optional[Dict[str, Any]] = None
     id: Optional[str] = None
 
 class WorkflowExecuteRequest(BaseModel):
-    """å\AgL÷B"""
+    """Workflow execution request"""
     workflow_id: str
     params: Dict[str, Any]
     request_id: Optional[str] = None
 
 class WorkflowStatusRequest(BaseModel):
-    """å\A¶åâ÷B"""
+    """Workflow status query request"""
     request_id: str
 
 class FileGetRequest(BaseModel):
-    """‡ö·Ö÷B"""
+    """File retrieval request"""
     filename: str
 
 class FileListRequest(BaseModel):
-    """‡öh÷B"""  
+    """File list request"""  
     limit: Optional[int] = 100
     offset: Optional[int] = 0
     pattern: Optional[str] = "*"
 
 class SessionCreateResponse(BaseModel):
-    """ÝúÍ”"""
+    """Session creation response"""
     session_id: str
     created_at: str
 
 class TaskStatusResponse(BaseModel):
-    """û¡¶Í”"""
+    """Task status response"""
     request_id: str
     status: str
     progress: float

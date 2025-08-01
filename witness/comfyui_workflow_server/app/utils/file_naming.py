@@ -1,13 +1,13 @@
 """
 文件命名工具
 
-提供文件命名规范的验证和生成功能
+提供简化的文件命名规范：{request_id}_{type}.{ext}
 """
 
 import re
 import logging
 from pathlib import Path
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional
 from urllib.parse import urlparse
 
 from ..rpc.exceptions import RPCInvalidParams
@@ -19,9 +19,8 @@ logger = logging.getLogger(__name__)
 class FileNamingUtils:
     """文件命名工具类"""
     
-    # 文件命名模式: {style_id}_{request_id}_{type}.{ext}
-    # 更新正则表达式以支持UUID格式的request_id，包含下划线的style_id
-    FILENAME_PATTERN = re.compile(r'^(.+)_([a-f0-9\-]+)_(input|output)\.([a-zA-Z0-9]+)$')
+    # 文件命名模式: {request_id}_{type}.{ext}
+    FILENAME_PATTERN = re.compile(r'^([a-zA-Z0-9\-]+)_(input|output)\.([a-zA-Z0-9]+)$')
     
     # 允许的文件扩展名
     ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
@@ -30,18 +29,19 @@ class FileNamingUtils:
     ALLOWED_TYPES = {"input", "output"}
     
     @classmethod
-    def parse_filename_with_known_styles(cls, filename: str, known_style_ids: List[str]) -> Tuple[str, str, str, str]:
+    def parse_filename(cls, filename: str) -> Tuple[str, str, str]:
         """
-        基于已知的style_id列表解析文件名
+        解析文件名
         
         Args:
             filename: 文件名
-            known_style_ids: 已知的风格ID列表
-            
+        
         Returns:
-            Tuple[str, str, str, str]: (workflow_id, request_id, file_type, extension)
+            Tuple[str, str, str]: (request_id, file_type, extension)
+        
+        Raises:
+            RPCInvalidParams: 文件名格式不符合规范
         """
-        # 分离扩展名
         if '.' not in filename:
             raise RPCInvalidParams(
                 message="文件名必须包含扩展名",
@@ -51,88 +51,25 @@ class FileNamingUtils:
         
         name_without_ext, extension = filename.rsplit('.', 1)
         
-        # 分离出type部分
-        if name_without_ext.endswith('_input'):
-            file_type = 'input'
-            name_without_type = name_without_ext[:-6]
-        elif name_without_ext.endswith('_output'):
-            file_type = 'output'  
-            name_without_type = name_without_ext[:-7]
-        else:
+        # 检查是否符合命名模式
+        match = cls.FILENAME_PATTERN.match(filename)
+        if not match:
             raise RPCInvalidParams(
-                message="文件名必须以 '_input' 或 '_output' 结尾",
+                message="文件名格式错误：应为{request_id}_{input|output}.{ext}",
                 field="filename",
                 value=filename
             )
         
-        # 基于已知的style_id找到正确的分割点
-        for style_id in known_style_ids:
-            if name_without_type.startswith(style_id + '_'):
-                remaining = name_without_type[len(style_id) + 1:]  # +1 for the underscore
-                # remaining 就是 request_id
-                request_id = remaining
-                return style_id, request_id, file_type, extension.lower()
-        
-        # 如果没有找到匹配的style_id，回退到原来的逻辑
-        return cls.parse_filename_fallback(filename)
-    
-    @classmethod 
-    def parse_filename_fallback(cls, filename: str) -> Tuple[str, str, str, str]:
-        """回退的文件名解析方法"""
-        name_without_ext, extension = filename.rsplit('.', 1)
-        
-        if name_without_ext.endswith('_input'):
-            file_type = 'input'
-            remaining = name_without_ext[:-6]
-        elif name_without_ext.endswith('_output'):
-            file_type = 'output'
-            remaining = name_without_ext[:-7]
-        else:
-            raise RPCInvalidParams(
-                message="文件名必须以 '_input' 或 '_output' 结尾",
-                field="filename",
-                value=filename
-            )
-        
-        # 寻找最后一个下划线来分离style_id和request_id
-        parts = remaining.split('_')
-        if len(parts) < 2:
-            raise RPCInvalidParams(
-                message="文件名格式错误：应为{style_id}_{request_id}_{type}.{ext}",
-                field="filename",
-                value=filename
-            )
-        
-        # 最后一个部分是request_id，其余为style_id
-        request_id = parts[-1]
-        style_id = '_'.join(parts[:-1])
-        
-        return style_id, request_id, file_type, extension.lower()
-
-    @classmethod
-    def parse_filename(cls, filename: str) -> Tuple[str, str, str, str]:
-        """
-        解析文件名
-        
-        Args:
-            filename: 文件名
-        
-        Returns:
-            Tuple[str, str, str, str]: (workflow_id, request_id, file_type, extension)
-        
-        Raises:
-            RPCInvalidParams: 文件名格式不符合规范
-        """
-        return cls.parse_filename_fallback(filename)
+        request_id, file_type, extension = match.groups()
+        return request_id, file_type, extension.lower()
     
     @classmethod
-    def build_filename(cls, style_id: str, request_id: str, file_type: str, extension: str = "jpg") -> str:
+    def build_filename(cls, request_id: str, file_type: str, extension: str = "jpg") -> str:
         """
         构建文件名
         
         Args:
-            style_id: 风格ID
-            request_id: 请求ID (不能包含下划线)
+            request_id: 请求ID
             file_type: 文件类型 (input/output)
             extension: 文件扩展名 (不含点号)
         
@@ -143,9 +80,6 @@ class FileNamingUtils:
             RPCInvalidParams: 参数无效
         """
         # 验证参数
-        if not style_id or not isinstance(style_id, str):
-            raise RPCInvalidParams("风格ID不能为空", "style_id", style_id)
-        
         if not request_id or not isinstance(request_id, str):
             raise RPCInvalidParams("请求ID不能为空", "request_id", request_id)
         
@@ -170,24 +104,21 @@ class FileNamingUtils:
                 }
             )
         
-        # 清理和验证ID
-        style_id = cls._clean_id(style_id)
-        request_id = cls._clean_id_no_underscore(request_id)
+        # 清理和验证request_id
+        request_id = cls._clean_request_id(request_id)
         
-        filename = f"{style_id}_{request_id}_{file_type}{extension.lower()}"
+        filename = f"{request_id}_{file_type}{extension.lower()}"
         return filename
     
     @classmethod
-    def validate_url_filename(cls, url: str, expected_style_id: str, expected_request_id: str, expected_type: str = "input", known_style_ids: Optional[List[str]] = None) -> str:
+    def validate_url_filename(cls, url: str, expected_request_id: str, expected_type: str = "input") -> str:
         """
         验证URL中的文件名是否符合规范
         
         Args:
             url: 图片URL
-            expected_style_id: 期望的风格ID
             expected_request_id: 期望的请求ID
             expected_type: 期望的文件类型
-            known_style_ids: 已知的风格ID列表（用于更准确的解析）
         
         Returns:
             str: 解析出的文件名
@@ -206,24 +137,10 @@ class FileNamingUtils:
                     {"url": url}
                 )
             
-            # 解析文件名 - 使用智能解析方法如果提供了已知风格ID
-            if known_style_ids:
-                style_id, request_id, file_type, extension = cls.parse_filename_with_known_styles(filename, known_style_ids)
-            else:
-                workflow_id, request_id, file_type, extension = cls.parse_filename(filename)
+            # 解析文件名
+            request_id, file_type, extension = cls.parse_filename(filename)
             
             # 验证参数匹配
-            if style_id != expected_style_id:
-                raise RPCInvalidParams(
-                    "URL中的风格ID与请求参数不匹配",
-                    "filename",
-                    {
-                        "url_style_id": style_id,
-                        "expected_style_id": expected_style_id,
-                        "filename": filename
-                    }
-                )
-            
             if request_id != expected_request_id:
                 raise RPCInvalidParams(
                     "URL中的请求ID与请求参数不匹配",
@@ -268,7 +185,7 @@ class FileNamingUtils:
         Returns:
             str: 输出文件名
         """
-        style_id, request_id, file_type, extension = cls.parse_filename(input_filename)
+        request_id, file_type, extension = cls.parse_filename(input_filename)
         
         if file_type != "input":
             raise RPCInvalidParams(
@@ -278,51 +195,22 @@ class FileNamingUtils:
             )
         
         # 输出文件通常使用PNG格式以保证质量
-        return cls.build_filename(style_id, request_id, "output", "png")
+        return cls.build_filename(request_id, "output", "png")
     
     @classmethod
-    def _clean_id(cls, id_str: str) -> str:
-        """清理ID字符串，移除不安全字符"""
-        # 只保留字母、数字和下划线
-        cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', id_str)
-        
-        # 移除连续的下划线
-        cleaned = re.sub(r'_+', '_', cleaned)
-        
-        # 移除首尾下划线
-        cleaned = cleaned.strip('_')
-        
-        if not cleaned:
-            raise RPCInvalidParams(
-                "ID不能为空或只包含特殊字符",
-                "id",
-                id_str
-            )
-        
-        return cleaned
-    
-    @classmethod
-    def _clean_id_no_underscore(cls, id_str: str) -> str:
-        """清理ID字符串，移除所有不安全字符包括下划线"""
+    def _clean_request_id(cls, request_id: str) -> str:
+        """清理请求ID字符串，只保留字母、数字和连字符"""
         # 只保留字母、数字和连字符
-        cleaned = re.sub(r'[^a-zA-Z0-9\-]', '', id_str)
+        cleaned = re.sub(r'[^a-zA-Z0-9\-]', '', request_id)
         
         if not cleaned:
             raise RPCInvalidParams(
-                "ID不能为空或只包含特殊字符",
-                "id",
-                id_str
+                "请求ID不能为空或只包含特殊字符",
+                "request_id",
+                request_id
             )
         
         return cleaned
-    
-    @classmethod
-    def validate_style_id(cls, style_id: str) -> str:
-        """验证和清理风格ID"""
-        if not style_id or not isinstance(style_id, str):
-            raise RPCInvalidParams("风格ID不能为空", "style_id", style_id)
-        
-        return cls._clean_id(style_id)
     
     @classmethod
     def validate_request_id(cls, request_id: str) -> str:
@@ -330,7 +218,7 @@ class FileNamingUtils:
         if not request_id or not isinstance(request_id, str):
             raise RPCInvalidParams("请求ID不能为空", "request_id", request_id)
         
-        return cls._clean_id_no_underscore(request_id)
+        return cls._clean_request_id(request_id)
     
     @classmethod
     def extract_file_info(cls, filename: str) -> dict:
@@ -343,16 +231,11 @@ class FileNamingUtils:
         Returns:
             dict: 文件信息
         """
-        workflow_id, request_id, file_type, extension = cls.parse_filename(filename)
+        request_id, file_type, extension = cls.parse_filename(filename)
         
         return {
-            "workflow_id": workflow_id,
             "request_id": request_id,
             "file_type": file_type,
             "extension": extension,
             "filename": filename
         }
-
-    # 兼容性别名
-    parse_filename_with_known_styles = parse_filename_with_known_workflows
-    validate_style_id = validate_workflow_id
