@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
 RUN groupadd -r appgroup && useradd -r -g appgroup -u 1000 appuser
 
 # 创建必要的目录并设置权限
-RUN mkdir -p /app/logs /app/temp && \
+RUN mkdir -p /app/logs /app/temp /app/outputs /app/uploads /app/workflows /app/configs && \
     chown -R appuser:appgroup /app
 
 # 复制requirements.txt并安装依赖（利用Docker缓存层）
@@ -45,9 +45,9 @@ USER appuser
 EXPOSE 8000
 
 # 添加标签
-LABEL maintainer="Style Transform API Team" \
-      version="1.0.0" \
-      description="Style Transform API based on ComfyUI"
+LABEL maintainer="ComfyUI Workflow Server Team" \
+      version="2.0.0" \
+      description="ComfyUI工作流处理服务器 - RPC风格的微服务架构"
 
 # 健康检查（更详细的检查）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
@@ -57,10 +57,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 ENV HOST=0.0.0.0 \
     PORT=8000 \
     WORKERS=1 \
-    LOG_LEVEL=INFO
+    LOG_LEVEL=INFO \
+    DEBUG=false
 
-# 创建卷挂载点（用于日志和临时文件）
-VOLUME ["/app/logs", "/app/temp"]
+# 创建卷挂载点（用于持久化数据）
+VOLUME ["/app/logs", "/app/uploads", "/app/outputs", "/app/workflows", "/app/configs"]
 
 # 启动命令（使用优化的启动脚本）
 CMD ["python", "start.py", "--host", "0.0.0.0", "--port", "8000"] 
