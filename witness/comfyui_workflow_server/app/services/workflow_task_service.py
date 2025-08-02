@@ -101,7 +101,7 @@ class WorkflowTaskService:
         
         # 验证工作流存在
         if not self.workflow_registry.workflow_exists(workflow_id):
-            available_workflows = list(self.workflow_registry.get_available_workflows().keys())
+            available_workflows = [wf.id for wf in self.workflow_registry.get_all_workflows()]
             raise RPCWorkflowError(
                 code=ErrorCodes.WORKFLOW_NOT_FOUND,
                 message=f"工作流不存在: {workflow_id}",

@@ -189,9 +189,9 @@ async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str
         # 统计工作流信息
         if hasattr(request.app.state, 'workflow_registry'):
             workflow_registry = request.app.state.workflow_registry
-            available_workflows = workflow_registry.get_available_workflows()
+            available_workflows = workflow_registry.get_all_workflows()
             stats["workflows"]["total"] = len(available_workflows)
-            stats["workflows"]["available"] = list(available_workflows.keys())
+            stats["workflows"]["available"] = [wf.id for wf in available_workflows]
         
         return stats
         
