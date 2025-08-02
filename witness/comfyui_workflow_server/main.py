@@ -301,7 +301,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     
     client_id 可以是:
     - request_id: 特定请求的连接
-    - "web_image_transform_service": 服务级连接
+    - "workflow_test_system": 服务级连接
     """
     await push_manager.connect(websocket, client_id)
     try:

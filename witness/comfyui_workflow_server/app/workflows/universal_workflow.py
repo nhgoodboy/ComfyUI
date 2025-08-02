@@ -355,7 +355,7 @@ class UniversalWorkflowExecutor(BaseWorkflow):
         try:
             from app.config import get_settings
             settings = get_settings()
-            return f"http://{settings.server.host}:{settings.server.port}"
+            return f"http://{settings.host}:{settings.port}"
         except Exception as e:
             self.logger.warning(f"获取服务器配置失败，使用默认值: {e}")
             return "http://127.0.0.1:8000"

@@ -262,8 +262,25 @@ class WorkflowTaskService:
                     # 记录输入文件映射
                     input_files[param_name] = local_file_path
                     
-                    # 更新参数为本地文件路径
-                    processed_params[param_name] = local_file_path
+                    # 上传文件到ComfyUI
+                    try:
+                        with open(local_file_path, 'rb') as f:
+                            image_data = f.read()
+                        
+                        # 使用文件名（不包含路径）上传到ComfyUI
+                        from pathlib import Path
+                        filename_only = Path(local_file_path).name
+                        comfyui_filename = await self.comfyui_service.upload_image(image_data, filename_only)
+                        
+                        # 更新参数为ComfyUI中的文件名（不包含uploads/前缀）
+                        processed_params[param_name] = comfyui_filename
+                        
+                        logger.info(f"文件已上传到ComfyUI: {param_name} -> {comfyui_filename}")
+                        
+                    except Exception as e:
+                        logger.error(f"上传文件到ComfyUI失败: {param_name} - {e}")
+                        # 如果上传失败，使用本地路径（可能导致ComfyUI错误）
+                        processed_params[param_name] = local_file_path
                     
                     logger.info(f"参数 {param_name} 文件处理完成: {local_file_path}")
                     
@@ -464,14 +481,11 @@ class WorkflowTaskService:
                 "timestamp": time.time()
             }
             
-            # 推送到特定请求ID的连接
-            await push_manager.push_to_client(task_data.request_id, {
-                "type": "task_update",
-                "data": update_data
-            })
-            
             # 推送到全局服务连接
-            await push_manager.push_to_client("web_image_transform_service", {
+            from ..config import get_settings
+            settings = get_settings()
+            service_client_id = settings.websocket.service_client_id
+            await push_manager.push_to_client(service_client_id, {
                 "type": "task_update", 
                 "data": update_data
             })

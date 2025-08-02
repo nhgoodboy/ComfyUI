@@ -719,7 +719,7 @@ WebSocket 端点: `ws://host:port/ws/{client_id}`
 
 **连接模式**:
 - **请求级连接**: 使用 `request_id` 作为 `client_id`，只接收特定任务的更新
-- **服务级连接**: 使用固定服务ID（如 `web_image_transform_service`），接收所有任务更新
+- **服务级连接**: 使用固定服务ID（如 `workflow_test_system`），接收所有任务更新
 
 ### 6.2 消息格式
 
