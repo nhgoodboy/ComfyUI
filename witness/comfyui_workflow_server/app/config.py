@@ -15,6 +15,50 @@ from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
+class WorkflowConfig:
+    """工作流任务配置"""
+    
+    def __init__(self):
+        self.max_concurrent_tasks = int(os.getenv("MAX_CONCURRENT_WORKFLOWS", "3"))
+        self.task_timeout = int(os.getenv("WORKFLOW_TASK_TIMEOUT", "300"))
+        self.status_check_interval = int(os.getenv("WORKFLOW_STATUS_CHECK_INTERVAL", "2"))
+
+
+class WebSocketConfig:
+    """WebSocket配置"""
+    
+    def __init__(self):
+        self.connection_timeout = int(os.getenv("WEBSOCKET_CONNECTION_TIMEOUT", "30"))
+        self.ping_interval = int(os.getenv("WEBSOCKET_PING_INTERVAL", "30"))
+        self.ping_timeout = int(os.getenv("WEBSOCKET_PING_TIMEOUT", "10"))
+        self.max_connections = int(os.getenv("WEBSOCKET_MAX_CONNECTIONS", "100"))
+
+
+class MonitoringConfig:
+    """监控配置"""
+    
+    def __init__(self):
+        self.health_check_interval = int(os.getenv("HEALTH_CHECK_INTERVAL", "30"))
+        self.enable_detailed_stats = os.getenv("ENABLE_DETAILED_STATS", "true").lower() == "true"
+        
+        # 文件清理配置
+        self.enable_auto_cleanup = os.getenv("ENABLE_AUTO_CLEANUP", "true").lower() == "true"
+        self.temp_file_retention_hours = int(os.getenv("TEMP_FILE_RETENTION_HOURS", "2"))
+        self.input_file_retention_days = int(os.getenv("INPUT_FILE_RETENTION_DAYS", "7"))
+        self.output_file_retention_days = int(os.getenv("OUTPUT_FILE_RETENTION_DAYS", "30"))
+        self.cleanup_interval_hours = int(os.getenv("CLEANUP_INTERVAL_HOURS", "6"))
+
+
+class SecurityConfig:
+    """安全配置"""
+    
+    def __init__(self):
+        self.enable_rate_limiting = os.getenv("ENABLE_RATE_LIMITING", "false").lower() == "true"
+        self.max_requests_per_minute = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "60"))
+        self.check_file_mime_type = os.getenv("CHECK_FILE_MIME_TYPE", "true").lower() == "true"
+        self.max_filename_length = int(os.getenv("MAX_FILENAME_LENGTH", "255"))
+
+
 class ComfyUIConfig:
     """ComfyUI服务配置"""
     
@@ -86,6 +130,10 @@ class AppConfig:
         # 服务配置
         self.comfyui = ComfyUIConfig()
         self.storage = StorageConfig()
+        self.workflow = WorkflowConfig()
+        self.websocket = WebSocketConfig()
+        self.monitoring = MonitoringConfig()
+        self.security = SecurityConfig()
         
         # 日志配置
         self.log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -158,7 +206,7 @@ class AppConfig:
         """获取FastAPI配置"""
         return {
             "title": "ComfyUI Workflow Server",
-            "description": "简化的ComfyUI工作流微服务",
+            "description": "ComfyUI工作流微服务",
             "version": "2.0.0",
             "debug": self.debug,
             "openapi_url": "/openapi.json" if self.debug else None,

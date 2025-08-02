@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
         logger.info("ComfyUI 服务初始化完成。")
 
         logger.debug("正在初始化工作流注册表...")
-        workflow_config_path = settings.storage.configs_dir / "workflows.yaml"
+        workflow_config_path = settings.storage.workflows_dir / "workflows.yaml"
         workflow_registry = WorkflowRegistry(
             config_file=str(workflow_config_path),
             comfyui_service=comfyui_service

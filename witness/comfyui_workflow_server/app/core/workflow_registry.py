@@ -123,7 +123,8 @@ class WorkflowRegistry:
             return None
         
         # 构建模板文件的完整路径
-        template_dir = self.config_file.parent.parent / "workflows"
+        # config_file 现在在 workflows/ 目录中，模板文件也在同一目录
+        template_dir = self.config_file.parent
         return template_dir / workflow.template_file
     
     def get_workflow_parameters(self, workflow_id: str) -> Dict[str, WorkflowParameter]:
