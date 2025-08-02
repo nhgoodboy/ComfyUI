@@ -100,7 +100,11 @@ DEBUG=false
 #### 5. 启动服务
 
 ```bash
+# 推荐使用 start.py（支持命令行参数）
 python start.py
+
+# 或者直接运行 main.py
+python main.py
 ```
 
 ### 🌐 验证安装
@@ -255,10 +259,10 @@ comfyui_workflow_server/
 │   │   └── ...
 │   ├── services/          # 业务服务
 │   └── utils/            # 工具类
-├── configs/               # 配置文件
+├── workflows/             # 工作流模板和配置
 │   ├── workflows.yaml     # 工作流配置
-│   └── rpc_config.yaml   # RPC 配置
-├── workflows/             # 工作流模板
+│   ├── anime_style_transform.json  # 工作流模板
+│   └── clay_style_transform.json   # 工作流模板
 ├── logs/                  # 日志文件
 ├── uploads/               # 上传文件
 ├── outputs/               # 输出文件
@@ -266,21 +270,21 @@ comfyui_workflow_server/
 ├── env.template          # 配置模板
 ├── Dockerfile            # Docker 配置
 ├── requirements.txt      # Python 依赖
-├── main.py              # 主应用
-├── start.py             # 启动脚本
+├── main.py              # FastAPI 应用定义
+├── start.py             # 启动脚本（推荐）
 └── README.md            # 项目文档
 ```
 
 ### ⚙️ 工作流配置
 
-在 `configs/workflows.yaml` 中配置可用的工作流：
+在 `workflows/workflows.yaml` 中配置可用的工作流：
 
 ```yaml
 workflows:
   anime_style_transform:
     name: \"动漫风格转换\"
     description: \"将真实图片转换为动漫风格\"
-    workflow_file: \"anime_style_transform.json\"
+    template_file: \"anime_style_transform.json\"
     parameters:
       strength:
         type: \"float\"
@@ -388,7 +392,7 @@ telnet localhost 8188
 **解决方案**:
 ```bash
 # 检查工作流配置
-cat configs/workflows.yaml
+cat workflows/workflows.yaml
 
 # 检查 ComfyUI 日志
 docker logs comfyui-container
@@ -455,12 +459,12 @@ python start.py
 
 2. **配置工作流参数**：
    ```yaml
-   # 在 configs/workflows.yaml 中添加配置
+   # 在 workflows/workflows.yaml 中添加配置
    workflows:
      my_new_workflow:
        name: \"我的新工作流\"
        description: \"工作流描述\"
-       workflow_file: \"my_new_workflow.json\"
+       template_file: \"my_new_workflow.json\"
        parameters:
          # 定义参数
    ```

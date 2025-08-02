@@ -19,22 +19,6 @@ workflows:
         required: true
         validation:
           accept: ["jpg", "jpeg", "png", "webp"]
-      
-      prompt:
-        type: "string"
-        description: "风格描述文字"
-        default: "Clay Style, lovely, 3D, cute"
-        node_path: "24.inputs.clip_l"
-        required: false
-      
-      guidance:
-        type: "float"
-        description: "引导强度，控制风格转换的强度"
-        default: 10.0
-        node_path: "24.inputs.guidance"
-        required: false
-        validation:
-          range: [1.0, 20.0]
 
   anime_style_transform:
     name: "动漫风格转换"
@@ -52,22 +36,6 @@ workflows:
         required: true
         validation:
           accept: ["jpg", "jpeg", "png", "webp"]
-      
-      prompt:
-        type: "string"
-        description: "动漫风格描述"
-        default: "anime style, vibrant colors, manga style"
-        node_path: "24.inputs.clip_l"
-        required: false
-      
-      guidance:
-        type: "float"
-        description: "引导强度"
-        default: 10.0
-        node_path: "24.inputs.guidance"
-        required: false
-        validation:
-          range: [1.0, 20.0]
 
   person_scene_merge:
     name: "人物场景融合"
