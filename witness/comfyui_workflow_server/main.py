@@ -154,6 +154,11 @@ outputs_dir = "outputs"
 if not os.path.exists(outputs_dir):
     os.makedirs(outputs_dir)
 
+# 确保上传目录存在（仅用于输入文件）
+uploads_dir = "uploads"
+if not os.path.exists(uploads_dir):
+    os.makedirs(uploads_dir)
+
 # 挂载输出目录为静态文件服务
 app.mount("/outputs", StaticFiles(directory=outputs_dir), name="outputs")
 

@@ -414,10 +414,10 @@ class WorkflowTaskService:
                     task_data.request_id, 
                     extension
                 )
-                new_file_path = Path("uploads") / new_filename
+                new_file_path = Path("outputs") / new_filename
                 
-                # 复制文件到新位置
-                shutil.copy2(original_path, new_file_path)
+                # 重命名文件（移动到新位置）
+                original_path.rename(new_file_path)
                 
                 # 更新任务数据
                 task_data.output_file = str(new_file_path)
@@ -425,7 +425,7 @@ class WorkflowTaskService:
                 # 更新输出图片信息
                 main_output['filepath'] = str(new_file_path)
                 main_output['filename'] = new_filename
-                main_output['url'] = f"/uploads/{new_filename}"
+                main_output['url'] = f"/outputs/{new_filename}"
                 
                 logger.info(f"输出文件重命名: {original_path} -> {new_file_path}")
                 
@@ -442,13 +442,13 @@ class WorkflowTaskService:
                     if orig_path.exists() and orig_path.is_file():
                         ext = orig_path.suffix.lstrip('.')
                         # 为额外的输出文件添加序号
-                        new_name = f"{task_data.task_file_id}_output_{i}.{ext}"
-                        new_path = Path("uploads") / new_name
-                        shutil.copy2(orig_path, new_path)
+                        new_name = f"{task_data.request_id}_output_{i}.{ext}"
+                        new_path = Path("outputs") / new_name
+                        orig_path.rename(new_path)
                         
                         output_img['filepath'] = str(new_path)
                         output_img['filename'] = new_name
-                        output_img['url'] = f"/uploads/{new_name}"
+                        output_img['url'] = f"/outputs/{new_name}"
                         
                         logger.info(f"额外输出文件重命名: {orig_path} -> {new_path}")
                     else:
