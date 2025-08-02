@@ -396,9 +396,16 @@ class WorkflowTaskService:
             
             # 处理第一个输出文件（单输出文件系统）
             main_output = output_images[0]
-            original_path = Path(main_output.get('filepath', ''))
+            filepath = main_output.get('filepath', '')
             
-            if original_path.exists():
+            # 检查文件路径是否有效
+            if not filepath or filepath in ('', '.'):
+                logger.warning(f"主输出文件路径无效: {filepath}, 跳过重命名")
+                return
+                
+            original_path = Path(filepath)
+            
+            if original_path.exists() and original_path.is_file():
                 # 获取文件扩展名
                 extension = original_path.suffix.lstrip('.')
                 
@@ -424,8 +431,15 @@ class WorkflowTaskService:
                 
                 # 如果有多个输出文件，处理其他文件
                 for i, output_img in enumerate(output_images[1:], 1):
-                    orig_path = Path(output_img.get('filepath', ''))
-                    if orig_path.exists():
+                    orig_filepath = output_img.get('filepath', '')
+                    
+                    # 检查文件路径是否有效
+                    if not orig_filepath or orig_filepath in ('', '.'):
+                        logger.warning(f"额外输出文件{i}路径无效: {orig_filepath}, 跳过")
+                        continue
+                    
+                    orig_path = Path(orig_filepath)
+                    if orig_path.exists() and orig_path.is_file():
                         ext = orig_path.suffix.lstrip('.')
                         # 为额外的输出文件添加序号
                         new_name = f"{task_data.task_file_id}_output_{i}.{ext}"
@@ -437,6 +451,8 @@ class WorkflowTaskService:
                         output_img['url'] = f"/uploads/{new_name}"
                         
                         logger.info(f"额外输出文件重命名: {orig_path} -> {new_path}")
+                    else:
+                        logger.warning(f"额外输出文件{i}不存在或不是文件: {orig_filepath}")
                 
         except Exception as e:
             logger.error(f"处理输出文件失败: {e}")

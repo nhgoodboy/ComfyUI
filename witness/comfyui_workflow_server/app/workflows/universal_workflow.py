@@ -247,6 +247,13 @@ class UniversalWorkflowExecutor(BaseWorkflow):
                     if "images" in node_output:
                         for image_info in node_output["images"]:
                             comfyui_filename = image_info.get("filename", "")
+                            image_type = image_info.get("type", "output")
+                            
+                            # 跳过临时预览图片，只处理最终输出图片
+                            if image_type == "temp":
+                                self.logger.info(f"跳过临时预览图片: {comfyui_filename}")
+                                continue
+                            
                             if comfyui_filename:
                                 # 获取期望的标准文件名
                                 expected_filename = getattr(self, 'expected_output_filename', None)
@@ -265,7 +272,7 @@ class UniversalWorkflowExecutor(BaseWorkflow):
                                     processed_result["output_images"].append({
                                         "filename": expected_filename,
                                         "url": local_url,
-                                        "local_path": local_path,
+                                        "filepath": local_path,
                                         "original_comfyui_filename": comfyui_filename,
                                         "type": f"{self.workflow_config.id}_output"
                                     })
@@ -276,6 +283,7 @@ class UniversalWorkflowExecutor(BaseWorkflow):
                                     processed_result["output_images"].append({
                                         "filename": comfyui_filename,
                                         "url": fallback_url,
+                                        "filepath": "",  # 空路径，表示下载失败
                                         "error": "Failed to download from ComfyUI",
                                         "type": f"{self.workflow_config.id}_output"
                                     })
