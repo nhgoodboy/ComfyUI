@@ -66,7 +66,7 @@ async def upload_file(
         logger.error(f"Failed to upload file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/output/{filename}")
+@router.get("/image/{filename}")
 async def get_output_image(filename: str):
     """Get output image"""
     try:
@@ -84,7 +84,7 @@ async def get_output_image(filename: str):
         logger.error(f"Failed to get output image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/output/{filename}/info")
+@router.get("/image/info/{filename}")
 async def get_output_image_info(filename: str):
     """Get output image information"""
     try:

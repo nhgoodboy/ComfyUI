@@ -134,14 +134,15 @@ async def get_workflow_schema(workflow_id: str):
         logger.error(f"Failed to get workflow schema: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/search")
-async def search_workflows(q: Optional[str] = None):
+@router.post("/search")
+async def search_workflows(request: Dict[str, Any]):
     """Search workflows"""
     try:
-        logger.debug(f"Searching workflows: {q}")
+        query = request.get("query", "")
+        logger.debug(f"Searching workflows: {query}")
         
         async with rpc_client:
-            result = await rpc_client.search_workflows(q)
+            result = await rpc_client.search_workflows(query)
         
         return {
             "success": True,

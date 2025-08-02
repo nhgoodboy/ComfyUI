@@ -92,9 +92,10 @@ async def get_sessions():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/parse-filename")
-async def parse_filename(filename: str):
+async def parse_filename(request: dict):
     """Parse filename"""
     try:
+        filename = request.get("filename", "")
         logger.debug(f"Parsing filename: {filename}")
         
         async with rpc_client:
