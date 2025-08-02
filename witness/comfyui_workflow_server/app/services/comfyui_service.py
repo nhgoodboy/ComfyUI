@@ -343,9 +343,11 @@ class ComfyUIService:
 
     async def get_result(self, prompt_id: str) -> Dict[str, Any]:
         """
-        从ComfyUI历史记录中获取结果。
-        注意：这是一个简化的实现，仅用于演示。
-        在生产环境中，应该使用更健壮的WebSocket消息处理。
+        从ComfyUI历史记录中获取详细结果数据，包括输出图片信息。
+        
+        WebSocket回调提供任务完成通知，但不包含完整的结果数据。
+        此函数用于获取历史记录中的完整输出信息（图片路径、文件名等）。
+        这是WebSocket + 历史查询的混合架构。
         """
         try:
             history = await self.client.prompts.get_history(prompt_id)
@@ -354,7 +356,6 @@ class ComfyUIService:
             
             result = history.get(prompt_id, {})
             
-            # 注意：这里我们不再需要轮询历史记录，因为WebSocket提供了更可靠的方式
             return result
             
         except (ComfyUIConnectionError, ComfyUITimeoutError, ComfyUIAPIError):

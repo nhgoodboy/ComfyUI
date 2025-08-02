@@ -176,7 +176,7 @@ class WorkflowTaskService:
             # 更新任务数据
             task_data.stage = "workflow_execution"
             task_data.message = "正在执行工作流..."
-            task_data.progress = 25.0
+            task_data.progress = 0.0
             await self._push_task_update(task_data)
             
             # 构建工作流JSON
@@ -194,7 +194,7 @@ class WorkflowTaskService:
             # 更新状态
             task_data.stage = "waiting_completion"
             task_data.message = "工作流执行中..."
-            task_data.progress = 50.0
+            task_data.progress = 0.0
             await self._push_task_update(task_data)
             
         except Exception as e:
@@ -411,7 +411,7 @@ class WorkflowTaskService:
                 
                 # 生成新的输出文件名
                 new_filename = FileNamingUtils.build_output_filename(
-                    task_data.task_file_id, 
+                    task_data.request_id, 
                     extension
                 )
                 new_file_path = Path("uploads") / new_filename
@@ -497,6 +497,10 @@ class WorkflowTaskService:
                 "timestamp": time.time()
             }
             
+            # 如果任务完成，包含结果数据
+            if task_data.status == "completed" and hasattr(task_data, 'result') and task_data.result:
+                update_data["result"] = task_data.result
+            
             # 推送到全局服务连接
             from ..config import get_settings
             settings = get_settings()
@@ -545,11 +549,11 @@ class WorkflowTaskService:
             # 解析进度数据
             if 'value' in progress_data and 'max' in progress_data:
                 progress_percent = (progress_data['value'] / progress_data['max']) * 100
-                # 工作流执行阶段占50-90%的进度
-                task_data.progress = 50.0 + (progress_percent * 0.4)
+                # 直接使用ComfyUI的进度
+                task_data.progress = progress_percent
                 task_data.message = f"工作流执行中... {progress_percent:.1f}%"
                 
-                logger.info(f"进度更新: {request_id} -> {task_data.progress:.1f}% ({progress_percent:.1f}%)")
+                logger.info(f"进度更新: {request_id} -> {task_data.progress:.1f}%")
                 
                 # 异步推送更新
                 asyncio.create_task(self._push_task_update(task_data))

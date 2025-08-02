@@ -53,24 +53,24 @@ class FileNamingUtils:
         return f"{task_file_id}_input_{param_name}.{extension}"
     
     @classmethod 
-    def build_output_filename(cls, task_file_id: str, extension: str = "jpg") -> str:
+    def build_output_filename(cls, request_id: str, extension: str = "jpg") -> str:
         """
-        构建输出文件名（单个输出）
+        构建输出文件名（使用request_id）
         
         Args:
-            task_file_id: 任务文件ID
+            request_id: 请求ID
             extension: 文件扩展名（不含点号）
         
         Returns:
             str: 输出文件名
         """
-        if not task_file_id:
-            raise RPCInvalidParams("任务文件ID不能为空")
+        if not request_id:
+            raise RPCInvalidParams("请求ID不能为空")
         
         # 清理扩展名
         extension = extension.lstrip('.').lower()
         
-        return f"{task_file_id}_output.{extension}"
+        return f"{request_id}_output.{extension}"
     
     @classmethod
     def parse_filename(cls, filename: str) -> Tuple[str, str, Optional[str], str]:

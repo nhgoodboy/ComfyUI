@@ -167,6 +167,12 @@ class WorkflowTestSystem {
         // Log update
         this.log(`Task ${requestId} update: ${taskData.status} (${Math.round(taskData.progress || 0)}%)`, 'info');
         
+        // 检查任务状态，如果完成则调用完成处理
+        if (taskData.status === 'completed') {
+            this.handleTaskCompleted(message);
+            return;
+        }
+        
         // Subscribe to updates
         if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
             this.websocket.send(JSON.stringify({
@@ -185,8 +191,8 @@ class WorkflowTestSystem {
         this.updateProgress(100, 'completed', 'Task completed');
         
         // Display results
-        if (data.output_images && data.output_images.length > 0) {
-            this.displayResults(data.output_images);
+        if (data.result && data.result.output_images && data.result.output_images.length > 0) {
+            this.displayResults(data.result.output_images);
         }
         
         // Add to history
