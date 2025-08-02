@@ -62,16 +62,16 @@ class RPCFormatter:
             "progress": task.progress,
             "stage": getattr(task, 'stage', 'unknown'),
             "message": getattr(task, 'message', ''),
-            "created_at": task.created_at,
+            "created_at": int(task.created_at) if task.created_at else None,
             "estimated_remaining": getattr(task, 'estimated_remaining', None)
         }
         
-        # 添加可选字段
+        # 添加可选字段，时间戳转换为整数
         if hasattr(task, 'started_at') and task.started_at:
-            result["started_at"] = task.started_at
+            result["started_at"] = int(task.started_at)
         
         if hasattr(task, 'completed_at') and task.completed_at:
-            result["completed_at"] = task.completed_at
+            result["completed_at"] = int(task.completed_at)
         
         if hasattr(task, 'error_message') and task.error_message:
             result["error_message"] = task.error_message
@@ -116,33 +116,47 @@ class RPCFormatter:
             "workflow_id": task.workflow_id,
             "status": task.status,
             "duration": 0,
-            "completed_at": task.completed_at
+            "completed_at": int(task.completed_at) if task.completed_at else None
         }
         
-        # 计算处理时长
+        # 计算处理时长，保留到秒（2位小数）
         if task.completed_at and task.started_at:
-            formatted_result["duration"] = task.completed_at - task.started_at
+            formatted_result["duration"] = round(task.completed_at - task.started_at, 2)
         
         # 处理工作流参数信息
         if hasattr(task, 'workflow_params'):
             formatted_result["workflow_params"] = task.workflow_params
         
-        # 处理输出文件信息
-        if result_data and 'output' in result_data:
-            output_images = []
-            raw_outputs = result_data.get('output', {})
-            
-            for node_id, node_output in raw_outputs.items():
-                if 'images' in node_output:
-                    for img_data in node_output['images']:
-                        filename = img_data.get('filename', 'unknown')
-                        output_images.append({
-                            "filename": filename,
-                            "url": f"/outputs/{filename}",
-                            "size": img_data.get('size', 0)
-                        })
-            
-            formatted_result["output_images"] = output_images
+        # 处理输出文件信息 - 使用新的数据结构
+        output_images = []
+        if result_data and 'output_images' in result_data:
+            for img_data in result_data['output_images']:
+                filename = img_data.get('filename', 'unknown')
+                # 检查文件是否存在并获取大小
+                from pathlib import Path
+                
+                try:
+                    # 假设输出文件在 outputs 目录中
+                    output_dir = Path("outputs")
+                    file_path = output_dir / filename
+                    
+                    if file_path.exists():
+                        file_size = file_path.stat().st_size
+                    else:
+                        file_size = 0
+                        logger.warning(f"输出文件不存在: {filename}")
+                        
+                except Exception as e:
+                    logger.warning(f"获取文件大小失败 {filename}: {e}")
+                    file_size = 0
+                
+                output_images.append({
+                    "filename": filename,
+                    "url": f"/outputs/{filename}",  # 使用相对URL，由前端或代理处理完整URL
+                    "size": file_size
+                })
+        
+        formatted_result["output_images"] = output_images
         
         return formatted_result
     

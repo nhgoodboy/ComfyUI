@@ -1070,6 +1070,31 @@ class WorkflowTestSystem {
             this.showFileList();
         });
         
+        // API Test Functions
+        document.getElementById('search-workflows-btn').addEventListener('click', () => {
+            this.showSearchWorkflows();
+        });
+        
+        document.getElementById('get-task-status-btn').addEventListener('click', () => {
+            this.showGetTaskStatus();
+        });
+        
+        document.getElementById('get-task-result-btn').addEventListener('click', () => {
+            this.showGetTaskResult();
+        });
+        
+        document.getElementById('get-image-info-btn').addEventListener('click', () => {
+            this.showGetImageInfo();
+        });
+        
+        document.getElementById('download-image-btn').addEventListener('click', () => {
+            this.showDownloadImage();
+        });
+        
+        document.getElementById('parse-filename-btn').addEventListener('click', () => {
+            this.showParseFilename();
+        });
+        
         // Modal controls
         document.querySelector('.modal-close').addEventListener('click', () => {
             this.hideModal();
@@ -1106,6 +1131,311 @@ class WorkflowTestSystem {
             }
         });
     }
+
+    // ===== 新增的API测试功能 =====
+
+    async showSearchWorkflows() {
+        const query = prompt('Enter search query (leave empty to get all workflows):');
+        if (query === null) return;
+
+        try {
+            const response = await fetch(`${this.apiBase}/workflow/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query.trim() })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Search failed');
+            }
+
+            const searchResults = result.data;
+            const content = `
+                <h4>Search Results</h4>
+                <p><strong>Query:</strong> "${searchResults.query || '(empty)'}"</p>
+                <p><strong>Found:</strong> ${searchResults.total_count} workflows</p>
+                <div class="api-search-results">
+                    ${searchResults.workflows.map(wf => `
+                        <div class="api-workflow-item">
+                            <div class="api-workflow-title">${wf.name}</div>
+                            <div class="api-workflow-meta">
+                                <strong>ID:</strong> ${wf.workflow_id}<br>
+                                <strong>Description:</strong> ${wf.description}<br>
+                                <strong>Estimated time:</strong> ${wf.estimated_time}s |
+                                <strong>Tags:</strong> ${wf.tags.join(', ')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            this.showModal('Workflow Search Results', content);
+            this.log(`Search completed: found ${searchResults.total_count} workflows`, 'success');
+
+        } catch (error) {
+            this.log(`Search failed: ${error.message}`, 'error');
+            this.showModal('Search Error', `<p style="color: red;">Error: ${error.message}</p>`);
+        }
+    }
+
+    async showGetTaskStatus() {
+        const requestId = prompt('Enter task request ID:');
+        if (!requestId) return;
+
+        try {
+            const response = await fetch(`${this.apiBase}/workflow/status/${requestId}`);
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to get task status');
+            }
+
+            const taskData = result.data;
+            const content = `
+                <h4>Task Status Details</h4>
+                <table class="api-result-table">
+                    <tr><td><strong>Request ID:</strong></td>
+                        <td>${taskData.request_id}</td></tr>
+                    <tr><td><strong>Workflow ID:</strong></td>
+                        <td>${taskData.workflow_id}</td></tr>
+                    <tr><td><strong>Status:</strong></td>
+                        <td><span class="api-result-${taskData.status === 'completed' ? 'success' : taskData.status === 'failed' ? 'error' : 'warning'}">${taskData.status}</span></td></tr>
+                    <tr><td><strong>Progress:</strong></td>
+                        <td>${(taskData.progress * 100).toFixed(1)}%</td></tr>
+                    <tr><td><strong>Stage:</strong></td>
+                        <td>${taskData.stage}</td></tr>
+                    <tr><td><strong>Message:</strong></td>
+                        <td>${taskData.message}</td></tr>
+                    <tr><td><strong>Created:</strong></td>
+                        <td>${new Date(taskData.created_at * 1000).toLocaleString()}</td></tr>
+                    ${taskData.estimated_remaining ? 
+                        `<tr><td><strong>Est. Remaining:</strong></td>
+                         <td>${taskData.estimated_remaining}s</td></tr>` : ''}
+                    ${taskData.error_message ? 
+                        `<tr><td><strong>Error:</strong></td>
+                         <td><span class="api-result-error">${taskData.error_message}</span></td></tr>` : ''}
+                </table>
+            `;
+
+            this.showModal('Task Status', content);
+            this.log(`Task status retrieved for: ${requestId}`, 'success');
+
+        } catch (error) {
+            this.log(`Get task status failed: ${error.message}`, 'error');
+            this.showModal('Error', `<p style="color: red;">Error: ${error.message}</p>`);
+        }
+    }
+
+    async showGetTaskResult() {
+        const requestId = prompt('Enter completed task request ID:');
+        if (!requestId) return;
+
+        try {
+            const response = await fetch(`${this.apiBase}/workflow/result/${requestId}`);
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to get task result');
+            }
+
+            const taskResult = result.data;
+            const content = `
+                <h4>Task Result Details</h4>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Request ID:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${taskResult.request_id}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Workflow ID:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${taskResult.workflow_id}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Status:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${taskResult.status}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Duration:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${taskResult.duration || 'N/A'}s</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Completed:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${new Date(taskResult.completed_at * 1000).toLocaleString()}</td></tr>
+                </table>
+                ${taskResult.output_images && taskResult.output_images.length > 0 ? `
+                    <h5>Output Images (${taskResult.output_images.length}):</h5>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        ${taskResult.output_images.map(img => `
+                            <div style="margin: 10px 0; padding: 10px; border: 1px solid #eee; border-radius: 5px;">
+                                <strong>Filename:</strong> ${img.filename}<br>
+                                <strong>Size:</strong> ${(img.size / 1024).toFixed(2)} KB<br>
+                                <strong>URL:</strong> <a href="${img.url}" target="_blank">${img.url}</a>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : '<p>No output images</p>'}
+            `;
+
+            this.showModal('Task Result', content);
+            this.log(`Task result retrieved for: ${requestId}`, 'success');
+
+        } catch (error) {
+            this.log(`Get task result failed: ${error.message}`, 'error');
+            this.showModal('Error', `<p style="color: red;">Error: ${error.message}</p>`);
+        }
+    }
+
+    async showGetImageInfo() {
+        const filename = prompt('Enter image filename:');
+        if (!filename) return;
+
+        try {
+            const response = await fetch(`${this.apiBase}/files/image/info/${encodeURIComponent(filename)}`);
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to get image info');
+            }
+
+            const imageInfo = result.data;
+            const content = `
+                <h4>Image Information</h4>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Filename:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${imageInfo.filename}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Size:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${(imageInfo.size / 1024).toFixed(2)} KB</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Extension:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${imageInfo.extension}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Media Type:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${imageInfo.media_type}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Is Image:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${imageInfo.is_image ? 'Yes' : 'No'}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Created:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${new Date(imageInfo.created_time * 1000).toLocaleString()}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Modified:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;">${new Date(imageInfo.modified_time * 1000).toLocaleString()}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>URL:</strong></td>
+                        <td style="padding: 5px; border: 1px solid #ddd;"><a href="${imageInfo.url}" target="_blank">${imageInfo.url}</a></td></tr>
+                </table>
+            `;
+
+            this.showModal('Image Information', content);
+            this.log(`Image info retrieved for: ${filename}`, 'success');
+
+        } catch (error) {
+            this.log(`Get image info failed: ${error.message}`, 'error');
+            this.showModal('Error', `<p style="color: red;">Error: ${error.message}</p>`);
+        }
+    }
+
+    async showDownloadImage() {
+        const filename = prompt('Enter image filename to download:');
+        if (!filename) return;
+
+        try {
+            this.log(`Starting image download: ${filename}`, 'info');
+            const response = await fetch(`${this.apiBase}/files/image/${encodeURIComponent(filename)}`);
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to download image');
+            }
+
+            const imageData = result.data;
+            
+            // Convert base64 to blob and download
+            const byteCharacters = atob(imageData.data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: imageData.media_type });
+
+            // Create download link
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = imageData.filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            this.log(`Image downloaded successfully: ${filename} (${(imageData.size / 1024).toFixed(2)} KB)`, 'success');
+
+            const content = `
+                <h4>Download Completed</h4>
+                <p><strong>Filename:</strong> ${imageData.filename}</p>
+                <p><strong>Size:</strong> ${(imageData.size / 1024).toFixed(2)} KB</p>
+                <p><strong>Media Type:</strong> ${imageData.media_type}</p>
+                <p style="color: green;">File has been downloaded to your browser's download folder.</p>
+            `;
+
+            this.showModal('Download Complete', content);
+
+        } catch (error) {
+            this.log(`Image download failed: ${error.message}`, 'error');
+            this.showModal('Download Error', `<p style="color: red;">Error: ${error.message}</p>`);
+        }
+    }
+
+    async showParseFilename() {
+        const filename = prompt('Enter filename to parse (e.g., anime_style_transform_req123_output.png):');
+        if (!filename) return;
+
+        try {
+            const response = await fetch(`${this.apiBase}/system/parse-filename`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: filename.trim() })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to parse filename');
+            }
+
+            const parseResult = result.data;
+            let content;
+
+            if (parseResult.valid) {
+                content = `
+                    <h4>Filename Parse Result</h4>
+                    <p class="api-result-success"><strong>✅ Valid filename format</strong></p>
+                    <table class="api-result-table">
+                        <tr><td><strong>Original:</strong></td>
+                            <td><span class="api-result-code">${parseResult.filename}</span></td></tr>
+                        <tr><td><strong>Workflow ID:</strong></td>
+                            <td>${parseResult.components.workflow_id}</td></tr>
+                        <tr><td><strong>Request ID:</strong></td>
+                            <td>${parseResult.components.request_id}</td></tr>
+                        <tr><td><strong>Type:</strong></td>
+                            <td><span class="api-result-${parseResult.components.type === 'output' ? 'success' : 'warning'}">${parseResult.components.type}</span></td></tr>
+                        <tr><td><strong>Extension:</strong></td>
+                            <td>${parseResult.components.extension}</td></tr>
+                    </table>
+                `;
+            } else {
+                content = `
+                    <h4>Filename Parse Result</h4>
+                    <p class="api-result-error"><strong>❌ Invalid filename format</strong></p>
+                    <table class="api-result-table">
+                        <tr><td><strong>Original:</strong></td>
+                            <td><span class="api-result-code">${parseResult.filename}</span></td></tr>
+                        <tr><td><strong>Error:</strong></td>
+                            <td><span class="api-result-error">${parseResult.error}</span></td></tr>
+                        <tr><td><strong>Expected:</strong></td>
+                            <td>${parseResult.expected_pattern}</td></tr>
+                        <tr><td><strong>Example:</strong></td>
+                            <td><span class="api-result-code">${parseResult.example}</span></td></tr>
+                    </table>
+                `;
+            }
+
+            this.showModal('Parse Filename Result', content);
+            this.log(`Filename parsed: ${filename} - ${parseResult.valid ? 'valid' : 'invalid'}`, parseResult.valid ? 'success' : 'warning');
+
+        } catch (error) {
+            this.log(`Parse filename failed: ${error.message}`, 'error');
+            this.showModal('Parse Error', `<p style="color: red;">Error: ${error.message}</p>`);
+        }
+    }
+
+    // ===== 结束新增功能 =====
 }
 
 // Global variable

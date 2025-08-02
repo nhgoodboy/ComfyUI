@@ -90,6 +90,7 @@ body {
 .log-section,
 .system-info,
 .quick-actions,
+.test-actions,
 .shortcuts {
     background: white;
     padding: 20px;
@@ -103,6 +104,7 @@ body {
 .log-section h2,
 .system-info h3,
 .quick-actions h3,
+.test-actions h3,
 .shortcuts h3 {
     margin-bottom: 15px;
     color: #2c3e50;
@@ -428,7 +430,8 @@ label {
     margin-bottom: 0;
 }
 
-.quick-actions .btn {
+.quick-actions .btn,
+.test-actions .btn {
     width: 100%;
     margin-bottom: 10px;
 }
@@ -472,9 +475,9 @@ kbd {
 .modal-content {
     background: white;
     border-radius: 8px;
-    max-width: 600px;
-    width: 90%;
-    max-height: 80vh;
+    max-width: 800px;  /* 增大最大宽度以显示更多内容 */
+    width: 95%;        /* 增大宽度占比 */
+    max-height: 85vh;  /* 增大最大高度 */
     overflow-y: auto;
 }
 
@@ -653,4 +656,103 @@ kbd {
 .file-preview img:hover {
     transform: scale(1.05);
     cursor: pointer;
+}
+
+/* API Test Result Styles */
+.test-actions {
+    margin-top: 20px;
+}
+
+.test-actions .btn {
+    font-size: 13px;
+    padding: 6px 12px;
+}
+
+.api-result-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+}
+
+.api-result-table td {
+    padding: 8px;
+    border: 1px solid #ddd;
+    vertical-align: top;
+}
+
+.api-result-table td:first-child {
+    background-color: #f8f9fa;
+    font-weight: 500;
+    width: 25%;
+}
+
+.api-result-success {
+    color: #28a745;
+    font-weight: 500;
+}
+
+.api-result-error {
+    color: #dc3545;
+    font-weight: 500;
+}
+
+.api-result-warning {
+    color: #ffc107;
+    font-weight: 500;
+}
+
+.api-result-code {
+    background-color: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+}
+
+.api-search-results {
+    max-height: 400px;
+    overflow-y: auto;
+    margin-top: 10px;
+}
+
+.api-workflow-item {
+    border: 1px solid #ddd;
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 6px;
+    background-color: #fafafa;
+}
+
+.api-workflow-item:hover {
+    background-color: #f0f0f0;
+    border-color: #007bff;
+}
+
+.api-workflow-title {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 4px;
+}
+
+.api-workflow-meta {
+    font-size: 12px;
+    color: #6c757d;
+    line-height: 1.4;
+}
+
+.api-image-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.api-image-item {
+    margin: 10px 0;
+    padding: 12px;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    background-color: #fafafa;
+}
+
+.api-image-item:hover {
+    background-color: #f0f0f0;
 }

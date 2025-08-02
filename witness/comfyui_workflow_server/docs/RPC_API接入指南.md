@@ -17,12 +17,12 @@
 
 ComfyUI 工作流服务器提供基于 JSON-RPC 2.0 协议的统一 API 接口，支持：
 
-- 🔗 **统一协议**: 基于 JSON-RPC 2.0 标准
-- ⚡ **异步执行**: 支持长时间运行的工作流任务
+- 🔗 **统一协议**: 基于 JSON-RPC 2.0 标准，使用装饰器模式注册方法
+- ⚡ **异步执行**: 支持长时间运行的工作流任务，支持协程和同步方法
 - 📡 **实时推送**: WebSocket 状态更新和结果通知
-- 🎯 **工作流管理**: 执行、监控、取消工作流任务
-- 📁 **文件操作**: 上传、下载、管理生成的图片
-- 🛡️ **错误处理**: 详细的错误码和异常信息
+- 🎯 **工作流管理**: 执行、监控、取消工作流任务，支持任意类型工作流
+- 📁 **文件操作**: 访问、下载、管理生成的图片，支持 base64 编码
+- 🛡️ **错误处理**: 详细的错误码和异常信息，统一异常处理机制
 
 ### 系统架构
 
@@ -32,6 +32,19 @@ ComfyUI 工作流服务器提供基于 JSON-RPC 2.0 协议的统一 API 接口�
 │ (Web/App)   │   /rpc 端点    │   (FastAPI)      │    状态更新    │  监听器     │
 └─────────────┘                └────────┬─────────┘                └─────────────┘
                                         │
+                               ┌────────▼─────────┐
+                               │ RPC 方法路由器   │
+                               │ (@rpc_method)    │
+                               └────────┬─────────┘
+                                        │
+                        ┌───────────────┼───────────────┐
+                        ▼               ▼               ▼
+               ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+               │ 工作流方法  │ │ 系统方法    │ │ 文件方法    │
+               │ 8个API方法  │ │ 3个API方法  │ │ 3个API方法  │
+               └─────────────┘ └─────────────┘ └─────────────┘
+                        │               │               │
+                        └───────────────┼───────────────┘
                                         ▼
                                ┌─────────────────┐
                                │   ComfyUI       │
@@ -40,6 +53,21 @@ ComfyUI 工作流服务器提供基于 JSON-RPC 2.0 协议的统一 API 接口�
 ```
 
 ## 2. 快速开始
+
+### 2.0 重要更新说明
+
+**🚀 新架构特性 (v2.0.0)**:
+- 使用装饰器模式 (@rpc_method) 注册RPC方法
+- 支持异步和同步方法混合
+- 统一的错误处理和异常机制
+- 改进的工作流注册表和参数验证
+- 简化的任务管理（按request_id存储）
+
+**📝 API变更**:
+- ✅ 保留所有核心RPC方法 (14个方法)
+- ❌ 移除 `system.build_filename` 方法（文件命名由客户端处理）
+- 🔄 工作流参数验证更加严格
+- 🔄 错误返回格式更加统一
 
 ### 2.1 基础连接测试
 
@@ -185,11 +213,39 @@ CORS_ORIGINS=https://your-frontend.com,https://admin.your-company.com
 
 ## 5. API 方法详解
 
+**当前支持的RPC方法 (15个)**:
+
+**工作流管理 (7个方法)**:
+- `workflow.execute` - 执行工作流
+- `workflow.get_status` - 获取任务状态  
+- `workflow.get_result` - 获取任务结果
+- `workflow.cancel` - 取消任务
+- `workflow.list` - 获取工作流列表
+- `workflow.get_schema` - 获取工作流参数模式
+- `workflow.search` - 搜索工作流
+
+**文件管理 (3个方法)**:
+- `files.get_output_image` - 获取输出图片 (base64)
+- `files.get_output_image_info` - 获取图片信息
+- `files.list_output_images` - 列出输出图片
+
+**系统管理 (3个方法)**:
+- `system.health` - 系统健康检查
+- `system.get_stats` - 获取系统统计
+- `system.parse_filename` - 解析文件名
+
 ### 5.1 工作流管理 API
 
 #### `workflow.execute` - 执行工作流
 
-**功能**: 提交工作流执行任务
+**功能**: 提交工作流执行任务，支持任意类型的工作流
+
+**内部处理流程**:
+1. 验证必需参数 (request_id, workflow_id, params)
+2. 检查工作流是否存在于注册表中
+3. 验证工作流参数格式和类型
+4. 创建异步工作流任务
+5. 返回任务状态信息
 
 **参数**:
 ```typescript
@@ -198,8 +254,6 @@ CORS_ORIGINS=https://your-frontend.com,https://admin.your-company.com
   workflow_id: string;       // 工作流ID (必需)
   params: {                  // 工作流参数 (必需)
     input_image: string;     // 输入图像URL
-    prompt?: string;         // 提示词
-    guidance?: number;       // 引导强度
     [key: string]: any;      // 其他工作流特定参数
   }
 }
@@ -238,8 +292,6 @@ const response = await fetch('http://localhost:8000/rpc', {
       workflow_id: 'anime_style_transform',
       params: {
         input_image: 'https://example.com/input.jpg',
-        prompt: 'anime style, beautiful girl',
-        guidance: 7.5
       }
     },
     id: 'exec_001'
@@ -475,7 +527,12 @@ Object.keys(parameters).forEach(paramName => {
 
 #### `files.get_output_image` - 获取输出图片
 
-**功能**: 获取生成的图片文件（base64编码）
+**功能**: 获取生成的图片文件（base64编码返回）
+
+**文件限制**:
+- 支持的图片格式: .png, .jpg, .jpeg, .webp, .gif, .bmp  
+- 文件来源: outputs 目录
+- 安全检查: 验证文件存在性和类型
 
 **参数**:
 ```typescript
@@ -488,11 +545,11 @@ Object.keys(parameters).forEach(paramName => {
 ```typescript
 {
   filename: string;
-  media_type: string;       // MIME类型
-  size: number;             // 文件大小
+  media_type: string;       // MIME类型 (image/png, image/jpeg 等)
+  size: number;             // 文件大小(字节)
   data: string;             // base64编码的图片数据
-  url: string;              // 直接访问URL
-  static_url: string;       // 静态文件URL
+  url: string;              // 相对访问URL: "/outputs/{filename}"
+  static_url: string;       // 静态文件URL: "/outputs/{filename}"
 }
 ```
 
@@ -559,12 +616,18 @@ download_image('anime_style_transform_001_output.png', './output.png')
 
 **功能**: 获取输出目录中的图片文件列表
 
+**分页和过滤**:
+- 按修改时间倒序排列（最新的在前）
+- 支持文件名模式过滤 (glob 语法)
+- 仅返回支持的图片格式文件
+- 自动参数验证和纠正
+
 **参数**:
 ```typescript
 {
   limit?: number;           // 返回数量限制 (1-1000, 默认100)
-  offset?: number;          // 偏移量 (默认0)
-  pattern?: string;         // 文件名过滤模式 (默认\"*\")
+  offset?: number;          // 偏移量 (默认0)  
+  pattern?: string;         // 文件名过滤模式 (默认"*", 支持glob语法)
 }
 ```
 
@@ -577,13 +640,13 @@ download_image('anime_style_transform_001_output.png', './output.png')
     created_time: number;
     modified_time: number;
     extension: string;
-    url: string;
-    static_url: string;
+    url: string;            // "/outputs/{filename}"
+    static_url: string;     // "/outputs/{filename}"
   }>;
-  total: number;            // 总文件数
-  limit: number;
-  offset: number;
-  pattern: string;
+  total: number;            // 匹配的总文件数
+  limit: number;            // 实际使用的限制数
+  offset: number;           // 实际使用的偏移量
+  pattern: string;          // 实际使用的过滤模式
   has_more: boolean;        // 是否还有更多文件
 }
 ```
@@ -625,24 +688,30 @@ images.files.forEach(file => {
 
 **功能**: 检查系统各组件的健康状态
 
+**内部检查项**:
+- ComfyUI服务连接状态
+- 存储目录可访问性 (uploads_dir, outputs_dir)
+- 工作流注册表状态
+- 整体系统状态计算
+
 **参数**: 无
 
 **返回值**:
 ```typescript
 {
-  status: \"healthy\" | \"unhealthy\";
+  status: "healthy" | "unhealthy";
   timestamp: number;
   services: {
-    comfyui: \"healthy\" | \"unhealthy\";
-    storage: \"healthy\" | \"unhealthy\";
-    workflows: \"healthy\" | \"unhealthy\";
+    comfyui: "healthy" | "unhealthy";
+    storage: "healthy" | "unhealthy";
+    workflows: "healthy" | "unhealthy";
   };
   details: {
     comfyui_connected: boolean;
     storage_healthy: boolean;
     workflows_count: number;
     environment: string;
-    version: string;
+    version: string;           // 当前版本: "2.0.0"
   }
 }
 ```
@@ -653,6 +722,12 @@ images.files.forEach(file => {
 
 **功能**: 获取系统运行统计信息
 
+**统计内容**:
+- 系统运行时间和时间戳
+- 任务统计（总数、按状态分组）
+- 文件统计（输入、输出、临时文件数量）
+- 工作流统计（总数、可用工作流列表）
+
 **参数**: 无
 
 **返回值**:
@@ -662,17 +737,17 @@ images.files.forEach(file => {
   uptime: number;           // 系统运行时间(秒)
   tasks: {
     total: number;
-    by_status: {[status: string]: number};
-    by_user: {[user: string]: number};
+    by_status: {[status: string]: number};  // 简化：不再区分用户
+    by_user: {[user: string]: number};      // 保留但为空
   };
   files: {
-    inputs: number;         // 输入文件数
-    outputs: number;        // 输出文件数
-    temp: number;          // 临时文件数
+    inputs: number;         // uploads_dir 中的文件数
+    outputs: number;        // outputs_dir 中的文件数  
+    temp: number;          // 临时目录文件数
   };
   workflows: {
     total: number;
-    available: string[];
+    available: string[];    // 可用工作流ID列表
   }
 }
 ```
@@ -681,7 +756,10 @@ images.files.forEach(file => {
 
 #### `system.parse_filename` - 解析文件名
 
-**功能**: 解析标准格式的文件名
+**功能**: 解析标准格式的文件名，验证是否符合命名规范
+
+**解析规则**: 使用 FileNamingUtils.extract_file_info() 进行解析
+**文件名格式**: `{workflow_id}_{request_id}_{input|output}.{ext}`
 
 **参数**:
 ```typescript
@@ -692,22 +770,27 @@ images.files.forEach(file => {
 
 **返回值**:
 ```typescript
+// 成功解析时:
 {
   filename: string;
-  valid: boolean;           // 是否符合标准格式
-  components?: {            // 文件名组件 (valid=true时)
+  valid: true;
+  components: {
     workflow_id: string;
     request_id: string;
-    type: \"input\" | \"output\";
+    type: "input" | "output";
     extension: string;
-  };
-  error?: string;           // 错误信息 (valid=false时)
-  expected_pattern?: string;
-  example?: string;
+  }
+}
+
+// 解析失败时:
+{
+  filename: string;
+  valid: false;
+  error: string;
+  expected_pattern: string;
+  example: string;         // "clay_style_123e4567-e89b-12d3-a456-426614174000_input.jpg"
 }
 ```
-
-**文件名格式**: `{workflow_id}_{request_id}_{type}.{ext}`
 
 **示例**: `anime_style_transform_req123456_output.png`
 
@@ -715,11 +798,10 @@ images.files.forEach(file => {
 
 ### 6.1 连接建立
 
-WebSocket 端点: `ws://host:port/ws/{client_id}`
+WebSocket 端点: `ws://host:port/ws/{service_id}`
 
 **连接模式**:
-- **请求级连接**: 使用 `request_id` 作为 `client_id`，只接收特定任务的更新
-- **服务级连接**: 使用固定服务ID（如 `workflow_test_system`），接收所有任务更新
+- **服务级连接**: 使用固定服务ID（如 `web_image_transform_service`），接收所有任务更新
 
 ### 6.2 消息格式
 
@@ -1163,577 +1245,6 @@ class RPCClient:
     def call(self, method, params=None):
         # 实际的RPC调用实现
         pass
-```
-
-## 8. SDK 和示例
-
-### 8.1 Python SDK
-
-```python
-import requests
-import websockets
-import asyncio
-import json
-import time
-from typing import Dict, Any, Optional, Callable
-
-class ComfyUIWorkflowClient:
-    \"\"\"ComfyUI工作流客户端SDK\"\"\"
-    
-    def __init__(self, base_url: str = \"http://localhost:8000\"):
-        self.base_url = base_url.rstrip('/')
-        self.rpc_url = f\"{self.base_url}/rpc\"
-        self.ws_url = self.base_url.replace('http', 'ws')
-        
-    def call(self, method: str, params: Optional[Dict] = None, 
-             request_id: Optional[str] = None) -> Dict[str, Any]:
-        \"\"\"调用RPC方法\"\"\"
-        if request_id is None:
-            request_id = f\"req_{int(time.time() * 1000)}\"
-        
-        payload = {
-            \"method\": method,
-            \"params\": params or {},
-            \"id\": request_id
-        }
-        
-        response = requests.post(self.rpc_url, json=payload)
-        response.raise_for_status()
-        
-        result = response.json()
-        
-        if \"error\" in result:
-            raise WorkflowAPIError(
-                result[\"error\"][\"code\"],
-                result[\"error\"][\"message\"],
-                result[\"error\"].get(\"data\")
-            )
-        
-        return result[\"result\"]
-    
-    # 工作流方法
-    def execute_workflow(self, request_id: str, workflow_id: str, 
-                        params: Dict[str, Any]) -> Dict[str, Any]:
-        \"\"\"执行工作流\"\"\"
-        return self.call(\"workflow.execute\", {
-            \"request_id\": request_id,
-            \"workflow_id\": workflow_id,
-            \"params\": params
-        })
-    
-    def get_workflow_status(self, request_id: str) -> Dict[str, Any]:
-        \"\"\"获取工作流状态\"\"\"
-        return self.call(\"workflow.get_status\", {\"request_id\": request_id})
-    
-    def get_workflow_result(self, request_id: str) -> Dict[str, Any]:
-        \"\"\"获取工作流结果\"\"\"
-        return self.call(\"workflow.get_result\", {\"request_id\": request_id})
-    
-    def cancel_workflow(self, request_id: str) -> Dict[str, Any]:
-        \"\"\"取消工作流\"\"\"
-        return self.call(\"workflow.cancel\", {\"request_id\": request_id})
-    
-    def list_workflows(self) -> Dict[str, Any]:
-        \"\"\"列出可用工作流\"\"\"
-        return self.call(\"workflow.list\")
-    
-    def get_workflow_schema(self, workflow_id: str) -> Dict[str, Any]:
-        \"\"\"获取工作流参数模式\"\"\"
-        return self.call(\"workflow.get_schema\", {\"workflow_id\": workflow_id})
-    
-    # 文件方法
-    def get_output_image(self, filename: str) -> Dict[str, Any]:
-        \"\"\"获取输出图片\"\"\"
-        return self.call(\"files.get_output_image\", {\"filename\": filename})
-    
-    def list_output_images(self, limit: int = 100, offset: int = 0,
-                          pattern: str = \"*\") -> Dict[str, Any]:
-        \"\"\"列出输出图片\"\"\"
-        return self.call(\"files.list_output_images\", {
-            \"limit\": limit,
-            \"offset\": offset,
-            \"pattern\": pattern
-        })
-    
-    # 系统方法
-    def health_check(self) -> Dict[str, Any]:
-        \"\"\"健康检查\"\"\"
-        return self.call(\"system.health\")
-    
-    def get_system_stats(self) -> Dict[str, Any]:
-        \"\"\"获取系统统计\"\"\"
-        return self.call(\"system.get_stats\")
-    
-    # 高级方法
-    def wait_for_completion(self, request_id: str, 
-                           callback: Optional[Callable] = None,
-                           timeout: int = 300) -> Dict[str, Any]:
-        \"\"\"等待任务完成\"\"\"
-        start_time = time.time()
-        
-        while time.time() - start_time < timeout:
-            status = self.get_workflow_status(request_id)
-            
-            if callback:
-                callback(status)
-            
-            if status[\"status\"] == \"completed\":
-                return self.get_workflow_result(request_id)
-            elif status[\"status\"] in [\"failed\", \"cancelled\"]:
-                raise WorkflowAPIError(
-                    status.get(\"error_code\", 3006),
-                    status.get(\"error_message\", f\"任务{status['status']}\")
-                )
-            
-            time.sleep(2)
-        
-        raise TimeoutError(f\"任务 {request_id} 在 {timeout} 秒内未完成\")
-    
-    async def listen_updates(self, client_id: str, 
-                           message_handler: Callable[[Dict], None]):
-        \"\"\"监听WebSocket更新\"\"\"
-        ws_url = f\"{self.ws_url}/ws/{client_id}\"
-        
-        async with websockets.connect(ws_url) as websocket:
-            print(f\"WebSocket已连接: {client_id}\")
-            
-            try:
-                async for message in websocket:
-                    if message == \"pong\":
-                        continue
-                    
-                    data = json.loads(message)
-                    await message_handler(data)
-                    
-            except websockets.exceptions.ConnectionClosed:
-                print(\"WebSocket连接已关闭\")
-
-class WorkflowAPIError(Exception):
-    \"\"\"工作流API异常\"\"\"
-    
-    def __init__(self, code: int, message: str, data: Optional[Dict] = None):
-        self.code = code
-        self.message = message
-        self.data = data or {}
-        super().__init__(f\"[{code}] {message}\")
-
-# 使用示例
-async def main():
-    client = ComfyUIWorkflowClient(\"http://localhost:8000\")
-    
-    # 健康检查
-    health = client.health_check()
-    print(f\"系统状态: {health['status']}\")
-    
-    # 获取可用工作流
-    workflows = client.list_workflows()
-    print(f\"可用工作流: {len(workflows['workflows'])} 个\")
-    
-    # 执行工作流
-    request_id = \"demo_transform_001\"
-    
-    try:
-        # 启动任务
-        task = client.execute_workflow(
-            request_id=request_id,
-            workflow_id=\"anime_style_transform\",
-            params={
-                \"input_image\": \"https://example.com/input.jpg\",
-                \"prompt\": \"anime style, beautiful girl\"
-            }
-        )
-        
-        print(f\"任务已创建: {task['request_id']}\")
-        
-        # 等待完成（带进度回调）
-        def progress_callback(status):
-            print(f\"进度: {status['progress']:.1%} - {status['message']}\")
-        
-        result = client.wait_for_completion(request_id, progress_callback)
-        
-        print(f\"任务完成! 输出文件: {len(result['output_images'])} 个\")
-        for img in result['output_images']:
-            print(f\"  - {img['filename']} ({img['size']} bytes)\")
-    
-    except WorkflowAPIError as e:
-        print(f\"工作流执行失败: {e}\")
-    except TimeoutError as e:
-        print(f\"任务超时: {e}\")
-
-if __name__ == \"__main__\":
-    asyncio.run(main())
-```
-
-### 8.2 JavaScript/TypeScript SDK
-
-```typescript
-// types.ts
-export interface RPCRequest {
-  method: string;
-  params?: Record<string, any>;
-  id: string | number;
-}
-
-export interface RPCResponse<T = any> {
-  result?: T;
-  error?: {
-    code: number;
-    message: string;
-    data?: any;
-  };
-  id: string | number;
-}
-
-export interface WorkflowTask {
-  request_id: string;
-  workflow_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  progress: number;
-  stage: string;
-  message: string;
-  created_at: number;
-  started_at?: number;
-  completed_at?: number;
-  estimated_remaining?: number;
-  workflow_params?: Record<string, any>;
-  error_message?: string;
-}
-
-export interface WebSocketMessage {
-  type: string;
-  request_id?: string;
-  data: any;
-  timestamp?: number;
-}
-
-// client.ts
-export class ComfyUIWorkflowClient {
-  private baseUrl: string;
-  private rpcUrl: string;
-  private wsUrl: string;
-  
-  constructor(baseUrl: string = 'http://localhost:8000') {
-    this.baseUrl = baseUrl.replace(/\\/$/, '');
-    this.rpcUrl = `${this.baseUrl}/rpc`;
-    this.wsUrl = this.baseUrl.replace('http', 'ws');
-  }
-  
-  async call<T = any>(
-    method: string,
-    params?: Record<string, any>,
-    requestId?: string
-  ): Promise<T> {
-    const id = requestId || `req_${Date.now()}`;
-    
-    const request: RPCRequest = {
-      method,
-      params: params || {},
-      id
-    };
-    
-    const response = await fetch(this.rpcUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(request)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    
-    const result: RPCResponse<T> = await response.json();
-    
-    if (result.error) {
-      throw new WorkflowAPIError(
-        result.error.code,
-        result.error.message,
-        result.error.data
-      );
-    }
-    
-    return result.result!;
-  }
-  
-  // 工作流方法
-  async executeWorkflow(
-    requestId: string,
-    workflowId: string,
-    params: Record<string, any>
-  ): Promise<WorkflowTask> {
-    return this.call('workflow.execute', {
-      request_id: requestId,
-      workflow_id: workflowId,
-      params
-    });
-  }
-  
-  async getWorkflowStatus(requestId: string): Promise<WorkflowTask> {
-    return this.call('workflow.get_status', { request_id: requestId });
-  }
-  
-  async getWorkflowResult(requestId: string): Promise<any> {
-    return this.call('workflow.get_result', { request_id: requestId });
-  }
-  
-  async cancelWorkflow(requestId: string): Promise<{ success: boolean; message: string }> {
-    return this.call('workflow.cancel', { request_id: requestId });
-  }
-  
-  async listWorkflows(): Promise<any> {
-    return this.call('workflow.list');
-  }
-  
-  async getWorkflowSchema(workflowId: string): Promise<any> {
-    return this.call('workflow.get_schema', { workflow_id: workflowId });
-  }
-  
-  // 文件方法
-  async getOutputImage(filename: string): Promise<any> {
-    return this.call('files.get_output_image', { filename });
-  }
-  
-  async listOutputImages(
-    limit: number = 100,
-    offset: number = 0,
-    pattern: string = '*'
-  ): Promise<any> {
-    return this.call('files.list_output_images', { limit, offset, pattern });
-  }
-  
-  // 系统方法
-  async healthCheck(): Promise<any> {
-    return this.call('system.health');
-  }
-  
-  async getSystemStats(): Promise<any> {
-    return this.call('system.get_stats');
-  }
-  
-  // 高级方法
-  async waitForCompletion(
-    requestId: string,
-    onProgress?: (task: WorkflowTask) => void,
-    timeout: number = 300000
-  ): Promise<any> {
-    const startTime = Date.now();
-    
-    return new Promise(async (resolve, reject) => {
-      const poll = async () => {
-        try {
-          if (Date.now() - startTime > timeout) {
-            reject(new Error(`任务 ${requestId} 在 ${timeout}ms 内未完成`));
-            return;
-          }
-          
-          const status = await this.getWorkflowStatus(requestId);
-          
-          if (onProgress) {
-            onProgress(status);
-          }
-          
-          switch (status.status) {
-            case 'completed':
-              const result = await this.getWorkflowResult(requestId);
-              resolve(result);
-              return;
-            
-            case 'failed':
-            case 'cancelled':
-              reject(new Error(status.error_message || `任务${status.status}`));
-              return;
-            
-            default:
-              setTimeout(poll, 2000);
-              break;
-          }
-        } catch (error) {
-          reject(error);
-        }
-      };
-      
-      poll();
-    });
-  }
-  
-  createWebSocketClient(clientId: string): WorkflowWebSocketClient {
-    return new WorkflowWebSocketClient(this.wsUrl, clientId);
-  }
-}
-
-export class WorkflowWebSocketClient {
-  private wsUrl: string;
-  private clientId: string;
-  private ws: WebSocket | null = null;
-  private listeners: Record<string, Function[]> = {};
-  
-  constructor(baseWsUrl: string, clientId: string) {
-    this.wsUrl = `${baseWsUrl}/ws/${clientId}`;
-    this.clientId = clientId;
-  }
-  
-  connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        this.ws = new WebSocket(this.wsUrl);
-        
-        this.ws.onopen = () => {
-          console.log('WebSocket连接已建立');
-          this.emit('connected');
-          resolve();
-        };
-        
-        this.ws.onmessage = (event) => {
-          if (event.data === 'pong') {
-            return;
-          }
-          
-          try {
-            const message: WebSocketMessage = JSON.parse(event.data);
-            this.handleMessage(message);
-          } catch (error) {
-            console.error('解析WebSocket消息失败:', error);
-          }
-        };
-        
-        this.ws.onclose = () => {
-          console.log('WebSocket连接已关闭');
-          this.emit('disconnected');
-        };
-        
-        this.ws.onerror = (error) => {
-          console.error('WebSocket错误:', error);
-          this.emit('error', error);
-          reject(error);
-        };
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-  
-  private handleMessage(message: WebSocketMessage): void {
-    console.log('收到WebSocket消息:', message);
-    
-    const { type, request_id, data } = message;
-    
-    switch (type) {
-      case 'workflow_update':
-        this.emit('statusUpdate', request_id, data);
-        break;
-      case 'task_completed':
-        this.emit('taskCompleted', request_id, data);
-        break;
-      case 'task_failed':
-        this.emit('taskFailed', request_id, data);
-        break;
-      case 'task_cancelled':
-        this.emit('taskCancelled', request_id, data);
-        break;
-      default:
-        this.emit('message', message);
-        break;
-    }
-  }
-  
-  on(event: string, callback: Function): void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
-    this.listeners[event].push(callback);
-  }
-  
-  off(event: string, callback?: Function): void {
-    if (!this.listeners[event]) return;
-    
-    if (callback) {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
-    } else {
-      this.listeners[event] = [];
-    }
-  }
-  
-  private emit(event: string, ...args: any[]): void {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(...args));
-    }
-  }
-  
-  close(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-  }
-  
-  sendHeartbeat(): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send('ping');
-    }
-  }
-}
-
-export class WorkflowAPIError extends Error {
-  public code: number;
-  public data?: any;
-  
-  constructor(code: number, message: string, data?: any) {
-    super(`[${code}] ${message}`);
-    this.name = 'WorkflowAPIError';
-    this.code = code;
-    this.data = data;
-  }
-}
-
-// 使用示例
-async function example() {
-  const client = new ComfyUIWorkflowClient('http://localhost:8000');
-  
-  try {
-    // 健康检查
-    const health = await client.healthCheck();
-    console.log('系统状态:', health.status);
-    
-    // 创建WebSocket连接
-    const wsClient = client.createWebSocketClient('web_client_01');
-    
-    wsClient.on('statusUpdate', (requestId: string, data: any) => {
-      console.log(`任务 ${requestId} 进度: ${(data.progress * 100).toFixed(1)}%`);
-    });
-    
-    wsClient.on('taskCompleted', (requestId: string, data: any) => {
-      console.log(`任务 ${requestId} 已完成:`, data.output_images);
-    });
-    
-    await wsClient.connect();
-    
-    // 执行工作流
-    const requestId = 'web_demo_001';
-    
-    const task = await client.executeWorkflow(requestId, 'anime_style_transform', {
-      input_image: 'https://example.com/input.jpg',
-      prompt: 'anime style, beautiful girl'
-    });
-    
-    console.log('任务已创建:', task.request_id);
-    
-    // 等待完成
-    const result = await client.waitForCompletion(
-      requestId,
-      (task) => console.log(`进度: ${(task.progress * 100).toFixed(1)}%`)
-    );
-    
-    console.log('任务完成!', result);
-    
-  } catch (error) {
-    if (error instanceof WorkflowAPIError) {
-      console.error(`API错误 [${error.code}]:`, error.message);
-    } else {
-      console.error('未知错误:', error);
-    }
-  }
-}
 ```
 
 ## 9. 最佳实践

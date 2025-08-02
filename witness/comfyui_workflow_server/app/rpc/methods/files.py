@@ -159,8 +159,8 @@ async def get_output_image_info(params: Dict[str, Any], request: Request) -> Dic
         return {
             "filename": filename,
             "size": stat.st_size,
-            "created_time": stat.st_ctime,
-            "modified_time": stat.st_mtime,
+            "created_time": int(stat.st_ctime),
+            "modified_time": int(stat.st_mtime),
             "extension": file_path.suffix.lower(),
             "media_type": media_type,
             "is_image": is_image,
@@ -220,8 +220,8 @@ async def list_output_images(params: Dict[str, Any], request: Request) -> Dict[s
                 all_files.append({
                     "filename": file_path.name,
                     "size": stat.st_size,
-                    "created_time": stat.st_ctime,
-                    "modified_time": stat.st_mtime,
+                    "created_time": int(stat.st_ctime),
+                    "modified_time": int(stat.st_mtime),
                     "extension": file_path.suffix.lower(),
                     "url": f"/outputs/{file_path.name}",
                     "static_url": f"/outputs/{file_path.name}"
