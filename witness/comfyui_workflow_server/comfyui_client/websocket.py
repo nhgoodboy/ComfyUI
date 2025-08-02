@@ -1,5 +1,6 @@
 import websocket
 import json
+import time
 from threading import Thread
 from typing import Optional, Callable
 from .utils.logger import get_logger
@@ -25,11 +26,13 @@ class ComfyUIWebSocketClient:
 
         self.url = url
         self.debug = debug
+        self.logger = get_logger("ComfyUIWebSocketClient")
         
         # 根据调试模式设置 websocket 追踪
         if debug:
             websocket.enableTrace(True)
         
+        # 增加连接超时和重连机制
         self.ws = websocket.WebSocketApp(
             url,
             on_message=self.on_message,
@@ -37,10 +40,13 @@ class ComfyUIWebSocketClient:
             on_close=self.on_close,
             on_open=self.on_open
         )
-        self.logger = get_logger("ComfyUIWebSocketClient")
+        
         self.is_connected = False
         self.progress_callback: Optional[Callable] = None
         self.completion_callback: Optional[Callable] = None
+        self.connection_thread = None
+        self.max_retries = 3
+        self.retry_count = 0
 
     def on_message(self, ws, message):
         """
@@ -288,28 +294,70 @@ class ComfyUIWebSocketClient:
         """
         self.logger.error(f"WebSocket 错误: {error}")
         self.is_connected = False
+        
+        # 如果错误不是连接关闭，尝试重连
+        if self.retry_count < self.max_retries:
+            self.retry_count += 1
+            self.logger.info(f"尝试重连 ({self.retry_count}/{self.max_retries})...")
+            time.sleep(2 ** self.retry_count)  # 指数退避
+            self._reconnect()
 
     def on_close(self, ws, close_status_code, close_msg):
         """
         处理 WebSocket 连接关闭。
         """
-        self.logger.info("WebSocket 连接已关闭")
+        self.logger.info(f"WebSocket 连接已关闭 (状态码: {close_status_code}, 消息: {close_msg})")
         self.is_connected = False
 
     def on_open(self, ws):
         """
         处理连接打开后要执行的操作。
         """
-        self.logger.info("WebSocket 连接已打开")
+        self.logger.info(f"WebSocket 连接已打开: {self.url}")
         self.is_connected = True
+        self.retry_count = 0  # 重置重试计数
+
+    def _reconnect(self):
+        """内部重连方法"""
+        try:
+            if self.connection_thread and self.connection_thread.is_alive():
+                return
+            
+            self.connection_thread = Thread(target=self._connect_with_timeout, daemon=True)
+            self.connection_thread.start()
+        except Exception as e:
+            self.logger.error(f"重连失败: {e}")
+
+    def _connect_with_timeout(self):
+        """带超时的连接方法"""
+        try:
+            # 设置更长的超时时间，适合WSL环境
+            self.ws.run_forever(
+                ping_interval=30,
+                ping_timeout=10,
+                ping_payload="ping"
+            )
+        except Exception as e:
+            self.logger.error(f"WebSocket连接异常: {e}")
 
     def run_forever(self):
         """
         启动 WebSocket 客户端并在一个单独的线程中永久运行它。
         """
-        thread = Thread(target=self.ws.run_forever, daemon=True)
-        thread.start()
-        self.logger.info("WebSocket 客户端已在新线程中启动。")
+        self.logger.info(f"启动WebSocket客户端连接到: {self.url}")
+        
+        # 使用改进的连接方法
+        self.connection_thread = Thread(target=self._connect_with_timeout, daemon=True)
+        self.connection_thread.start()
+        
+        # 等待连接建立或超时
+        for i in range(15):  # 等待最多15秒
+            if self.is_connected:
+                self.logger.info(f"WebSocket连接成功建立，用时 {i+1} 秒")
+                return
+            time.sleep(1)
+        
+        self.logger.warning("WebSocket连接超时，但客户端继续运行")
 
     def set_progress_callback(self, callback):
         """设置进度回调函数"""

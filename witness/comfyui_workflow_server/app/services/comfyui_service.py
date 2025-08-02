@@ -92,17 +92,25 @@ class ComfyUIService:
             logger.info(f"初始化WebSocket客户端连接到: {self.server_address}:{self.port}, client_id: {self.client_id}")
             self.ws_client = self.client.get_websocket(self.client_id)
             
-            # 等待WebSocket连接成功
-            logger.info("等待WebSocket连接...")
-            for i in range(10): # 等待最多10秒
+            # 启动WebSocket连接（现在有改进的超时和重连机制）
+            logger.info("启动WebSocket连接...")
+            if hasattr(self.ws_client, 'run_forever'):
+                self.ws_client.run_forever()  # 这个方法现在包含了自己的超时逻辑
+            
+            # 等待连接建立，但不阻塞太久
+            logger.info("等待WebSocket连接建立...")
+            for i in range(5):  # 减少到5秒，因为WebSocket客户端现在自己处理超时
                 if hasattr(self.ws_client, 'is_connected') and self.ws_client.is_connected:
                     logger.info(f"WebSocket连接成功！用时{i+1}秒")
                     break
                 await asyncio.sleep(1)
-                logger.debug(f"WebSocket连接尝试 {i+1}/10...")
+                logger.debug(f"WebSocket连接检查 {i+1}/5...")
 
-            if not (hasattr(self.ws_client, 'is_connected') and self.ws_client.is_connected):
-                logger.warning("WebSocket连接可能未成功建立，但继续初始化")
+            # 记录连接状态但不阻塞初始化
+            if hasattr(self.ws_client, 'is_connected') and self.ws_client.is_connected:
+                logger.info("WebSocket连接已建立")
+            else:
+                logger.info("WebSocket连接仍在尝试中，服务继续初始化")
 
             # 记录当前事件循环, 供线程中的回调使用
             self._loop = asyncio.get_running_loop()

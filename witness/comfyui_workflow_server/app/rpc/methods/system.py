@@ -31,7 +31,7 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
         try:
             if hasattr(request.app.state, 'comfyui_service'):
                 comfyui_service = request.app.state.comfyui_service
-                comfyui_healthy = comfyui_service._client_id is not None
+                comfyui_healthy = await comfyui_service.health_check()
         except Exception:
             comfyui_healthy = False
         
@@ -50,8 +50,13 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
         try:
             if hasattr(request.app.state, 'workflow_registry'):
                 workflow_registry = request.app.state.workflow_registry
-                workflows_count = len(workflow_registry.get_available_workflows())
-        except Exception:
+                workflows = workflow_registry.get_all_workflows()
+                workflows_count = len(workflows)
+                logger.info(f"Health check: found {workflows_count} workflows")
+            else:
+                logger.warning("Health check: workflow_registry not found in app.state")
+        except Exception as e:
+            logger.error(f"Health check: error getting workflows: {e}")
             workflows_count = 0
         
         # 计算总体状态
