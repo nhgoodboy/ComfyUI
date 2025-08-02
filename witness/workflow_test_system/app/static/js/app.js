@@ -161,7 +161,8 @@ class WorkflowTestSystem {
         // Update task info
         this.updateCurrentTaskInfo(taskData);
         
-        // Update progress
+        // Show progress container and update progress
+        this.showProgress();
         this.updateProgress(taskData.progress || 0, taskData.stage || '', taskData.message || '');
         
         // Log update
@@ -591,9 +592,8 @@ class WorkflowTestSystem {
                 }));
             }
             
-            // Update UI
+            // Update UI but don't show progress yet - wait for server updates
             this.updateCurrentTaskInfo(result.data);
-            this.showProgress();
             this.updateExecuteButton(true);
             
         } catch (error) {

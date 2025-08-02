@@ -422,10 +422,15 @@ class WorkflowTaskService:
                 # 更新任务数据
                 task_data.output_file = str(new_file_path)
                 
+                # 获取服务器基础URL
+                from ..config import get_settings
+                settings = get_settings()
+                base_url = f"http://{settings.host}:{settings.port}"
+                
                 # 更新输出图片信息
                 main_output['filepath'] = str(new_file_path)
                 main_output['filename'] = new_filename
-                main_output['url'] = f"/outputs/{new_filename}"
+                main_output['url'] = f"{base_url}/outputs/{new_filename}"
                 
                 logger.info(f"输出文件重命名: {original_path} -> {new_file_path}")
                 
@@ -448,7 +453,7 @@ class WorkflowTaskService:
                         
                         output_img['filepath'] = str(new_path)
                         output_img['filename'] = new_name
-                        output_img['url'] = f"/outputs/{new_name}"
+                        output_img['url'] = f"{base_url}/outputs/{new_name}"
                         
                         logger.info(f"额外输出文件重命名: {orig_path} -> {new_path}")
                     else:
@@ -548,8 +553,13 @@ class WorkflowTaskService:
         try:
             # 解析进度数据
             if 'value' in progress_data and 'max' in progress_data:
+                # 只处理主要采样阶段的进度，忽略预处理等其他阶段
+                phase = progress_data.get('phase', '')
+                if phase == 'preprocessing':
+                    logger.debug(f"跳过预处理阶段进度: {request_id}")
+                    return
+                
                 progress_percent = (progress_data['value'] / progress_data['max']) * 100
-                # 直接使用ComfyUI的进度
                 task_data.progress = progress_percent
                 task_data.message = f"工作流执行中... {progress_percent:.1f}%"
                 

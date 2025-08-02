@@ -225,7 +225,7 @@ class UniversalWorkflowExecutor(BaseWorkflow):
             raise
     
     async def post_process(self, workflow_result: Dict[str, Any]) -> Dict[str, Any]:
-        """后处理步骤：下载ComfyUI图片并保存到本地"""
+        """后处理步骤：从ComfyUI历史记录中提取输出图片信息"""
         try:
             processed_result = {
                 "output_images": [],
@@ -240,7 +240,7 @@ class UniversalWorkflowExecutor(BaseWorkflow):
                 }
             }
             
-            # 处理输出图片 - 从历史记录中提取
+            # 处理输出图片 - 从历史记录中提取信息（不进行文件操作）
             history = workflow_result.get("history", {})
             if "outputs" in history:
                 for node_id, node_output in history["outputs"].items():
@@ -255,41 +255,18 @@ class UniversalWorkflowExecutor(BaseWorkflow):
                                 continue
                             
                             if comfyui_filename:
-                                # 获取期望的标准文件名
-                                expected_filename = getattr(self, 'expected_output_filename', None)
-                                if not expected_filename:
-                                    import time
-                                    expected_filename = f"{self.workflow_config.id}_output_{int(time.time())}.png"
+                                # 构建ComfyUI图片路径（用于后续的文件重命名处理）
+                                comfyui_path = f"outputs/{comfyui_filename}"
                                 
-                                # 下载并保存图片
-                                success, local_path = await self._download_and_save_image(
-                                    comfyui_filename, expected_filename
-                                )
-                                
-                                if success:
-                                    # 生成本地访问URL
-                                    local_url = f"{self._get_server_base_url()}/outputs/{expected_filename}"
-                                    processed_result["output_images"].append({
-                                        "filename": expected_filename,
-                                        "url": local_url,
-                                        "filepath": local_path,
-                                        "original_comfyui_filename": comfyui_filename,
-                                        "type": f"{self.workflow_config.id}_output"
-                                    })
-                                    self.logger.info(f"图片保存成功: {expected_filename}")
-                                else:
-                                    # 保存失败，使用原始ComfyUI URL作为备用
-                                    fallback_url = f"{self.comfyui_service.client.base_url}/view?filename={comfyui_filename}&type=output"
-                                    processed_result["output_images"].append({
-                                        "filename": comfyui_filename,
-                                        "url": fallback_url,
-                                        "filepath": "",  # 空路径，表示下载失败
-                                        "error": "Failed to download from ComfyUI",
-                                        "type": f"{self.workflow_config.id}_output"
-                                    })
-                                    self.logger.warning(f"图片保存失败，使用备用URL: {comfyui_filename}")
+                                processed_result["output_images"].append({
+                                    "filename": comfyui_filename,
+                                    "filepath": comfyui_path,
+                                    "type": f"{self.workflow_config.id}_output",
+                                    "original_comfyui_filename": comfyui_filename
+                                })
+                                self.logger.info(f"提取输出图片信息: {comfyui_filename}")
             
-            self.logger.info(f"{self.workflow_config.name} 后处理完成，保存了 {len(processed_result['output_images'])} 张图片")
+            self.logger.info(f"{self.workflow_config.name} 后处理完成，提取了 {len(processed_result['output_images'])} 张图片信息")
             return processed_result
             
         except Exception as e:
@@ -320,54 +297,6 @@ class UniversalWorkflowExecutor(BaseWorkflow):
             "network_required": True
         }
     
-    async def _download_and_save_image(self, comfyui_filename: str, target_filename: str) -> tuple[bool, str]:
-        """从ComfyUI下载图片并保存到本地输出目录"""
-        try:
-            import aiohttp
-            import aiofiles
-            from pathlib import Path
-            
-            # 构建ComfyUI图片URL
-            comfyui_url = f"{self.comfyui_service.client.base_url}/view?filename={comfyui_filename}&type=output"
-            
-            # 确保输出目录存在
-            output_dir = Path("outputs")
-            output_dir.mkdir(exist_ok=True)
-            
-            target_path = output_dir / target_filename
-            
-            self.logger.info(f"开始下载图片: {comfyui_url}")
-            
-            # 下载图片
-            async with aiohttp.ClientSession() as session:
-                async with session.get(comfyui_url) as response:
-                    if response.status == 200:
-                        # 保存到本地文件
-                        async with aiofiles.open(target_path, 'wb') as f:
-                            async for chunk in response.content.iter_chunked(8192):
-                                await f.write(chunk)
-                        
-                        file_size = target_path.stat().st_size
-                        self.logger.info(f"图片下载成功: {target_filename}, 大小: {file_size} bytes")
-                        return True, str(target_path)
-                    else:
-                        self.logger.error(f"下载图片失败: HTTP {response.status}")
-                        return False, ""
-                        
-        except Exception as e:
-            self.logger.error(f"下载保存图片异常: {e}")
-            return False, ""
-
-    def _get_server_base_url(self) -> str:
-        """获取当前服务器的基础URL"""
-        try:
-            from app.config import get_settings
-            settings = get_settings()
-            return f"http://{settings.host}:{settings.port}"
-        except Exception as e:
-            self.logger.warning(f"获取服务器配置失败，使用默认值: {e}")
-            return "http://127.0.0.1:8000"
-
     def validate_requirements(self) -> List[str]:
         """验证工作流运行要求"""
         missing_requirements = []
