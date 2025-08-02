@@ -346,7 +346,13 @@ class WorkflowTaskService:
             # 获取历史记录信息
             logger.info(f"任务 {task_data.request_id} 获取历史记录信息...")
             history = await self.comfyui_service.get_result(prompt_id)
-            logger.info(f"任务 {task_data.request_id} 获取到历史记录: {history}")
+            # logger.info(f"任务 {task_data.request_id} 获取到历史记录: {history}")
+            
+            # 检查历史记录是否包含输出信息
+            if not history or 'outputs' not in history:
+                logger.warning(f"任务 {task_data.request_id} 历史记录中没有输出信息")
+                await self._complete_task(task_data, {"status": "completed", "message": "任务完成但无输出"})
+                return
             
             # 获取工作流配置进行后处理
             workflow_config = self.workflow_registry.get_workflow(task_data.workflow_id)
@@ -365,23 +371,29 @@ class WorkflowTaskService:
                 'history': history
             }
             
+            logger.info(f"开始后处理工作流结果...")
             # 后处理（获取输出文件）
             processed_result = await workflow.post_process(workflow_result)
+            logger.info(f"后处理完成，结果: {processed_result}")
             
             # 处理输出文件命名
-            if 'output_images' in processed_result:
+            if 'output_images' in processed_result and processed_result['output_images']:
+                logger.info(f"找到 {len(processed_result['output_images'])} 个输出图片，开始文件重命名...")
                 await self._process_output_files(task_data, processed_result['output_images'])
+                logger.info(f"文件重命名处理完成")
+            else:
+                logger.warning(f"后处理结果中没有输出图片")
             
             # 完成任务
             await self._complete_task(task_data, processed_result)
             
         except Exception as e:
-            logger.error(f"处理完成结果失败: {e}")
+            logger.error(f"处理完成结果失败: {e}", exc_info=True)
             await self._fail_task(task_data, str(e))
 
     async def _process_output_files(self, task_data: WorkflowTaskData, output_images: List[Dict[str, Any]]):
         """
-        处理输出文件，使用新的UUID文件命名系统
+        处理输出文件，从ComfyUI下载生成的图片并重命名
         
         Args:
             task_data: 任务数据
@@ -392,72 +404,106 @@ class WorkflowTaskService:
         
         try:
             from pathlib import Path
-            import shutil
             
-            # 处理第一个输出文件（单输出文件系统）
+            # 处理第一个输出文件（主输出文件）
             main_output = output_images[0]
-            filepath = main_output.get('filepath', '')
+            comfyui_filename = main_output.get('filename', '')
             
-            # 检查文件路径是否有效
-            if not filepath or filepath in ('', '.'):
-                logger.warning(f"主输出文件路径无效: {filepath}, 跳过重命名")
+            # 检查文件名是否有效
+            if not comfyui_filename or comfyui_filename in ('', '.'):
+                logger.warning(f"主输出文件名无效: {comfyui_filename}, 跳过下载")
                 return
                 
-            original_path = Path(filepath)
+            logger.info(f"准备从ComfyUI下载输出文件: {comfyui_filename}")
             
-            if original_path.exists() and original_path.is_file():
-                # 获取文件扩展名
-                extension = original_path.suffix.lstrip('.')
+            # 构建ComfyUI图片下载URL
+            from ..config import get_settings
+            settings = get_settings()
+            comfyui_base_url = settings.comfyui.base_url
+            download_url = f"{comfyui_base_url}/view?filename={comfyui_filename}"
+            
+            # 获取文件扩展名
+            extension = Path(comfyui_filename).suffix.lstrip('.')
+            if not extension:
+                extension = 'png'  # 默认扩展名
+            
+            # 生成新的输出文件名
+            new_filename = FileNamingUtils.build_output_filename(
+                task_data.request_id, 
+                extension
+            )
+            
+            logger.info(f"开始下载ComfyUI生成的图片: {download_url} -> {new_filename}")
+            
+            # 使用下载服务下载图片
+            local_file_path, file_info = await self.download_service.download_image(
+                download_url, 
+                new_filename
+            )
+            
+            # 移动文件到outputs目录
+            outputs_dir = Path("outputs")
+            outputs_dir.mkdir(exist_ok=True, parents=True)
+            
+            final_output_path = outputs_dir / new_filename
+            Path(local_file_path).rename(final_output_path)
+            
+            # 更新任务数据
+            task_data.output_file = str(final_output_path)
+            
+            # 获取服务器外部访问基础URL
+            base_url = settings.get_external_base_url()
+            
+            # 更新输出图片信息
+            main_output['filepath'] = str(final_output_path)
+            main_output['filename'] = new_filename
+            main_output['url'] = f"{base_url}/outputs/{new_filename}"
+            main_output['size'] = file_info.get('size', 0)
+            
+            logger.info(f"输出文件下载并重命名完成: {comfyui_filename} -> {new_filename}")
+            logger.info(f"设置主输出图片URL: {main_output['url']}")
+            
+            # 处理其他输出文件（如果有多个）
+            for i, output_img in enumerate(output_images[1:], 1):
+                other_filename = output_img.get('filename', '')
                 
-                # 生成新的输出文件名
-                new_filename = FileNamingUtils.build_output_filename(
-                    task_data.request_id, 
-                    extension
-                )
-                new_file_path = Path("outputs") / new_filename
+                if not other_filename or other_filename in ('', '.'):
+                    logger.warning(f"额外输出文件{i}文件名无效: {other_filename}, 跳过")
+                    continue
                 
-                # 重命名文件（移动到新位置）
-                original_path.rename(new_file_path)
-                
-                # 更新任务数据
-                task_data.output_file = str(new_file_path)
-                
-                # 获取服务器基础URL
-                from ..config import get_settings
-                settings = get_settings()
-                base_url = f"http://{settings.host}:{settings.port}"
-                
-                # 更新输出图片信息
-                main_output['filepath'] = str(new_file_path)
-                main_output['filename'] = new_filename
-                main_output['url'] = f"{base_url}/outputs/{new_filename}"
-                
-                logger.info(f"输出文件重命名: {original_path} -> {new_file_path}")
-                
-                # 如果有多个输出文件，处理其他文件
-                for i, output_img in enumerate(output_images[1:], 1):
-                    orig_filepath = output_img.get('filepath', '')
+                try:
+                    # 构建下载URL
+                    other_download_url = f"{comfyui_base_url}/view?filename={other_filename}"
                     
-                    # 检查文件路径是否有效
-                    if not orig_filepath or orig_filepath in ('', '.'):
-                        logger.warning(f"额外输出文件{i}路径无效: {orig_filepath}, 跳过")
-                        continue
+                    # 获取扩展名
+                    other_ext = Path(other_filename).suffix.lstrip('.')
+                    if not other_ext:
+                        other_ext = 'png'
                     
-                    orig_path = Path(orig_filepath)
-                    if orig_path.exists() and orig_path.is_file():
-                        ext = orig_path.suffix.lstrip('.')
-                        # 为额外的输出文件添加序号
-                        new_name = f"{task_data.request_id}_output_{i}.{ext}"
-                        new_path = Path("outputs") / new_name
-                        orig_path.rename(new_path)
-                        
-                        output_img['filepath'] = str(new_path)
-                        output_img['filename'] = new_name
-                        output_img['url'] = f"{base_url}/outputs/{new_name}"
-                        
-                        logger.info(f"额外输出文件重命名: {orig_path} -> {new_path}")
-                    else:
-                        logger.warning(f"额外输出文件{i}不存在或不是文件: {orig_filepath}")
+                    # 生成新文件名（添加序号）
+                    other_new_name = f"{task_data.request_id}_output_{i}.{other_ext}"
+                    
+                    # 下载文件
+                    other_local_path, other_file_info = await self.download_service.download_image(
+                        other_download_url, 
+                        other_new_name
+                    )
+                    
+                    # 移动到outputs目录
+                    other_final_path = outputs_dir / other_new_name
+                    Path(other_local_path).rename(other_final_path)
+                    
+                    # 更新图片信息
+                    output_img['filepath'] = str(other_final_path)
+                    output_img['filename'] = other_new_name
+                    output_img['url'] = f"{base_url}/outputs/{other_new_name}"
+                    output_img['size'] = other_file_info.get('size', 0)
+                    
+                    logger.info(f"额外输出文件下载完成: {other_filename} -> {other_new_name}")
+                    
+                except Exception as e:
+                    logger.error(f"下载额外输出文件{i}失败: {e}")
+                    # 继续处理其他文件
                 
         except Exception as e:
             logger.error(f"处理输出文件失败: {e}")

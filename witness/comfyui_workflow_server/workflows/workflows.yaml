@@ -49,7 +49,7 @@ workflows:
       person_image:
         type: "file"
         description: "人物图片"
-        node_path: "1.inputs.image"
+        node_path: "30.inputs.image"
         required: true
         validation:
           accept: ["jpg", "jpeg", "png", "webp"]
@@ -57,23 +57,14 @@ workflows:
       scene_image:
         type: "file"
         description: "场景图片"
-        node_path: "2.inputs.image"
+        node_path: "31.inputs.image"
         required: true
         validation:
           accept: ["jpg", "jpeg", "png", "webp"]
-      
-      merge_strength:
-        type: "float"
-        description: "融合强度，控制人物与场景的融合程度"
-        default: 0.8
-        node_path: "15.inputs.strength"
-        required: false
-        validation:
-          range: [0.1, 1.0]
       
       prompt:
         type: "string"
         description: "融合效果描述"
         default: "person in scenic environment, natural integration"
-        node_path: "24.inputs.clip_l"
+        node_path: "27.inputs.text"
         required: false 

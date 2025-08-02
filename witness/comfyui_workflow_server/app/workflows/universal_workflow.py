@@ -255,12 +255,9 @@ class UniversalWorkflowExecutor(BaseWorkflow):
                                 continue
                             
                             if comfyui_filename:
-                                # 构建ComfyUI图片路径（用于后续的文件重命名处理）
-                                comfyui_path = f"outputs/{comfyui_filename}"
-                                
+                                # 仅提取文件信息，不进行文件操作（文件下载由workflow_task_service处理）
                                 processed_result["output_images"].append({
                                     "filename": comfyui_filename,
-                                    "filepath": comfyui_path,
                                     "type": f"{self.workflow_config.id}_output",
                                     "original_comfyui_filename": comfyui_filename
                                 })

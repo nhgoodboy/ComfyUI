@@ -122,6 +122,7 @@ class AppConfig:
         # 基础配置
         self.host = os.getenv("HOST", "0.0.0.0")
         self.port = int(os.getenv("PORT", "8000"))
+        self.external_host = os.getenv("EXTERNAL_HOST", "").strip() or None
         self.debug = os.getenv("DEBUG", "false").lower() == "true"
         self.environment = os.getenv("ENVIRONMENT", "development")
         
@@ -145,6 +146,25 @@ class AppConfig:
         
         # 记录配置摘要
         self._log_config_summary()
+    
+    def get_external_base_url(self) -> str:
+        """获取外部访问的基础URL"""
+        if self.external_host:
+            return f"http://{self.external_host}:{self.port}"
+        elif self.host == "0.0.0.0":
+            # 如果绑定0.0.0.0且没有设置external_host，尝试自动检测本机IP
+            import socket
+            try:
+                # 创建一个UDP socket来获取本机IP
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(("8.8.8.8", 80))  # 连接到Google DNS
+                    local_ip = s.getsockname()[0]
+                return f"http://{local_ip}:{self.port}"
+            except Exception:
+                # 如果获取失败，使用localhost作为fallback
+                return f"http://localhost:{self.port}"
+        else:
+            return f"http://{self.host}:{self.port}"
     
     def _parse_cors_origins(self, cors_string: str) -> List[str]:
         """解析CORS源列表"""
