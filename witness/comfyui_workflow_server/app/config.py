@@ -32,6 +32,7 @@ class WebSocketConfig:
         self.ping_interval = int(os.getenv("WEBSOCKET_PING_INTERVAL", "30"))
         self.ping_timeout = int(os.getenv("WEBSOCKET_PING_TIMEOUT", "10"))
         self.max_connections = int(os.getenv("WEBSOCKET_MAX_CONNECTIONS", "100"))
+        self.service_client_id = os.getenv("WEBSOCKET_SERVICE_CLIENT_ID", "workflow_test_system")
 
 
 class MonitoringConfig:

@@ -204,9 +204,12 @@ class UniversalWorkflowExecutor(BaseWorkflow):
     def _load_workflow_json(self) -> Dict[str, Any]:
         """从JSON文件加载工作流模板"""
         try:
+            # 使用配置的工作流目录路径
+            from app.config import get_settings
+            settings = get_settings()
+            
             # 构建模板文件路径
-            current_dir = Path(__file__).parent.absolute()
-            template_path = current_dir / "../../../workflows" / self.workflow_config.template_file
+            template_path = settings.storage.workflows_dir / self.workflow_config.template_file
             template_path = template_path.resolve()
             
             self.logger.info(f"加载工作流模板: {template_path}")

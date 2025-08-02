@@ -53,14 +53,19 @@ class PushConnectionManager:
         # 查找目标连接
         target_connections = []
         
+        # 调试信息：显示当前活跃连接
+        logger.info(f"当前活跃连接: {list(self.active_connections.keys())}")
+        
         # 支持两种连接模式：
         # 1. 直接请求连接（使用request_id作为client_id）
         if request_id in self.active_connections:
             target_connections.append((request_id, self.active_connections[request_id]))
         
         # 2. 服务连接（新的一对一模式）
-        # 检查是否有web_image_transform_service连接
-        service_id = "web_image_transform_service"
+        # 从配置中获取服务客户端ID
+        from app.config import get_settings
+        settings = get_settings()
+        service_id = settings.websocket.service_client_id
         if service_id in self.active_connections:
             target_connections.append((service_id, self.active_connections[service_id]))
         
