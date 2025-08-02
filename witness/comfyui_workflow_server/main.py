@@ -107,8 +107,14 @@ async def lifespan(app: FastAPI):
         yield
         
     except Exception as e:
-        logger.critical(f"应用启动失败: {e}", exc_info=True)
-        # 可以在这里添加清理逻辑
+        logger.error(f"应用启动过程中出现错误: {e}", exc_info=True)
+        logger.warning("部分服务可能不可用，但应用将继续运行")
+        # 确保基础状态仍然设置
+        if not hasattr(app.state, 'settings'):
+            app.state.settings = settings
+        if not hasattr(app.state, 'start_time'):
+            app.state.start_time = time.time()
+        yield
         
     finally:
         # --- 5. 关闭时清理 ---
@@ -259,8 +265,8 @@ async def health_check(request: Request):
     try:
         if hasattr(request.app.state, 'comfyui_service'):
             comfyui_service: ComfyUIService = request.app.state.comfyui_service
-            # 简单的健康检查
-            comfyui_healthy = comfyui_service._client_id is not None
+            # 使用正确的健康检查方法
+            comfyui_healthy = await comfyui_service.health_check()
     except Exception as e:
         comfyui_error = str(e)
     

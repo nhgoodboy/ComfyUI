@@ -52,7 +52,6 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
                 workflow_registry = request.app.state.workflow_registry
                 workflows = workflow_registry.get_all_workflows()
                 workflows_count = len(workflows)
-                logger.info(f"Health check: found {workflows_count} workflows")
             else:
                 logger.warning("Health check: workflow_registry not found in app.state")
         except Exception as e:

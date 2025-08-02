@@ -115,37 +115,11 @@ class ComfyUIService:
             # 记录当前事件循环, 供线程中的回调使用
             self._loop = asyncio.get_running_loop()
 
-            # 通过线程安全方式把协程投递到主事件循环
-            def _safe_call_async(coro_func):
-                def _wrapper(*args, **kwargs):
-                    try:
-                        # 对于async函数，使用run_coroutine_threadsafe
-                        fut = asyncio.run_coroutine_threadsafe(
-                            coro_func(*args, **kwargs), self._loop
-                        )
-                        # 等待结果以确保执行完成
-                        try:
-                            fut.result(timeout=30)  # 30秒超时
-                        except Exception as e:
-                            logger.error(f"协程执行失败: {e}")
-                    except Exception as e:
-                        logger.error(f"调度回调失败: {e}")
-                return _wrapper
-            
-            def _safe_call_sync(sync_func):
-                def _wrapper(*args, **kwargs):
-                    try:
-                        # 对于同步函数，使用call_soon_threadsafe
-                        self._loop.call_soon_threadsafe(sync_func, *args, **kwargs)
-                    except Exception as e:
-                        logger.error(f"调度同步回调失败: {e}")
-                return _wrapper
-
             # 设置WebSocket回调（如果支持）
             if hasattr(self.ws_client, 'set_progress_callback'):
-                self.ws_client.set_progress_callback(_safe_call_sync(self._on_progress))
+                self.ws_client.set_progress_callback(self._safe_call_sync(self._on_progress))
             if hasattr(self.ws_client, 'set_completion_callback'):
-                self.ws_client.set_completion_callback(_safe_call_async(self._on_completion))
+                self.ws_client.set_completion_callback(self._safe_call_async(self._on_completion))
             
             self.health_status = True
             self.last_health_check = time.time()
@@ -177,7 +151,7 @@ class ComfyUIService:
             logger.error(f"关闭连接时发生错误: {e}")
         
     async def health_check(self) -> bool:
-        """健康检查"""
+        """健康检查，如果连接断开会尝试重连"""
         current_time = time.time()
         
         # 如果距离上次检查时间过短，返回缓存的状态
@@ -187,6 +161,12 @@ class ComfyUIService:
         try:
             # 执行健康检查
             await self.client.system.get_system_stats()
+            
+            # 如果之前连接失败，现在连接成功了，重新初始化WebSocket
+            if not self.health_status:
+                logger.info("ComfyUI连接恢复，尝试重新初始化WebSocket")
+                await self._reinitialize_websocket()
+            
             self.health_status = True
             self.last_health_check = current_time
             return True
@@ -201,6 +181,68 @@ class ComfyUIService:
             self.health_status = False
             self.last_health_check = current_time
             return False
+    
+    async def _reinitialize_websocket(self):
+        """重新初始化WebSocket连接"""
+        try:
+            # 关闭现有WebSocket连接
+            if self.ws_client:
+                try:
+                    self.ws_client.close()
+                except Exception as e:
+                    logger.debug(f"关闭旧WebSocket连接时出错: {e}")
+            
+            # 重新创建WebSocket客户端
+            logger.info(f"重新初始化WebSocket客户端连接到: {self.server_address}:{self.port}")
+            self.ws_client = self.client.get_websocket(self.client_id)
+            
+            # 设置回调
+            if hasattr(self.ws_client, 'set_progress_callback'):
+                self.ws_client.set_progress_callback(self._safe_call_sync(self._on_progress))
+            if hasattr(self.ws_client, 'set_completion_callback'):
+                self.ws_client.set_completion_callback(self._safe_call_async(self._on_completion))
+            
+            # 启动WebSocket连接
+            if hasattr(self.ws_client, 'run_forever'):
+                self.ws_client.run_forever()
+                logger.info("WebSocket重连成功")
+            
+        except Exception as e:
+            logger.error(f"WebSocket重连失败: {e}")
+    
+    def _safe_call_sync(self, sync_func):
+        """创建线程安全的同步函数包装器"""
+        def _wrapper(*args, **kwargs):
+            try:
+                # 对于同步函数，使用call_soon_threadsafe
+                if hasattr(self, '_loop') and self._loop:
+                    self._loop.call_soon_threadsafe(sync_func, *args, **kwargs)
+                else:
+                    sync_func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"调度同步回调失败: {e}")
+        return _wrapper
+
+    def _safe_call_async(self, coro_func):
+        """创建线程安全的异步函数包装器"""
+        def _wrapper(*args, **kwargs):
+            try:
+                # 对于async函数，使用run_coroutine_threadsafe
+                if hasattr(self, '_loop') and self._loop:
+                    fut = asyncio.run_coroutine_threadsafe(
+                        coro_func(*args, **kwargs), self._loop
+                    )
+                    # 等待结果以确保执行完成
+                    try:
+                        fut.result(timeout=30)  # 30秒超时
+                    except Exception as e:
+                        logger.error(f"协程执行失败: {e}")
+                else:
+                    # 如果没有事件循环，直接调用（虽然这不理想）
+                    asyncio.create_task(coro_func(*args, **kwargs))
+            except Exception as e:
+                logger.error(f"调度异步回调失败: {e}")
+        return _wrapper
     
     def set_workflow_task_service(self, service: 'WorkflowTaskService'):
         """注入WorkflowTaskService实例以处理回调"""

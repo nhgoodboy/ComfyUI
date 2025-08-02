@@ -77,28 +77,39 @@ async def startup_event():
     
     logger.info("Starting ComfyUI workflow test system")
     
-    # Start session cleanup task
-    session_manager.start_cleanup_task()
-    
-    # Initialize WebSocket manager
-    ws_manager = WebSocketManager(message_handler=handle_comfyui_message)
-    
-    # Start WebSocket connection
-    asyncio.create_task(ws_manager.connect())
-    
-    logger.info("Test system started successfully")
+    try:
+        # Start session cleanup task
+        session_manager.start_cleanup_task()
+        
+        # Initialize WebSocket manager
+        ws_manager = WebSocketManager(message_handler=handle_comfyui_message)
+        
+        # Start WebSocket connection (don't wait for it)
+        asyncio.create_task(ws_manager.connect())
+        
+        logger.info("Test system started successfully")
+        
+    except Exception as e:
+        logger.error(f"Startup error: {e}")
+        logger.warning("Some services may be unavailable, but the application will continue running")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown event"""
     logger.info("Shutting down ComfyUI workflow test system")
     
-    # Close WebSocket manager
-    if ws_manager:
-        await ws_manager.close()
+    try:
+        # Close WebSocket manager
+        if ws_manager:
+            await ws_manager.close()
+    except Exception as e:
+        logger.error(f"Error closing WebSocket manager: {e}")
     
-    # Shutdown session manager
-    await session_manager.shutdown()
+    try:
+        # Shutdown session manager
+        await session_manager.shutdown()
+    except Exception as e:
+        logger.error(f"Error shutting down session manager: {e}")
     
     logger.info("Test system shutdown complete")
 
