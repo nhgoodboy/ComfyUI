@@ -4,8 +4,8 @@
 
 class WorkflowTestSystem {
     constructor() {
-        this.apiBase = 'http://localhost:8001/api';
-        this.wsUrl = 'ws://localhost:8001/ws';
+        this.apiBase = '/api';
+        this.wsUrl = `ws://${location.host}/ws`;
         this.sessionId = null;
         this.websocket = null;
         this.currentTask = null;
@@ -742,9 +742,17 @@ class WorkflowTestSystem {
             
             const statusElement = document.getElementById('system-status');
             
-            if (result.success && result.data.comfyui_server.status === 'healthy') {
-                statusElement.textContent = 'System healthy';
-                statusElement.style.color = '#28a745';
+            if (result.success) {
+                // 测试系统本身是健康的
+                if (result.data.comfyui_server && result.data.comfyui_server.status === 'healthy') {
+                    statusElement.textContent = 'System healthy';
+                    statusElement.style.color = '#28a745';
+                } else {
+                    // ComfyUI不可用，但测试系统正常
+                    statusElement.textContent = 'ComfyUI unavailable';
+                    statusElement.style.color = '#ffc107';
+                    this.log('ComfyUI server is not available, but test system is running', 'warning');
+                }
             } else {
                 statusElement.textContent = 'System unhealthy';
                 statusElement.style.color = '#dc3545';
@@ -752,6 +760,7 @@ class WorkflowTestSystem {
             
         } catch (error) {
             document.getElementById('system-status').textContent = 'Status unknown';
+            document.getElementById('system-status').style.color = '#dc3545';
             this.log(`Health check failed: ${error.message}`, 'error');
         }
     }
