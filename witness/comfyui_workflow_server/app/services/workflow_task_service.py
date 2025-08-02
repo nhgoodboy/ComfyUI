@@ -502,8 +502,9 @@ class WorkflowTaskService:
             settings = get_settings()
             service_client_id = settings.websocket.service_client_id
             await push_manager.push_to_client(service_client_id, {
-                "type": "task_update", 
-                "data": update_data
+                "type": "task_update",
+                "request_id": update_data["request_id"],  # 顶层 request_id
+                "data": update_data  # 嵌套数据
             })
             
         except Exception as e:
@@ -532,10 +533,12 @@ class WorkflowTaskService:
         """处理进度更新"""
         request_id = self.prompt_to_request.get(prompt_id)
         if not request_id:
+            logger.debug(f"进度更新: 未找到prompt_id {prompt_id} 对应的request_id")
             return
         
         task_data = self.tasks.get(request_id)
         if not task_data:
+            logger.debug(f"进度更新: 未找到request_id {request_id} 对应的任务数据")
             return
         
         try:
@@ -546,10 +549,12 @@ class WorkflowTaskService:
                 task_data.progress = 50.0 + (progress_percent * 0.4)
                 task_data.message = f"工作流执行中... {progress_percent:.1f}%"
                 
+                logger.info(f"进度更新: {request_id} -> {task_data.progress:.1f}% ({progress_percent:.1f}%)")
+                
                 # 异步推送更新
                 asyncio.create_task(self._push_task_update(task_data))
         except Exception as e:
-            logger.warning(f"处理进度更新失败: {e}")
+            logger.error(f"处理进度更新失败: {e}")
 
     async def handle_completion_update(self, prompt_id: str, result_data: Dict[str, Any]):
         """处理完成更新"""

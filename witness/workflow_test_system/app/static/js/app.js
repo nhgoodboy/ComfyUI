@@ -131,6 +131,7 @@ class WorkflowTestSystem {
         
         switch (message.type) {
             case 'workflow_update':
+            case 'task_update':  // 支持新的消息类型
                 this.handleWorkflowUpdate(message);
                 break;
             case 'task_completed':
@@ -148,23 +149,29 @@ class WorkflowTestSystem {
     }
 
     handleWorkflowUpdate(message) {
-        const data = message.data;
-        this.currentTask = data;
+        // 使用标准的嵌套数据结构（与老项目一致）
+        const taskData = message.data;
+        const requestId = message.request_id;
+        
+        // 将顶层 request_id 添加到 taskData 中
+        taskData.request_id = requestId;
+        
+        this.currentTask = taskData;
         
         // Update task info
-        this.updateCurrentTaskInfo(data);
+        this.updateCurrentTaskInfo(taskData);
         
         // Update progress
-        this.updateProgress(data.progress || 0, data.stage || '', data.message || '');
+        this.updateProgress(taskData.progress || 0, taskData.stage || '', taskData.message || '');
         
         // Log update
-        this.log(`Task ${data.request_id} update: ${data.status} (${Math.round(data.progress || 0)}%)`, 'info');
+        this.log(`Task ${requestId} update: ${taskData.status} (${Math.round(taskData.progress || 0)}%)`, 'info');
         
         // Subscribe to updates
         if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
             this.websocket.send(JSON.stringify({
                 type: 'subscribe',
-                request_id: data.request_id
+                request_id: requestId
             }));
         }
     }

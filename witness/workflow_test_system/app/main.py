@@ -14,7 +14,7 @@ from .config import config
 from .routers import workflow, files, system
 from .services.rpc_client import rpc_client
 from .services.websocket_manager import WebSocketManager
-from .services.session_manager import session_manager
+from .services.session_manager import session_manager, SessionInfo
 
 # Setup logging
 logging.basicConfig(
@@ -127,7 +127,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         logger.info(f"WebSocket connection established: {session_id}")
         
         # Add WebSocket connection to session manager
-        await session_manager.create_session(websocket)
+        # 使用URL中的session_id，而不是创建新的
+        session_info = SessionInfo(session_id, websocket)
+        session_manager.sessions[session_id] = session_info
+        logger.info(f"注册会话: {session_id}")
         
         try:
             while True:
