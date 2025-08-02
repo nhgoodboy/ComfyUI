@@ -284,6 +284,9 @@ class WorkflowTestSystem {
         
         // Load parameter schema
         await this.loadWorkflowSchema(workflowId);
+        
+        // Check if parameters are ready after loading schema
+        this.checkParametersReady();
     }
 
     showWorkflowInfo(workflow) {
@@ -363,6 +366,21 @@ class WorkflowTestSystem {
                 input.type = 'number';
                 if (paramInfo.min !== undefined) input.min = paramInfo.min;
                 if (paramInfo.max !== undefined) input.max = paramInfo.max;
+            } else if (paramInfo.type === 'file') {
+                // File input for image files
+                input = document.createElement('input');
+                input.type = 'file';
+                
+                // Set accepted file types based on validation
+                if (paramInfo.validation && paramInfo.validation.accept) {
+                    const acceptTypes = paramInfo.validation.accept.map(ext => `.${ext}`).join(',');
+                    input.accept = acceptTypes;
+                }
+                
+                // Add file selection preview
+                input.addEventListener('change', (e) => {
+                    this.handleFileSelection(e, paramName);
+                });
             } else {
                 // Text input for other types
                 input = document.createElement('input');
@@ -371,6 +389,11 @@ class WorkflowTestSystem {
             
             input.id = `param-${paramName}`;
             input.name = paramName;
+            
+            // Set required attribute for required parameters
+            if (paramInfo.required) {
+                input.required = true;
+            }
             
             if (paramInfo.default !== undefined) {
                 if (paramInfo.type === 'boolean') {
@@ -396,10 +419,115 @@ class WorkflowTestSystem {
             
             formDiv.appendChild(groupDiv);
         });
+        
+        // Check parameters after form generation
+        this.checkParametersReady();
     }
 
     clearParameterForm() {
         document.getElementById('parameter-form').innerHTML = '<p>Please select a workflow</p>';
+        // Disable execute button when parameters are cleared
+        document.getElementById('execute-btn').disabled = true;
+    }
+
+    handleFileSelection(event, paramName) {
+        const file = event.target.files[0];
+        if (!file) {
+            return;
+        }
+
+        // Show file info
+        const input = event.target;
+        const groupDiv = input.parentElement;
+        
+        // Remove previous preview if exists
+        const existingPreview = groupDiv.querySelector('.file-preview');
+        if (existingPreview) {
+            existingPreview.remove();
+        }
+
+        // Create file preview
+        const previewDiv = document.createElement('div');
+        previewDiv.className = 'file-preview';
+        previewDiv.style.marginTop = '10px';
+        previewDiv.style.padding = '10px';
+        previewDiv.style.border = '1px solid #ddd';
+        previewDiv.style.borderRadius = '4px';
+        previewDiv.style.backgroundColor = '#f9f9f9';
+
+        // File info
+        const fileInfo = document.createElement('div');
+        fileInfo.innerHTML = `
+            <strong>Selected file:</strong> ${file.name}<br>
+            <strong>Size:</strong> ${(file.size / 1024 / 1024).toFixed(2)} MB<br>
+            <strong>Type:</strong> ${file.type}
+        `;
+        previewDiv.appendChild(fileInfo);
+
+        // Image preview for image files
+        if (file.type.startsWith('image/')) {
+            const img = document.createElement('img');
+            img.style.maxWidth = '200px';
+            img.style.maxHeight = '200px';
+            img.style.marginTop = '10px';
+            img.style.border = '1px solid #ccc';
+            img.style.borderRadius = '4px';
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            
+            previewDiv.appendChild(img);
+        }
+
+        groupDiv.appendChild(previewDiv);
+        
+        this.log(`Selected file: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, 'info');
+        
+        // Check if all parameters are ready after file selection
+        this.checkParametersReady();
+    }
+
+    checkParametersReady() {
+        const workflowSelect = document.getElementById('workflow-select');
+        const executeBtn = document.getElementById('execute-btn');
+        const formDiv = document.getElementById('parameter-form');
+        
+        // Check if workflow is selected
+        if (!workflowSelect.value) {
+            executeBtn.disabled = true;
+            return;
+        }
+        
+        // Check if all required parameters are filled
+        const inputs = formDiv.querySelectorAll('input, select, textarea');
+        let allParametersReady = true;
+        
+        for (const input of inputs) {
+            // For required parameters
+            if (input.hasAttribute('required') || input.name) {
+                if (input.type === 'file') {
+                    // Check if file is selected
+                    if (!input.files || input.files.length === 0) {
+                        allParametersReady = false;
+                        break;
+                    }
+                } else if (input.type === 'checkbox') {
+                    // Checkbox is always valid (can be checked or unchecked)
+                    continue;
+                } else {
+                    // Check if text/number input has value
+                    if (!input.value.trim()) {
+                        allParametersReady = false;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        executeBtn.disabled = !allParametersReady;
     }
 
     async executeWorkflow() {
@@ -409,8 +537,8 @@ class WorkflowTestSystem {
                 throw new Error('Please select a workflow');
             }
             
-            // Collect parameters
-            const params = this.collectParameters();
+            // Collect parameters (now async for file upload)
+            const params = await this.collectParameters();
             
             // Generate request ID
             const requestId = `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -461,22 +589,64 @@ class WorkflowTestSystem {
         }
     }
 
-    collectParameters() {
+    async collectParameters() {
         const params = {};
         const formDiv = document.getElementById('parameter-form');
         const inputs = formDiv.querySelectorAll('input, select, textarea');
         
-        inputs.forEach(input => {
+        for (const input of inputs) {
             if (input.type === 'checkbox') {
                 params[input.name] = input.checked;
             } else if (input.type === 'number') {
                 params[input.name] = parseFloat(input.value) || 0;
+            } else if (input.type === 'file') {
+                // Handle file upload
+                if (input.files && input.files[0]) {
+                    const file = input.files[0];
+                    // For now, we'll upload the file and get a URL
+                    // This requires implementing file upload endpoint
+                    const uploadedUrl = await this.uploadFile(file, input.name);
+                    params[input.name] = uploadedUrl;
+                } else {
+                    throw new Error(`Please select a file for ${input.name}`);
+                }
             } else {
                 params[input.name] = input.value;
             }
-        });
+        }
         
         return params;
+    }
+
+    async uploadFile(file, paramName) {
+        try {
+            this.log(`Uploading file: ${file.name}`, 'info');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('param_name', paramName);
+            
+            const response = await fetch(`${this.apiBase}/files/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Upload failed: HTTP ${response.status}`);
+            }
+            
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Upload failed');
+            }
+            
+            this.log(`File uploaded successfully: ${result.data.url}`, 'success');
+            return result.data.url;
+            
+        } catch (error) {
+            this.log(`File upload failed: ${error.message}`, 'error');
+            throw error;
+        }
     }
 
     async cancelCurrentTask() {

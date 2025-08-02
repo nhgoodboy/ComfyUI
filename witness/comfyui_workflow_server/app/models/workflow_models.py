@@ -33,6 +33,11 @@ class WorkflowTaskData(BaseModel):
     # 工作流执行参数和状态（动态字段）
     workflow_params: Optional[Dict[str, Any]] = Field(None, description="工作流参数")
     
+    # 文件管理（新增）
+    task_file_id: Optional[str] = Field(None, description="任务文件ID，用于文件命名")
+    input_files: Optional[Dict[str, str]] = Field(default_factory=dict, description="输入文件映射 {参数名: 文件路径}")
+    output_file: Optional[str] = Field(None, description="输出文件路径")
+    
     class Config:
         # 允许动态添加字段以支持不同工作流的特定需求
         extra = "allow"

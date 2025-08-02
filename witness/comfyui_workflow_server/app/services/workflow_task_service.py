@@ -110,6 +110,9 @@ class WorkflowTaskService:
         
         current_time = time.time()
         
+        # 生成任务文件ID（用于文件命名）
+        task_file_id = FileNamingUtils.generate_task_file_id()
+        
         # 创建任务数据
         task_data = WorkflowTaskData(
             request_id=request_id,
@@ -121,7 +124,8 @@ class WorkflowTaskService:
             completed_at=None,
             estimated_remaining=None,
             result=None,
-            error_message=None
+            error_message=None,
+            task_file_id=task_file_id
         )
         
         # 添加扩展属性
@@ -132,7 +136,7 @@ class WorkflowTaskService:
         # 存储任务
         self.tasks[request_id] = task_data
         
-        logger.info(f"创建工作流任务: {request_id}, 工作流: {workflow_id}")
+        logger.info(f"创建工作流任务: {request_id}, 工作流: {workflow_id}, 文件ID: {task_file_id}")
         
         # 推送任务创建消息
         await self._push_task_update(task_data)
@@ -156,7 +160,7 @@ class WorkflowTaskService:
 
         try:
             # 获取工作流配置
-            workflow_config = self.workflow_registry.get_workflow_config(task_data.workflow_id)
+            workflow_config = self.workflow_registry.get_workflow(task_data.workflow_id)
             if not workflow_config:
                 raise ValueError(f"工作流配置不存在: {task_data.workflow_id}")
             
@@ -166,8 +170,8 @@ class WorkflowTaskService:
             # 验证参数
             validated_params = workflow_executor.validate_parameters(task_data.workflow_params)
             
-            # 预处理（处理文件下载等）
-            processed_params = await workflow_executor.pre_process(validated_params)
+            # 预处理文件参数（使用新的文件命名系统）
+            processed_params = await self._process_file_parameters(task_data, validated_params)
             
             # 更新任务数据
             task_data.stage = "workflow_execution"
@@ -196,6 +200,81 @@ class WorkflowTaskService:
         except Exception as e:
             logger.error(f"工作流执行失败: {e}")
             await self._fail_task(task_data, str(e))
+
+    async def _process_file_parameters(self, task_data: WorkflowTaskData, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        处理文件参数，使用新的UUID文件命名系统
+        
+        Args:
+            task_data: 任务数据
+            params: 原始参数
+        
+        Returns:
+            Dict[str, Any]: 处理后的参数
+        """
+        processed_params = params.copy()
+        input_files = {}
+        
+        for param_name, param_value in params.items():
+            # 检查是否是文件URL
+            if isinstance(param_value, str) and (
+                param_value.startswith('http://') or 
+                param_value.startswith('https://') or
+                param_value.startswith('/uploads/') or
+                param_value.startswith('uploads/')
+            ):
+                try:
+                    # 下载或处理文件
+                    if param_value.startswith('http'):
+                        # 下载网络文件
+                        logger.info(f"下载文件: {param_name} = {param_value}")
+                        local_file_path = await self.download_service.download_file(
+                            param_value, 
+                            task_data.task_file_id,
+                            param_name
+                        )
+                    else:
+                        # 本地文件，重命名为标准格式
+                        from pathlib import Path
+                        import shutil
+                        
+                        original_path = Path("uploads") / Path(param_value).name
+                        if original_path.exists():
+                            # 获取文件扩展名
+                            extension = original_path.suffix.lstrip('.')
+                            
+                            # 生成新的文件名
+                            new_filename = FileNamingUtils.build_input_filename(
+                                task_data.task_file_id, 
+                                param_name, 
+                                extension
+                            )
+                            new_file_path = Path("uploads") / new_filename
+                            
+                            # 复制文件到新位置
+                            shutil.copy2(original_path, new_file_path)
+                            local_file_path = str(new_file_path)
+                            
+                            logger.info(f"文件重命名: {original_path} -> {new_file_path}")
+                        else:
+                            raise FileNotFoundError(f"文件不存在: {param_value}")
+                    
+                    # 记录输入文件映射
+                    input_files[param_name] = local_file_path
+                    
+                    # 更新参数为本地文件路径
+                    processed_params[param_name] = local_file_path
+                    
+                    logger.info(f"参数 {param_name} 文件处理完成: {local_file_path}")
+                    
+                except Exception as e:
+                    logger.error(f"处理文件参数 {param_name} 失败: {e}")
+                    raise RPCFileError(f"文件处理失败: {param_name} - {str(e)}")
+        
+        # 更新任务数据中的文件映射
+        task_data.input_files = input_files
+        
+        return processed_params
 
     def get_task(self, request_id: str) -> Optional[WorkflowTaskData]:
         """获取任务数据"""
@@ -253,7 +332,7 @@ class WorkflowTaskService:
             logger.info(f"任务 {task_data.request_id} 获取到历史记录: {history}")
             
             # 获取工作流配置进行后处理
-            workflow_config = self.workflow_registry.get_workflow_config(task_data.workflow_id)
+            workflow_config = self.workflow_registry.get_workflow(task_data.workflow_id)
             if not workflow_config:
                 logger.error(f"工作流配置不存在: {task_data.workflow_id}")
                 return
@@ -269,8 +348,12 @@ class WorkflowTaskService:
                 'history': history
             }
             
-            # 后处理
+            # 后处理（获取输出文件）
             processed_result = await workflow.post_process(workflow_result)
+            
+            # 处理输出文件命名
+            if 'output_images' in processed_result:
+                await self._process_output_files(task_data, processed_result['output_images'])
             
             # 完成任务
             await self._complete_task(task_data, processed_result)
@@ -278,6 +361,69 @@ class WorkflowTaskService:
         except Exception as e:
             logger.error(f"处理完成结果失败: {e}")
             await self._fail_task(task_data, str(e))
+
+    async def _process_output_files(self, task_data: WorkflowTaskData, output_images: List[Dict[str, Any]]):
+        """
+        处理输出文件，使用新的UUID文件命名系统
+        
+        Args:
+            task_data: 任务数据
+            output_images: 输出图片列表
+        """
+        if not output_images:
+            return
+        
+        try:
+            from pathlib import Path
+            import shutil
+            
+            # 处理第一个输出文件（单输出文件系统）
+            main_output = output_images[0]
+            original_path = Path(main_output.get('filepath', ''))
+            
+            if original_path.exists():
+                # 获取文件扩展名
+                extension = original_path.suffix.lstrip('.')
+                
+                # 生成新的输出文件名
+                new_filename = FileNamingUtils.build_output_filename(
+                    task_data.task_file_id, 
+                    extension
+                )
+                new_file_path = Path("uploads") / new_filename
+                
+                # 复制文件到新位置
+                shutil.copy2(original_path, new_file_path)
+                
+                # 更新任务数据
+                task_data.output_file = str(new_file_path)
+                
+                # 更新输出图片信息
+                main_output['filepath'] = str(new_file_path)
+                main_output['filename'] = new_filename
+                main_output['url'] = f"/uploads/{new_filename}"
+                
+                logger.info(f"输出文件重命名: {original_path} -> {new_file_path}")
+                
+                # 如果有多个输出文件，处理其他文件
+                for i, output_img in enumerate(output_images[1:], 1):
+                    orig_path = Path(output_img.get('filepath', ''))
+                    if orig_path.exists():
+                        ext = orig_path.suffix.lstrip('.')
+                        # 为额外的输出文件添加序号
+                        new_name = f"{task_data.task_file_id}_output_{i}.{ext}"
+                        new_path = Path("uploads") / new_name
+                        shutil.copy2(orig_path, new_path)
+                        
+                        output_img['filepath'] = str(new_path)
+                        output_img['filename'] = new_name
+                        output_img['url'] = f"/uploads/{new_name}"
+                        
+                        logger.info(f"额外输出文件重命名: {orig_path} -> {new_path}")
+                
+        except Exception as e:
+            logger.error(f"处理输出文件失败: {e}")
+            # 不抛出异常，因为这不应该导致整个任务失败
 
     async def _complete_task(self, task_data: WorkflowTaskData, result: Dict[str, Any] = None):
         """完成任务"""

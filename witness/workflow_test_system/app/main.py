@@ -52,6 +52,12 @@ import os
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+# Upload files directory
+uploads_dir = "uploads"
+if not os.path.exists(uploads_dir):
+    os.makedirs(uploads_dir)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+
 async def handle_comfyui_message(message: Dict[str, Any]):
     """Handle WebSocket messages from ComfyUI server"""
     try:
@@ -127,6 +133,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             while True:
                 # Receive frontend messages
                 data = await websocket.receive_text()
+                
+                # Handle heartbeat ping/pong
+                if data == 'ping':
+                    await websocket.send_text('pong')
+                    continue
+                
                 try:
                     message = json.loads(data)
                     await session_manager.handle_websocket_message(session_id, message)

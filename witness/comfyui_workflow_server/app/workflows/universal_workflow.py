@@ -11,11 +11,11 @@ import logging
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from ..base import BaseWorkflow, WorkflowMetadata, WorkflowParameter, WorkflowType
-from ..base.parameter_types import ParameterValidator
-from ...services.comfyui_service import ComfyUIService
-from ...core.parameter_mapper import ParameterMapper
-from ...core.workflow_registry import WorkflowConfig
+from .base import BaseWorkflow, WorkflowMetadata, WorkflowParameter, WorkflowType
+from .base.parameter_types import ParameterValidator
+from ..services.comfyui_service import ComfyUIService
+from ..core.parameter_mapper import ParameterMapper
+from ..core.workflow_registry import WorkflowConfig
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class UniversalWorkflowExecutor(BaseWorkflow):
         """验证和处理参数"""
         try:
             # 使用工作流注册器的验证方法
-            from ...core.workflow_registry import WorkflowRegistry
+            from app.core.workflow_registry import WorkflowRegistry
             
             # 创建一个临时的注册器实例来验证参数
             # 这里简化处理，直接验证必需参数和类型
@@ -350,7 +350,7 @@ class UniversalWorkflowExecutor(BaseWorkflow):
     def _get_server_base_url(self) -> str:
         """获取当前服务器的基础URL"""
         try:
-            from ...config import get_settings
+            from app.config import get_settings
             settings = get_settings()
             return f"http://{settings.server.host}:{settings.server.port}"
         except Exception as e:

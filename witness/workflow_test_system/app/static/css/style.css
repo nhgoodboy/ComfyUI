@@ -619,3 +619,38 @@ kbd {
     from { transform: translateX(-100%); }
     to { transform: translateX(0); }
 }
+
+/* File upload styles */
+.parameter-group input[type="file"] {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    background-color: #f9f9f9;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.parameter-group input[type="file"]:hover {
+    border-color: #007bff;
+    background-color: #f0f8ff;
+}
+
+.parameter-group input[type="file"]:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+.file-preview {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.file-preview img {
+    transition: transform 0.2s ease;
+}
+
+.file-preview img:hover {
+    transform: scale(1.05);
+    cursor: pointer;
+}

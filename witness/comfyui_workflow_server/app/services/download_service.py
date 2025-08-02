@@ -17,6 +17,7 @@ import hashlib
 from ..rpc.exceptions import RPCFileError
 from ..rpc.error_codes import ErrorCodes
 from ..config import get_settings
+from ..utils.file_naming import FileNamingUtils
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,142 @@ class DownloadService:
             except ValueError:
                 pass
     
+    async def download_file(
+        self, 
+        url: str, 
+        task_file_id: str,
+        param_name: str,
+        progress_callback: Optional[Callable[[float], None]] = None
+    ) -> str:
+        """
+        使用新的UUID文件命名系统下载文件
+        
+        Args:
+            url: 文件URL
+            task_file_id: 任务文件ID
+            param_name: 参数名
+            progress_callback: 进度回调函数
+        
+        Returns:
+            str: 保存的文件路径
+        """
+        await self._ensure_session()
+        
+        logger.info(f"开始下载文件: {url} -> {task_file_id}_{param_name}")
+        start_time = time.time()
+        
+        try:
+            # 发起HTTP请求
+            async with self._session.get(url, allow_redirects=True) as response:
+                # 检查响应状态
+                if response.status != 200:
+                    raise RPCFileError(
+                        code=ErrorCodes.DOWNLOAD_FAILED,
+                        message=f"下载失败，HTTP状态码: {response.status}",
+                        url=url,
+                        details=f"服务器返回: {response.reason}"
+                    )
+                
+                # 验证Content-Type（更宽松的验证）
+                content_type = response.headers.get('content-type', '')
+                
+                # 如果有明确的图片类型，验证它
+                if content_type and any(img_type in content_type.lower() for img_type in ['image/', 'jpeg', 'png', 'webp', 'bmp', 'gif']):
+                    # 明确是图片类型，通过验证
+                    pass
+                elif content_type and content_type.lower().startswith('text/'):
+                    # 如果是text类型，需要进一步检查URL扩展名
+                    url_lower = url.lower()
+                    if any(ext in url_lower for ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']):
+                        # URL看起来像图片，可能是服务器MIME类型配置问题，允许通过
+                        logger.warning(f"Content-Type为text但URL像图片: {url}, Content-Type: {content_type}")
+                    else:
+                        raise RPCFileError(
+                            code=ErrorCodes.INVALID_FILE_FORMAT,
+                            message=f"不支持的内容类型: {content_type}",
+                            url=url
+                        )
+                elif content_type:
+                    # 其他明确非图片的类型
+                    raise RPCFileError(
+                        code=ErrorCodes.INVALID_FILE_FORMAT,
+                        message=f"不支持的内容类型: {content_type}",
+                        url=url
+                    )
+                
+                # 验证文件大小
+                content_length = response.headers.get('content-length')
+                self._validate_file_size(content_length)
+                
+                # 获取文件扩展名
+                file_ext = self._get_file_extension(url, content_type)
+                extension = file_ext.lstrip('.')
+                
+                # 使用新的文件命名系统生成文件名
+                filename = FileNamingUtils.build_input_filename(task_file_id, param_name, extension)
+                file_path = Path("uploads") / filename
+                
+                # 确保上传目录存在
+                file_path.parent.mkdir(exist_ok=True, parents=True)
+                
+                # 下载文件内容
+                downloaded_size = 0
+                total_size = int(content_length) if content_length else 0
+                
+                async with aiofiles.open(file_path, 'wb') as f:
+                    async for chunk in response.content.iter_chunked(8192):
+                        await f.write(chunk)
+                        downloaded_size += len(chunk)
+                        
+                        # 检查文件大小限制
+                        if downloaded_size > self.max_file_size:
+                            # 删除文件
+                            file_path.unlink(missing_ok=True)
+                            raise RPCFileError(
+                                code=ErrorCodes.FILE_TOO_LARGE,
+                                message=f"文件过大: {downloaded_size / 1024 / 1024:.2f}MB",
+                                url=url
+                            )
+                        
+                        # 调用进度回调
+                        if progress_callback and total_size > 0:
+                            progress = (downloaded_size / total_size) * 100
+                            try:
+                                progress_callback(progress)
+                            except Exception as e:
+                                logger.warning(f"进度回调失败: {e}")
+                
+                download_time = time.time() - start_time
+                
+                logger.info(f"文件下载完成: {filename}, 大小: {downloaded_size / 1024:.1f}KB, 耗时: {download_time:.2f}s")
+                
+                return str(file_path)
+                
+        except aiohttp.ClientError as e:
+            raise RPCFileError(
+                code=ErrorCodes.NETWORK_ERROR,
+                message=f"网络连接错误: {str(e)}",
+                url=url,
+                details=str(e)
+            )
+        except asyncio.TimeoutError:
+            raise RPCFileError(
+                code=ErrorCodes.DOWNLOAD_TIMEOUT,
+                message=f"下载超时（{self.timeout}秒）",
+                url=url
+            )
+        except RPCFileError:
+            # 重新抛出RPC下载错误
+            raise
+        except Exception as e:
+            logger.error(f"下载异常: {str(e)}", exc_info=True)
+            raise RPCFileError(
+                code=ErrorCodes.DOWNLOAD_FAILED,
+                message=f"下载失败: {str(e)}",
+                url=url,
+                details=str(e)
+            )
+
     async def download_image(
         self, 
         url: str, 
