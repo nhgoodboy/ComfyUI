@@ -370,7 +370,4 @@ def retry_on_exception(max_retries: int = 3, delay: float = 1.0, backoff: float 
             raise last_exception
         
         return wrapper
-    return decorator
-
-# 兼容性别名
-validate_image_url = validate_file_url 
+    return decorator 

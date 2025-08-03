@@ -53,11 +53,9 @@ class ComfyUIClient:
         self._session: Optional[aiohttp.ClientSession] = None
         self._connector: Optional[aiohttp.TCPConnector] = None
 
-        # 初始化 API 端点模块（统一使用复数属性以符合调用方）
+        # 初始化 API 端点模块
         self.prompts = PromptAPI(self)
         self.files = FileAPI(self)
-        # 向后兼容旧代码
-        self.file = self.files
         self.system = SystemAPI(self)
         self.user = UserAPI(self)
         self.models = ModelAPI(self)

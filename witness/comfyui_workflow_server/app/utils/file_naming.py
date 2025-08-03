@@ -180,11 +180,3 @@ class FileNamingUtils:
         # UUID格式验证
         uuid_pattern = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
         return bool(uuid_pattern.match(task_file_id))
-    
-    # 向后兼容的方法（保留原有接口）
-    @classmethod
-    def validate_request_id(cls, request_id: str) -> str:
-        """验证请求ID（保持原样，不再清理）"""
-        if not request_id or not isinstance(request_id, str):
-            raise RPCInvalidParams("请求ID不能为空", "request_id", request_id)
-        return request_id

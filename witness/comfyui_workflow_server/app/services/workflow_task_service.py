@@ -89,7 +89,8 @@ class WorkflowTaskService:
             str: 请求ID (request_id)
         """
         # 验证参数
-        request_id = self.file_naming.validate_request_id(request_id)
+        from ..rpc.validator import RPCValidator
+        RPCValidator.validate_request_id(request_id)
         
         # 检查request_id是否已存在
         if request_id in self.tasks:

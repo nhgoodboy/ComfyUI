@@ -90,8 +90,5 @@ class PushConnectionManager:
 # 全局推送管理器
 push_manager = PushConnectionManager()
 
-# 兼容性别名
-push_manager.push_task_update = push_manager.push_workflow_update
-
 # 导出推送管理器供其他模块使用
 __all__ = ["push_manager"] 
