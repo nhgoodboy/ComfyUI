@@ -90,44 +90,6 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
 # system.build_filename 方法已移除 - 在新架构中文件命名由客户端处理
 
 
-@rpc_method("system.parse_filename")
-async def parse_filename(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
-    """解析文件名"""
-    try:
-        # 验证必需参数
-        RPCValidator.validate_required_fields(params, ["filename"])
-        
-        filename = params["filename"]
-        
-        if not isinstance(filename, str) or not filename.strip():
-            raise RPCError(
-                code=ErrorCodes.INVALID_PARAMS,
-                message="文件名不能为空",
-                data={"field": "filename", "value": filename}
-            )
-        
-        # 解析文件名
-        file_info = FileNamingUtils.parse_filename(filename.strip())
-        
-        return {
-            "filename": filename.strip(),
-            "valid": True,
-            "components": file_info
-        }
-        
-    except RPCError:
-        raise
-    except Exception as e:
-        # 文件名格式错误
-        return {
-            "filename": params.get("filename", ""),
-            "valid": False,
-            "error": str(e),
-            "expected_pattern": "{workflow_id}_{request_id}_{input|output}.{ext}",
-            "example": "clay_style_123e4567-e89b-12d3-a456-426614174000_input.jpg"
-        }
-
-
 @rpc_method("system.get_stats")
 async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
     """获取系统统计信息"""

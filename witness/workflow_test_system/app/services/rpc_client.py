@@ -160,12 +160,6 @@ class ComfyUIRPCClient:
     async def get_system_stats(self) -> Dict[str, Any]:
         """获取系统统计"""
         return await self.call("system.get_stats")
-    
-    async def parse_filename(self, filename: str) -> Dict[str, Any]:
-        """解析文件名"""
-        return await self.call("system.parse_filename", {
-            "filename": filename
-        })
 
 # 全局RPC客户端实例
 rpc_client = ComfyUIRPCClient()

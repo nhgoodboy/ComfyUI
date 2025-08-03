@@ -1091,10 +1091,6 @@ class WorkflowTestSystem {
             this.showDownloadImage();
         });
         
-        document.getElementById('parse-filename-btn').addEventListener('click', () => {
-            this.showParseFilename();
-        });
-        
         // Modal controls
         document.querySelector('.modal-close').addEventListener('click', () => {
             this.hideModal();
@@ -1370,68 +1366,6 @@ class WorkflowTestSystem {
         } catch (error) {
             this.log(`Image download failed: ${error.message}`, 'error');
             this.showModal('Download Error', `<p style="color: red;">Error: ${error.message}</p>`);
-        }
-    }
-
-    async showParseFilename() {
-        const filename = prompt('Enter filename to parse (e.g., anime_style_transform_req123_output.png):');
-        if (!filename) return;
-
-        try {
-            const response = await fetch(`${this.apiBase}/system/parse-filename`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: filename.trim() })
-            });
-
-            const result = await response.json();
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to parse filename');
-            }
-
-            const parseResult = result.data;
-            let content;
-
-            if (parseResult.valid) {
-                content = `
-                    <h4>Filename Parse Result</h4>
-                    <p class="api-result-success"><strong>✅ Valid filename format</strong></p>
-                    <table class="api-result-table">
-                        <tr><td><strong>Original:</strong></td>
-                            <td><span class="api-result-code">${parseResult.filename}</span></td></tr>
-                        <tr><td><strong>Workflow ID:</strong></td>
-                            <td>${parseResult.components.workflow_id}</td></tr>
-                        <tr><td><strong>Request ID:</strong></td>
-                            <td>${parseResult.components.request_id}</td></tr>
-                        <tr><td><strong>Type:</strong></td>
-                            <td><span class="api-result-${parseResult.components.type === 'output' ? 'success' : 'warning'}">${parseResult.components.type}</span></td></tr>
-                        <tr><td><strong>Extension:</strong></td>
-                            <td>${parseResult.components.extension}</td></tr>
-                    </table>
-                `;
-            } else {
-                content = `
-                    <h4>Filename Parse Result</h4>
-                    <p class="api-result-error"><strong>❌ Invalid filename format</strong></p>
-                    <table class="api-result-table">
-                        <tr><td><strong>Original:</strong></td>
-                            <td><span class="api-result-code">${parseResult.filename}</span></td></tr>
-                        <tr><td><strong>Error:</strong></td>
-                            <td><span class="api-result-error">${parseResult.error}</span></td></tr>
-                        <tr><td><strong>Expected:</strong></td>
-                            <td>${parseResult.expected_pattern}</td></tr>
-                        <tr><td><strong>Example:</strong></td>
-                            <td><span class="api-result-code">${parseResult.example}</span></td></tr>
-                    </table>
-                `;
-            }
-
-            this.showModal('Parse Filename Result', content);
-            this.log(`Filename parsed: ${filename} - ${parseResult.valid ? 'valid' : 'invalid'}`, parseResult.valid ? 'success' : 'warning');
-
-        } catch (error) {
-            this.log(`Parse filename failed: ${error.message}`, 'error');
-            this.showModal('Parse Error', `<p style="color: red;">Error: ${error.message}</p>`);
         }
     }
 

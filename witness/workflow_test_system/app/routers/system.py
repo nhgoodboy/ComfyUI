@@ -90,22 +90,3 @@ async def get_sessions():
     except Exception as e:
         logger.error(f"Failed to get sessions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/parse-filename")
-async def parse_filename(request: dict):
-    """Parse filename"""
-    try:
-        filename = request.get("filename", "")
-        logger.debug(f"Parsing filename: {filename}")
-        
-        async with rpc_client:
-            result = await rpc_client.parse_filename(filename)
-        
-        return {
-            "success": True,
-            "data": result
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to parse filename: {e}")
-        raise HTTPException(status_code=500, detail=str(e))

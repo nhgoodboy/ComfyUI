@@ -49,7 +49,7 @@ workflows:
       person_image:
         type: "file"
         description: "人物图片"
-        node_path: "30.inputs.image"
+        node_path: "31.inputs.image"
         required: true
         validation:
           accept: ["jpg", "jpeg", "png", "webp"]
@@ -57,7 +57,7 @@ workflows:
       scene_image:
         type: "file"
         description: "场景图片"
-        node_path: "31.inputs.image"
+        node_path: "30.inputs.image"
         required: true
         validation:
           accept: ["jpg", "jpeg", "png", "webp"]
