@@ -14,6 +14,7 @@ from ..validator import RPCValidator
 from ..formatter import RPCFormatter
 from ..exceptions import RPCError
 from ..error_codes import ErrorCodes
+from ..protocol import WorkflowInfo, WorkflowListResult, WorkflowTaskStatus, WorkflowResult, TaskCancelResult
 from ...services.workflow_task_service import WorkflowTaskService
 from ...core.workflow_registry import WorkflowRegistry
 
@@ -93,12 +94,15 @@ async def execute_workflow(params: Dict[str, Any], request: Request) -> Dict[str
         # 添加工作流信息
         workflow_config = workflow_registry.get_workflow(workflow_id)
         if workflow_config:
-            result["workflow_info"] = {
-                "workflow_id": workflow_id,
-                "name": workflow_config.name,
-                "description": workflow_config.description,
-                "estimated_time": workflow_config.estimated_time
-            }
+            workflow_info = WorkflowInfo(
+                workflow_id=workflow_id,
+                name=workflow_config.name,
+                description=workflow_config.description,
+                estimated_time=workflow_config.estimated_time,
+                tags=workflow_config.tags,
+                version=workflow_config.version
+            )
+            result["workflow_info"] = workflow_info.model_dump()
         
         return result
         
@@ -126,21 +130,24 @@ async def list_workflows(params: Dict[str, Any], request: Request) -> Dict[str, 
         # 格式化工作流信息
         workflow_list = []
         for workflow in workflows:
-            workflow_info = {
-                "workflow_id": workflow.id,
-                "name": workflow.name,
-                "description": workflow.description,
-                "estimated_time": workflow.estimated_time,
-                "tags": workflow.tags,
-                "version": workflow.version,
-                "parameter_count": len(workflow.parameters)
-            }
+            workflow_info = WorkflowInfo(
+                workflow_id=workflow.id,
+                name=workflow.name,
+                description=workflow.description,
+                estimated_time=workflow.estimated_time,
+                tags=workflow.tags,
+                version=workflow.version,
+                parameter_count=len(workflow.parameters)
+            )
             workflow_list.append(workflow_info)
         
-        return {
-            "workflows": workflow_list,
-            "total_count": len(workflow_list)
-        }
+        # 使用协议模型返回结果
+        result = WorkflowListResult(
+            workflows=[w.model_dump() for w in workflow_list],
+            total_count=len(workflow_list)
+        )
+        
+        return result.model_dump()
         
     except Exception as e:
         logger.error(f"获取工作流列表失败: {e}", exc_info=True)
@@ -323,11 +330,14 @@ async def cancel_workflow(params: Dict[str, Any], request: Request) -> Dict[str,
                     }
                 )
         
-        return {
-            "success": True,
-            "request_id": request_id,
-            "message": "任务已成功取消"
-        }
+        # 使用协议模型返回结果
+        result = TaskCancelResult(
+            success=True,
+            request_id=request_id,
+            message="任务已成功取消"
+        )
+        
+        return result.model_dump()
         
     except RPCError:
         raise
@@ -356,21 +366,24 @@ async def search_workflows(params: Dict[str, Any], request: Request) -> Dict[str
         # 格式化搜索结果
         workflow_list = []
         for workflow in workflows:
-            workflow_info = {
-                "workflow_id": workflow.id,
-                "name": workflow.name,
-                "description": workflow.description,
-                "estimated_time": workflow.estimated_time,
-                "tags": workflow.tags,
-                "version": workflow.version
-            }
+            workflow_info = WorkflowInfo(
+                workflow_id=workflow.id,
+                name=workflow.name,
+                description=workflow.description,
+                estimated_time=workflow.estimated_time,
+                tags=workflow.tags,
+                version=workflow.version
+            )
             workflow_list.append(workflow_info)
         
-        return {
-            "workflows": workflow_list,
-            "total_count": len(workflow_list),
-            "query": query
-        }
+        # 使用协议模型返回结果
+        result = WorkflowListResult(
+            workflows=[w.model_dump() for w in workflow_list],
+            total_count=len(workflow_list),
+            query=query
+        )
+        
+        return result.model_dump()
         
     except Exception as e:
         logger.error(f"搜索工作流失败: {e}", exc_info=True)

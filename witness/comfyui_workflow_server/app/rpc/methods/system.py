@@ -14,6 +14,7 @@ from ..validator import RPCValidator
 from ..formatter import RPCFormatter
 from ..exceptions import RPCError
 from ..error_codes import ErrorCodes
+from ..protocol import SystemHealth, ServiceStatus, SystemHealthDetails, SystemStats, TaskStats, FileStats, WorkflowStats
 from ...utils.file_naming import FileNamingUtils
 from ...services.comfyui_service import ComfyUIService
 
@@ -61,22 +62,29 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
         # 计算总体状态
         overall_status = "healthy" if comfyui_healthy and storage_healthy and workflows_count > 0 else "unhealthy"
         
-        return {
-            "status": overall_status,
-            "timestamp": time.time(),
-            "services": {
-                "comfyui": "healthy" if comfyui_healthy else "unhealthy",
-                "storage": "healthy" if storage_healthy else "unhealthy", 
-                "workflows": "healthy" if workflows_count > 0 else "unhealthy"
-            },
-            "details": {
-                "comfyui_connected": comfyui_healthy,
-                "storage_healthy": storage_healthy,
-                "workflows_count": workflows_count,
-                "environment": settings.environment,
-                "version": "2.0.0"
-            }
-        }
+        # 使用协议模型返回结果
+        services = ServiceStatus(
+            comfyui="healthy" if comfyui_healthy else "unhealthy",
+            storage="healthy" if storage_healthy else "unhealthy",
+            workflows="healthy" if workflows_count > 0 else "unhealthy"
+        )
+        
+        details = SystemHealthDetails(
+            comfyui_connected=comfyui_healthy,
+            storage_healthy=storage_healthy,
+            workflows_count=workflows_count,
+            environment=settings.environment,
+            version="2.0.0"
+        )
+        
+        result = SystemHealth(
+            status=overall_status,
+            timestamp=time.time(),
+            services=services,
+            details=details
+        )
+        
+        return result.model_dump()
         
     except Exception as e:
         logger.error(f"健康检查失败: {e}", exc_info=True)
@@ -94,24 +102,23 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
 async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
     """获取系统统计信息"""
     try:
-        stats = {
-            "timestamp": time.time(),
-            "uptime": time.time() - getattr(request.app.state, 'start_time', time.time()),
-            "tasks": {
-                "total": 0,
-                "by_status": {},
-                "by_user": {}
-            },
-            "files": {
-                "inputs": 0,
-                "outputs": 0,
-                "temp": 0
-            },
-            "workflows": {
-                "total": 0,
-                "available": []
-            }
-        }
+        # 基础统计数据
+        task_stats = TaskStats(
+            total=0,
+            by_status={},
+            by_user={}
+        )
+        
+        file_stats = FileStats(
+            inputs=0,
+            outputs=0,
+            temp=0
+        )
+        
+        workflow_stats = WorkflowStats(
+            total=0,
+            available=[]
+        )
         
         # 统计任务信息 - 简化统计（新架构中不再区分用户）
         if hasattr(request.app.state, 'workflow_task_service'):
@@ -119,14 +126,14 @@ async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str
             
             # 新的数据结构：只按request_id存储任务
             total_tasks = len(workflow_service.tasks)
-            stats["tasks"]["total"] = total_tasks
+            task_stats.total = total_tasks
             
             # 按状态统计
             for task in workflow_service.tasks.values():
                 status = task.status
-                if status not in stats["tasks"]["by_status"]:
-                    stats["tasks"]["by_status"][status] = 0
-                stats["tasks"]["by_status"][status] += 1
+                if status not in task_stats.by_status:
+                    task_stats.by_status[status] = 0
+                task_stats.by_status[status] += 1
         
         # 统计文件信息
         try:
@@ -134,16 +141,16 @@ async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str
             
             uploads_dir = settings.storage.uploads_dir
             if uploads_dir.exists():
-                stats["files"]["inputs"] = len(list(uploads_dir.glob("*")))
+                file_stats.inputs = len(list(uploads_dir.glob("*")))
             
             outputs_dir = settings.storage.outputs_dir
             if outputs_dir.exists():
-                stats["files"]["outputs"] = len(list(outputs_dir.glob("*")))
+                file_stats.outputs = len(list(outputs_dir.glob("*")))
             
             # 临时目录（如果存在）
             temp_dir = settings.storage.uploads_dir.parent / "temp"
             if temp_dir.exists():
-                stats["files"]["temp"] = len(list(temp_dir.glob("*")))
+                file_stats.temp = len(list(temp_dir.glob("*")))
                 
         except Exception as e:
             logger.warning(f"统计文件信息失败: {e}")
@@ -152,10 +159,19 @@ async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str
         if hasattr(request.app.state, 'workflow_registry'):
             workflow_registry = request.app.state.workflow_registry
             available_workflows = workflow_registry.get_all_workflows()
-            stats["workflows"]["total"] = len(available_workflows)
-            stats["workflows"]["available"] = [wf.id for wf in available_workflows]
+            workflow_stats.total = len(available_workflows)
+            workflow_stats.available = [wf.id for wf in available_workflows]
         
-        return stats
+        # 使用协议模型返回结果
+        result = SystemStats(
+            timestamp=time.time(),
+            uptime=time.time() - getattr(request.app.state, 'start_time', time.time()),
+            tasks=task_stats,
+            files=file_stats,
+            workflows=workflow_stats
+        )
+        
+        return result.model_dump()
         
     except Exception as e:
         logger.error(f"获取系统统计失败: {e}", exc_info=True)
