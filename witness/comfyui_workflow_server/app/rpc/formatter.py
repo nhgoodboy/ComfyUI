@@ -111,6 +111,8 @@ class RPCFormatter:
     @staticmethod
     def format_workflow_result(task, result_data) -> Dict[str, Any]:
         """格式化工作流结果"""
+        from ..config import settings
+        
         formatted_result = {
             "request_id": task.request_id,
             "workflow_id": task.workflow_id,
@@ -126,6 +128,9 @@ class RPCFormatter:
         # 处理工作流参数信息
         if hasattr(task, 'workflow_params'):
             formatted_result["workflow_params"] = task.workflow_params
+        
+        # 获取外部访问的基础URL
+        base_url = settings.get_external_base_url()
         
         # 处理输出文件信息 - 使用新的数据结构
         output_images = []
@@ -152,7 +157,7 @@ class RPCFormatter:
                 
                 output_images.append({
                     "filename": filename,
-                    "url": f"/outputs/{filename}",  # 使用相对URL，由前端或代理处理完整URL
+                    "url": f"{base_url}/outputs/{filename}",  # 使用完整URL
                     "size": file_size
                 })
         

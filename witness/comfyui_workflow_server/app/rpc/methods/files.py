@@ -14,6 +14,7 @@ from ..router import rpc_method
 from ..validator import RPCValidator
 from ..exceptions import RPCError
 from ..error_codes import ErrorCodes
+from ...config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +83,17 @@ async def get_output_image(params: Dict[str, Any], request: Request) -> Dict[str
         
         logger.info(f"提供文件访问: {filename}")
         
+        # 获取完整的基础URL
+        settings = get_settings()
+        base_url = settings.get_external_base_url()
+        
         return {
             "filename": filename,
             "media_type": media_type,
             "size": len(file_data),
             "data": file_base64,
-            "url": f"/outputs/{filename}",
-            "static_url": f"/outputs/{filename}"
+            "url": f"{base_url}/outputs/{filename}",
+            "static_url": f"{base_url}/outputs/{filename}"
         }
         
     except RPCError:
@@ -156,6 +161,10 @@ async def get_output_image_info(params: Dict[str, Any], request: Request) -> Dic
         
         logger.info(f"获取文件信息: {filename}")
         
+        # 获取完整的基础URL
+        settings = get_settings()
+        base_url = settings.get_external_base_url()
+        
         return {
             "filename": filename,
             "size": stat.st_size,
@@ -164,8 +173,8 @@ async def get_output_image_info(params: Dict[str, Any], request: Request) -> Dic
             "extension": file_path.suffix.lower(),
             "media_type": media_type,
             "is_image": is_image,
-            "url": f"/outputs/{filename}",
-            "static_url": f"/outputs/{filename}"
+            "url": f"{base_url}/outputs/{filename}",
+            "static_url": f"{base_url}/outputs/{filename}"
         }
         
     except RPCError:
@@ -210,6 +219,10 @@ async def list_output_images(params: Dict[str, Any], request: Request) -> Dict[s
         # 支持的图片扩展名
         allowed_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
         
+        # 获取完整的基础URL
+        settings = get_settings()
+        base_url = settings.get_external_base_url()
+        
         # 获取所有匹配的图片文件
         all_files = []
         for file_path in output_dir.glob(pattern):
@@ -223,8 +236,8 @@ async def list_output_images(params: Dict[str, Any], request: Request) -> Dict[s
                     "created_time": int(stat.st_ctime),
                     "modified_time": int(stat.st_mtime),
                     "extension": file_path.suffix.lower(),
-                    "url": f"/outputs/{file_path.name}",
-                    "static_url": f"/outputs/{file_path.name}"
+                    "url": f"{base_url}/outputs/{file_path.name}",
+                    "static_url": f"{base_url}/outputs/{file_path.name}"
                 })
         
         # 按修改时间排序（最新的在前）

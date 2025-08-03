@@ -107,7 +107,7 @@ async def parse_filename(params: Dict[str, Any], request: Request) -> Dict[str, 
             )
         
         # 解析文件名
-        file_info = FileNamingUtils.extract_file_info(filename.strip())
+        file_info = FileNamingUtils.parse_filename(filename.strip())
         
         return {
             "filename": filename.strip(),
