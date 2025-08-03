@@ -232,8 +232,9 @@ class WorkflowRegistry:
         results = []
         
         for workflow in self.workflows.values():
-            # 在名称、描述和标签中搜索
-            if (query_lower in workflow.name.lower() or 
+            # 在工作流ID、名称、描述和标签中搜索
+            if (query_lower in workflow.id.lower() or
+                query_lower in workflow.name.lower() or 
                 query_lower in workflow.description.lower() or
                 any(query_lower in tag.lower() for tag in workflow.tags)):
                 results.append(workflow)
