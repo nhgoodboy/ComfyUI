@@ -258,8 +258,7 @@ class UniversalWorkflowExecutor(BaseWorkflow):
                                 # 仅提取文件信息，不进行文件操作（文件下载由workflow_task_service处理）
                                 processed_result["output_images"].append({
                                     "filename": comfyui_filename,
-                                    "type": f"{self.workflow_config.id}_output",
-                                    "original_comfyui_filename": comfyui_filename
+                                    "type": f"{self.workflow_config.id}_output"
                                 })
                                 self.logger.info(f"提取输出图片信息: {comfyui_filename}")
             
