@@ -1,7 +1,7 @@
 """
 RPC协议规范
 
-定义RPC请求和响应的数据模型，基于最新的代码结构设计
+定义RPC请求和响应的数据模型
 """
 
 from typing import Any, Dict, Optional, List
@@ -161,54 +161,18 @@ class TaskCancelResult(BaseModel):
 
 # ==== 系统相关模型 ====
 
-class ServiceStatus(BaseModel):
-    """服务状态模型"""
-    comfyui: str = Field(..., description="ComfyUI服务状态")
-    storage: str = Field(..., description="存储服务状态")
-    workflows: str = Field(..., description="工作流服务状态")
-
-
-class SystemHealthDetails(BaseModel):
-    """系统健康检查详情模型"""
-    comfyui_connected: bool = Field(..., description="ComfyUI是否连接")
-    storage_healthy: bool = Field(..., description="存储是否健康")
-    workflows_count: int = Field(..., description="可用工作流数量")
-    environment: str = Field(..., description="运行环境")
-    version: str = Field(..., description="系统版本")
-
-
 class SystemHealth(BaseModel):
     """系统健康检查模型"""
     status: str = Field(..., description="总体状态")
     timestamp: float = Field(..., description="检查时间戳")
-    services: ServiceStatus = Field(..., description="服务状态")
-    details: SystemHealthDetails = Field(..., description="详细信息")
-
-
-class TaskStats(BaseModel):
-    """任务统计模型"""
-    total: int = Field(..., description="总任务数")
-    by_status: Dict[str, int] = Field(default_factory=dict, description="按状态统计")
-    by_user: Dict[str, int] = Field(default_factory=dict, description="按用户统计")
-
-
-class FileStats(BaseModel):
-    """文件统计模型"""
-    inputs: int = Field(..., description="输入文件数")
-    outputs: int = Field(..., description="输出文件数")
-    temp: int = Field(..., description="临时文件数")
-
-
-class WorkflowStats(BaseModel):
-    """工作流统计模型"""
-    total: int = Field(..., description="总工作流数")
-    available: List[str] = Field(default_factory=list, description="可用工作流ID列表")
+    services: Dict[str, str] = Field(..., description="服务状态")
+    details: Dict[str, Any] = Field(..., description="详细信息")
 
 
 class SystemStats(BaseModel):
     """系统统计信息模型"""
     timestamp: float = Field(..., description="统计时间戳")
     uptime: float = Field(..., description="系统运行时间(秒)")
-    tasks: TaskStats = Field(..., description="任务统计")
-    files: FileStats = Field(..., description="文件统计")
-    workflows: WorkflowStats = Field(..., description="工作流统计")
+    tasks: Dict[str, Any] = Field(..., description="任务统计")
+    files: Dict[str, int] = Field(..., description="文件统计")
+    workflows: Dict[str, Any] = Field(..., description="工作流统计")

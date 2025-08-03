@@ -40,7 +40,6 @@ async def get_output_image(params: Dict[str, Any], request: Request) -> Dict[str
         file_path = output_dir / filename.strip()
         
         if not file_path.exists():
-            logger.warning(f"请求的文件不存在: {filename}")
             raise RPCError(
                 code=ErrorCodes.TASK_NOT_FOUND,
                 message="文件不存在",
@@ -48,7 +47,6 @@ async def get_output_image(params: Dict[str, Any], request: Request) -> Dict[str
             )
         
         if not file_path.is_file():
-            logger.warning(f"请求的路径不是文件: {filename}")
             raise RPCError(
                 code=ErrorCodes.TASK_NOT_FOUND,
                 message="不是有效文件",
@@ -58,7 +56,6 @@ async def get_output_image(params: Dict[str, Any], request: Request) -> Dict[str
         # 检查文件扩展名
         allowed_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
         if file_path.suffix.lower() not in allowed_extensions:
-            logger.warning(f"不支持的文件类型: {filename}")
             raise RPCError(
                 code=ErrorCodes.INVALID_PARAMS,
                 message="不支持的文件类型",
@@ -96,14 +93,11 @@ async def get_output_image(params: Dict[str, Any], request: Request) -> Dict[str
             static_url=f"{base_url}/outputs/{filename}"
         )
         
-        logger.info(f"提供文件访问: {filename}")
-        
         return result.model_dump()
         
     except RPCError:
         raise
     except Exception as e:
-        logger.error(f"获取文件失败: {filename}, 错误: {e}", exc_info=True)
         raise RPCError(
             code=ErrorCodes.INTERNAL_ERROR,
             message="获取文件失败",
@@ -180,14 +174,11 @@ async def get_output_image_info(params: Dict[str, Any], request: Request) -> Dic
             is_image=is_image
         )
         
-        logger.info(f"获取文件信息: {filename}")
-        
         return result.model_dump()
         
     except RPCError:
         raise
     except Exception as e:
-        logger.error(f"获取文件信息失败: {filename}, 错误: {e}", exc_info=True)
         raise RPCError(
             code=ErrorCodes.INTERNAL_ERROR,
             message="获取文件信息失败",
@@ -257,8 +248,6 @@ async def list_output_images(params: Dict[str, Any], request: Request) -> Dict[s
         total = len(all_files)
         files = all_files[offset:offset + limit]
         
-        logger.info(f"列出输出图片: 总数={total}, 返回={len(files)}, 偏移={offset}, 限制={limit}")
-        
         # 使用协议模型返回结果
         result = FileListResult(
             files=[f.model_dump() for f in files],
@@ -272,7 +261,6 @@ async def list_output_images(params: Dict[str, Any], request: Request) -> Dict[s
         return result.model_dump()
         
     except Exception as e:
-        logger.error(f"列出输出图片失败: {e}", exc_info=True)
         raise RPCError(
             code=ErrorCodes.INTERNAL_ERROR,
             message="列出输出图片失败",

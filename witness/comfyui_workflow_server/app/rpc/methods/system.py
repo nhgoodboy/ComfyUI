@@ -10,13 +10,9 @@ from typing import Dict, Any
 from fastapi import Request
 
 from ..router import rpc_method
-from ..validator import RPCValidator
-from ..formatter import RPCFormatter
 from ..exceptions import RPCError
 from ..error_codes import ErrorCodes
-from ..protocol import SystemHealth, ServiceStatus, SystemHealthDetails, SystemStats, TaskStats, FileStats, WorkflowStats
-from ...utils.file_naming import FileNamingUtils
-from ...services.comfyui_service import ComfyUIService
+from ..protocol import SystemHealth, SystemStats
 
 logger = logging.getLogger(__name__)
 
@@ -62,26 +58,22 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
         # 计算总体状态
         overall_status = "healthy" if comfyui_healthy and storage_healthy and workflows_count > 0 else "unhealthy"
         
-        # 使用协议模型返回结果
-        services = ServiceStatus(
-            comfyui="healthy" if comfyui_healthy else "unhealthy",
-            storage="healthy" if storage_healthy else "unhealthy",
-            workflows="healthy" if workflows_count > 0 else "unhealthy"
-        )
-        
-        details = SystemHealthDetails(
-            comfyui_connected=comfyui_healthy,
-            storage_healthy=storage_healthy,
-            workflows_count=workflows_count,
-            environment=settings.environment,
-            version="2.0.0"
-        )
-        
+        # 使用简化的协议模型
         result = SystemHealth(
             status=overall_status,
             timestamp=time.time(),
-            services=services,
-            details=details
+            services={
+                "comfyui": "healthy" if comfyui_healthy else "unhealthy",
+                "storage": "healthy" if storage_healthy else "unhealthy",
+                "workflows": "healthy" if workflows_count > 0 else "unhealthy"
+            },
+            details={
+                "comfyui_connected": comfyui_healthy,
+                "storage_healthy": storage_healthy,
+                "workflows_count": workflows_count,
+                "environment": settings.environment,
+                "version": "2.0.0"
+            }
         )
         
         return result.model_dump()
@@ -102,67 +94,47 @@ async def system_health(params: Dict[str, Any], request: Request) -> Dict[str, A
 async def get_system_stats(params: Dict[str, Any], request: Request) -> Dict[str, Any]:
     """获取系统统计信息"""
     try:
-        # 基础统计数据
-        task_stats = TaskStats(
-            total=0,
-            by_status={},
-            by_user={}
-        )
-        
-        file_stats = FileStats(
-            inputs=0,
-            outputs=0,
-            temp=0
-        )
-        
-        workflow_stats = WorkflowStats(
-            total=0,
-            available=[]
-        )
-        
-        # 统计任务信息 - 简化统计（新架构中不再区分用户）
+        # 统计任务信息
+        task_stats = {"total": 0, "by_status": {}}
         if hasattr(request.app.state, 'workflow_task_service'):
             workflow_service = request.app.state.workflow_task_service
+            task_stats["total"] = len(workflow_service.tasks)
             
-            # 新的数据结构：只按request_id存储任务
-            total_tasks = len(workflow_service.tasks)
-            task_stats.total = total_tasks
-            
-            # 按状态统计
             for task in workflow_service.tasks.values():
                 status = task.status
-                if status not in task_stats.by_status:
-                    task_stats.by_status[status] = 0
-                task_stats.by_status[status] += 1
+                if status not in task_stats["by_status"]:
+                    task_stats["by_status"][status] = 0
+                task_stats["by_status"][status] += 1
         
         # 统计文件信息
+        file_stats = {"inputs": 0, "outputs": 0, "temp": 0}
         try:
             settings = request.app.state.settings
             
             uploads_dir = settings.storage.uploads_dir
             if uploads_dir.exists():
-                file_stats.inputs = len(list(uploads_dir.glob("*")))
+                file_stats["inputs"] = len(list(uploads_dir.glob("*")))
             
             outputs_dir = settings.storage.outputs_dir
             if outputs_dir.exists():
-                file_stats.outputs = len(list(outputs_dir.glob("*")))
+                file_stats["outputs"] = len(list(outputs_dir.glob("*")))
             
-            # 临时目录（如果存在）
             temp_dir = settings.storage.uploads_dir.parent / "temp"
             if temp_dir.exists():
-                file_stats.temp = len(list(temp_dir.glob("*")))
+                file_stats["temp"] = len(list(temp_dir.glob("*")))
                 
         except Exception as e:
             logger.warning(f"统计文件信息失败: {e}")
         
         # 统计工作流信息
+        workflow_stats = {"total": 0, "available": []}
         if hasattr(request.app.state, 'workflow_registry'):
             workflow_registry = request.app.state.workflow_registry
             available_workflows = workflow_registry.get_all_workflows()
-            workflow_stats.total = len(available_workflows)
-            workflow_stats.available = [wf.id for wf in available_workflows]
+            workflow_stats["total"] = len(available_workflows)
+            workflow_stats["available"] = [wf.id for wf in available_workflows]
         
-        # 使用协议模型返回结果
+        # 使用简化的协议模型
         result = SystemStats(
             timestamp=time.time(),
             uptime=time.time() - getattr(request.app.state, 'start_time', time.time()),
