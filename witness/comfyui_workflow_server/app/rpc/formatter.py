@@ -6,7 +6,7 @@ RPC响应格式化器
 
 import logging
 from typing import Any, Dict
-from .protocol import RPCResponse
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +18,8 @@ class RPCFormatter:
     def format_success(result: Any, request_id: str) -> Dict[str, Any]:
         """格式化成功响应"""
         if not isinstance(result, dict):
-            # 如果结果不是字典，包装成字典
             result = {"data": result}
         
-        # 直接返回字典，避免Pydantic序列化问题
         return {
             "result": result,
             "id": request_id
@@ -36,17 +34,13 @@ class RPCFormatter:
         }
         
         if data is not None:
-            # 确保data是可序列化的
             try:
                 import json
-                # 尝试序列化data，如果失败就转换为字符串
                 json.dumps(data)
                 error_dict["data"] = data
             except (TypeError, ValueError):
-                # 如果data不能序列化，转换为字符串
                 error_dict["data"] = str(data)
         
-        # 直接返回字典，避免Pydantic序列化问题
         return {
             "error": error_dict,
             "id": str(request_id) if request_id else None
@@ -86,7 +80,6 @@ class RPCFormatter:
     def format_workflow_info(workflow) -> Dict[str, Any]:
         """格式化工作流信息"""
         try:
-            # 确保所有值都是可序列化的
             result = {
                 "id": str(workflow.id) if workflow.id else "",
                 "name": str(workflow.name) if workflow.name else "",
@@ -98,7 +91,6 @@ class RPCFormatter:
             return result
         except Exception as e:
             logger.error(f"格式化工作流信息失败: {e}")
-            # 返回安全的默认值
             return {
                 "id": "unknown",
                 "name": "Unknown Workflow",
@@ -111,7 +103,7 @@ class RPCFormatter:
     @staticmethod
     def format_workflow_result(task, result_data) -> Dict[str, Any]:
         """格式化工作流结果"""
-        from ..config import settings
+        from ..config import get_settings
         
         formatted_result = {
             "request_id": task.request_id,
@@ -121,7 +113,7 @@ class RPCFormatter:
             "completed_at": int(task.completed_at) if task.completed_at else None
         }
         
-        # 计算处理时长，保留到秒（2位小数）
+        # 计算处理时长，保留2位小数
         if task.completed_at and task.started_at:
             formatted_result["duration"] = round(task.completed_at - task.started_at, 2)
         
@@ -130,18 +122,17 @@ class RPCFormatter:
             formatted_result["workflow_params"] = task.workflow_params
         
         # 获取外部访问的基础URL
+        settings = get_settings()
         base_url = settings.get_external_base_url()
         
-        # 处理输出文件信息 - 使用新的数据结构
+        # 处理输出文件信息
         output_images = []
         if result_data and 'output_images' in result_data:
             for img_data in result_data['output_images']:
                 filename = img_data.get('filename', 'unknown')
-                # 检查文件是否存在并获取大小
-                from pathlib import Path
                 
+                # 检查文件是否存在并获取大小
                 try:
-                    # 假设输出文件在 outputs 目录中
                     output_dir = Path("outputs")
                     file_path = output_dir / filename
                     
@@ -157,14 +148,10 @@ class RPCFormatter:
                 
                 output_images.append({
                     "filename": filename,
-                    "url": f"{base_url}/outputs/{filename}",  # 使用完整URL
+                    "url": f"{base_url}/outputs/{filename}",
                     "size": file_size
                 })
         
         formatted_result["output_images"] = output_images
         
         return formatted_result
-    
-    # 兼容性别名
-    format_task_status = format_workflow_task_status
-    format_transform_result = format_workflow_result

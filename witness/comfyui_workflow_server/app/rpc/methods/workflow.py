@@ -88,7 +88,7 @@ async def execute_workflow(params: Dict[str, Any], request: Request) -> Dict[str
             )
         
         # 格式化任务状态
-        result = RPCFormatter.format_task_status(task_data)
+        result = RPCFormatter.format_workflow_task_status(task_data)
         
         # 添加工作流信息
         workflow_config = workflow_registry.get_workflow(workflow_id)
@@ -215,7 +215,7 @@ async def get_workflow_status(params: Dict[str, Any], request: Request) -> Dict[
             )
         
         # 格式化任务状态
-        return RPCFormatter.format_task_status(task_data)
+        return RPCFormatter.format_workflow_task_status(task_data)
         
     except RPCError:
         raise
@@ -272,7 +272,7 @@ async def get_workflow_result(params: Dict[str, Any], request: Request) -> Dict[
             )
         
         # 格式化转换结果
-        return RPCFormatter.format_transform_result(task_data, task_data.result)
+        return RPCFormatter.format_workflow_result(task_data, task_data.result)
         
     except RPCError:
         raise
